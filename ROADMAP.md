@@ -1,9 +1,10 @@
 # Roadmap nfogen
 
-`nfogen` génère des fichiers NFO pilotés par des profils (C411 par défaut),
-utilisable en CLI, en bibliothèque Python, en API HTTP, ou via le frontend
-web. Ce document liste les idées futures — pour l'historique détaillé des
-changements, voir `git log`.
+`nfogen` génère des fichiers NFO pilotés par des profils (génériques, un
+profil = une convention de tracker), utilisable en CLI, en bibliothèque
+Python, en API HTTP, ou via le frontend web. Profil d'exemple livré avec le
+paquet : C411. Ce document liste les idées futures — pour l'historique
+détaillé des changements, voir `git log`.
 
 ## Décisions verrouillées
 
@@ -32,3 +33,8 @@ changements, voir `git log`.
 - `name_proposal.py` : la saison/l'épisode restent déterminés en priorité
   par le nom de fichier (pas le tag `Title` embarqué) — à revoir si un tag
   contenant une numérotation différente est rencontré en pratique.
+- **Profils comme extensions** : à terme, considérer ne plus livrer C411
+  avec le paquet par défaut (zéro ou peu de profils nativement), et le
+  distribuer plutôt comme un `.zip` téléchargeable séparément (le mécanisme
+  d'import existe déjà, `POST /profiles/store/{name}/import`) — pour bien
+  marquer que c'est un exemple/point de départ, pas "le" profil de nfogen.

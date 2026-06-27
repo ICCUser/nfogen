@@ -22,8 +22,8 @@ jobs:
       - name: Installer la dependance systeme (libmediainfo)
         run: sudo apt-get update && sudo apt-get install -y libmediainfo0v5
 
-      - name: Installer nfogen (+ extras dev)
-        run: pip install -e ".[dev]"
+      - name: Installer nfogen (+ extras api et dev)
+        run: pip install -e ".[api,dev]"
 
       - name: Lint (ruff)
         run: ruff check .

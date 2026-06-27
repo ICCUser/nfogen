@@ -3,9 +3,10 @@
 [![CI](https://github.com/ICCUser/nfogen/actions/workflows/ci.yml/badge.svg)](https://github.com/ICCUser/nfogen/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Générateur de fichiers **NFO** modulaire, piloté par des **profils**.
-Profil livré par défaut : **C411** (Films & Vidéos, Audio, Jeux/Applications,
-eBook, Impression 3D).
+Générateur de fichiers **NFO** générique, piloté par des **profils** : un
+profil décrit la convention de nommage et la mise en forme d'**un** tracker
+ou communauté, sans toucher au code. nfogen ne connaît aucun tracker en
+particulier — tout ce qui est spécifique à l'un d'eux vit dans son profil.
 
 L'outil sépare nettement trois responsabilités, ce qui le rend extensible
 sans toucher au cœur :
@@ -15,22 +16,30 @@ sans toucher au cœur :
 2. **Profils** (`profiles/`) — décrire *comment* écrire le NFO. Un profil est
    **100% déclaratif** : un `rules.json` (règles de nommage par catégorie) et
    des templates Jinja2 (`templates/<cat>.j2`), interprétés par un moteur
-   générique ([`nfogen/declarative_profile.py`](nfogen/declarative_profile.py))
-   qui ne connaît aucun tracker en particulier. C411 (livré avec le paquet) et
-   les profils utilisateur (gérés à chaud, voir plus bas) passent par
-   *exactement* le même mécanisme.
+   générique ([`nfogen/declarative_profile.py`](nfogen/declarative_profile.py)).
+   Tous les profils — celui livré en exemple ou les profils que vous créez/
+   importez — passent par *exactement* le même mécanisme.
 3. **Cœur** (`engine.py`, `registry.py`) — orchestrer, sans rien connaître
    d'un tracker en particulier.
 
-> Le NFO « Films & Vidéos » de C411 **est** la sortie texte par défaut de
-> MediaInfo. Le template `video.j2` se contente donc de la reproduire
-> fidèlement (`{{ raw_text }}`, sans aucune mise en forme), ce qui garantit
-> la conformité quelle que soit l'évolution des conventions — tout en
-> passant par le même `render_template()` que les 4 autres catégories.
-> Seule exception délibérée : le champ `Complete name` est réduit au seul
-> nom de fichier (jamais le chemin complet local/temporaire, qui peut
-> révéler un nom d'utilisateur ou une arborescence de dossiers — sans
-> intérêt pour qui lit un NFO partagé publiquement).
+Le paquet est livré avec **un seul profil d'exemple, C411** (Films & Vidéos,
+Audio, Jeux/Applications, eBook, Impression 3D), pour avoir quelque chose qui
+fonctionne immédiatement après installation. Il n'a rien de spécial : il
+peut être ignoré, surchargé ou supprimé exactement comme n'importe quel
+profil que vous créeriez vous-même (voir [Gérer des profils
+utilisateur](#gérer-des-profils-utilisateur-sans-toucher-au-code)). Un profil
+se partage en `.zip` (export/import intégrés) : c'est la manière prévue de
+distribuer la convention d'un tracker sans toucher au code de nfogen.
+
+> Exemple concret de ce que permet le moteur de templates : le NFO « Films &
+> Vidéos » du profil C411 **est** la sortie texte par défaut de MediaInfo —
+> son template `video.j2` se contente de la reproduire fidèlement
+> (`{{ raw_text }}`), sans aucune mise en forme. Rien n'empêche un autre
+> profil de formater sa catégorie vidéo différemment. Seule exception
+> délibérée, appliquée à tous les profils : le champ `Complete name` est
+> réduit au seul nom de fichier (jamais le chemin complet local/temporaire,
+> qui peut révéler un nom d'utilisateur ou une arborescence de dossiers —
+> sans intérêt pour qui lit un NFO partagé publiquement).
 
 ## Installation
 
@@ -112,12 +121,21 @@ des tokens n'est jamais impose : on verifie leur *presence*, pas une
 sequence figee, pour absorber les sous-formats tres variables d'une vraie
 convention (Films, Series, Collections, HDR, REMUX/BDMV/ISO...).
 
-Pour la categorie `video` du profil C411, le champ `release_name` est
-**obligatoire** et doit respecter la convention C411 (wiki "Le Nommage de
-l'upload") : separateur point uniquement (pas d'espace/accent), terminer
-par un codec video reconnu (x264/x265/H264/H265/HEVC/AVC/MPEG2) suivi de
-`-TEAM`, et contenir une annee, un tag de saison/episode (`SXX`/`SXXEXX`) ou
-`COLLECTION`/`INTEGRALE`. Exemples conformes :
+Une regle `required` non satisfaite **bloque la generation** (erreur
+explicite, message tire du JSON) ; une regle `recommended` ou un
+`cross_check` (coherence entre ce que `release_name` annonce et ce que
+MediaInfo lit reellement dans le fichier) ne fait que produire un
+avertissement informatif.
+
+<details>
+<summary>Exemple concret : la convention du profil C411 fourni</summary>
+
+Pour la categorie `video` de C411, `release_name` doit respecter la
+convention C411 (wiki "Le Nommage de l'upload") : separateur point
+uniquement (pas d'espace/accent), terminer par un codec video reconnu
+(x264/x265/H264/H265/HEVC/AVC/MPEG2) suivi de `-TEAM`, et contenir une
+annee, un tag de saison/episode (`SXX`/`SXXEXX`) ou `COLLECTION`/`INTEGRALE`.
+Exemples conformes :
 
 ```
 Mr.Robot.S01.MULTI.VFF.1080p.WEB.EAC3.5.1.H264-FW
@@ -125,14 +143,11 @@ Breaking.Bad.INTEGRALE.MULTI.VFF.1080p.WEB.EAC3.5.1.H265-BTT
 Le.Comte.de.Monte.Cristo.2024.VOF.2160p.UHD.BluRay.REMUX.DV.HDR10PLUS.TrueHD.Atmos.7.1.HEVC-ZEKEY
 ```
 
-Sans `release_name`, ou s'il ne respecte pas ces regles, `nfogen` **refuse
-de generer** le NFO (erreur explicite, message tire du JSON). D'autres
-controles sont informatifs et n'empechent pas la generation : absence de
-tag de langue (`recommended`, normal pour les clips/concerts) ou de
-resolution (admis sous 720p), incoherence entre ce que `release_name`
-annonce et ce que MediaInfo lit reellement dans le fichier (resolution,
-codec, via les `cross_checks` du JSON), et piste audio/sous-titres sans tag
-de langue dans les metadonnees du fichier source.
+C'est une convention parmi d'autres possibles : un profil different (le
+votre) declare ses propres tokens dans son `rules.json`, sans rapport avec
+celle-ci.
+
+</details>
 
 ### Proposition automatique de `release_name`
 
@@ -239,7 +254,7 @@ uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 | Endpoint | Auth | Usage |
 |---|---|---|
 | `GET /health` | non | sonde de supervision |
-| `GET /profiles` | non | liste profils/catégories (registre complet, y compris C411) |
+| `GET /profiles` | non | liste profils/catégories disponibles (profils livrés + utilisateur) |
 | `POST /generate` | si `NFOGEN_API_TOKEN` définie | multipart : envoi de fichier(s) → NFO |
 | `POST /generate/json` | si `NFOGEN_API_TOKEN` définie | JSON : métadonnées → NFO (sans fichier) |
 | `POST /propose-name` | si `NFOGEN_API_TOKEN` définie | JSON : noms de fichiers (+ `title_hints` optionnels) → suggestion de `release_name` (aucun upload) |
@@ -343,13 +358,13 @@ curl -X DELETE http://localhost:8000/profiles/store/mon_tracker \
 avant toute écriture : un schéma invalide est rejeté (`400`) sans toucher au
 disque ni casser les autres profils.
 
-Par défaut, C411 (livré avec le paquet) est en lecture seule dans
-l'interface — mais rien ne l'empêche d'être *surchargé* : un profil
-utilisateur portant le même nom (`PUT /profiles/store/c411`, ou un dossier
-`c411/` dans `NFOGEN_PROFILES_DIR`) prend le dessus sur la version livrée,
-y compris après un redémarrage. Exactement le même principe que
-`NFOGEN_TEMPLATES` pour les templates seuls, mais pour le profil entier
-(règles + templates).
+Par défaut, un profil **livré avec le paquet** (le seul fourni aujourd'hui :
+C411) est en lecture seule dans l'interface — mais rien ne l'empêche d'être
+*surchargé* : un profil utilisateur portant le même nom (`PUT
+/profiles/store/c411`, ou un dossier `c411/` dans `NFOGEN_PROFILES_DIR`)
+prend le dessus sur la version livrée, y compris après un redémarrage.
+Exactement le même principe que `NFOGEN_TEMPLATES` pour les templates seuls,
+mais pour le profil entier (règles + templates).
 
 Le `.zip` exporté a la même structure que sur disque (`rules.json` +
 `templates/*.j2`) : il peut être partagé tel quel, ou versionné dans un
@@ -410,7 +425,10 @@ gestion déclarative ci-dessus : voir
 concret [`profiles/c411/__init__.py`](nfogen/profiles/c411/__init__.py) (6
 lignes, aucune logique propre à C411).
 
-## Catégories du profil C411
+## Catégories disponibles
+
+Cinq catégories fixes, gérées par le cœur générique (un profil peut n'en
+utiliser que certaines) :
 
 | Catégorie | Source auto | Rendu |
 |---|---|---|
@@ -420,13 +438,14 @@ lignes, aucune logique propre à C411).
 | `ebook` | scan fichiers | template |
 | `print3d` | scan fichiers | template |
 
-Les catégories `gps` et `adulte` de C411 suivent les règles d'autres
-catégories (Jeux/Vidéo/eBook) : réutilisez le renderer correspondant.
+Pour une catégorie hors de ces cinq (ex. "gps", "adulte"...), réutilisez le
+renderer d'une catégorie proche (Jeux/Vidéo/eBook) plutôt que d'en créer une
+nouvelle — c'est ce que fait le profil C411 fourni.
 
 ## Tests
 
 ```bash
-pip install -e ".[dev]" httpx
+pip install -e ".[api,dev]"
 pytest -q
 ruff check .          # lint, execute aussi en CI
 ```
