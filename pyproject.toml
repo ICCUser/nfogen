@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nfogen"
+version = "0.1.0"
+description = "Generateur de fichiers NFO modulaire, base sur des profils (C411 par defaut)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ICCUser" }]
+keywords = ["nfo", "mediainfo", "tracker", "c411", "generator"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "pymediainfo>=6.1",   # extraction des metadonnees video (necessite libmediainfo)
+    "mutagen>=1.47",      # extraction des metadonnees audio
+    "jinja2>=3.1",        # moteur de templates pour les profils structures
+    "jsonschema>=4.0",    # validation des rules.json (profils livres et utilisateur)
+]
+
+[project.urls]
+Homepage = "https://github.com/ICCUser/nfogen"
+Repository = "https://github.com/ICCUser/nfogen"
+Issues = "https://github.com/ICCUser/nfogen/issues"
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",  # upload de fichiers via HTTP
+]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.scripts]
+nfogen = "nfogen.cli:main"
+
+[tool.setuptools]
+packages = ["nfogen", "nfogen.profiles", "nfogen.profiles.c411"]
+
+[tool.setuptools.package-data]
+"nfogen" = ["rules.schema.json"]
+"nfogen.profiles.c411" = ["rules.json", "templates/*.j2"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

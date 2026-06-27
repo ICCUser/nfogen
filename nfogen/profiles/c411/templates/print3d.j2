@@ -1,0 +1,9 @@
+{{ "Nom du modele"|colonpad(name|default(""), 19) }}
+{% if creator is defined and creator %}
+{{ "Createur"|colonpad(creator, 19) }}
+{% endif %}
+{{ "Nombre de fichiers"|colonpad(file_count|default(""), 19) }}
+{{ "Format de fichiers"|colonpad(format|default(""), 19) }}
+{{ "Taille totale"|colonpad(total_size_dec|default(""), 19) }}
+
+{{ footer|default("Enjoy") }}

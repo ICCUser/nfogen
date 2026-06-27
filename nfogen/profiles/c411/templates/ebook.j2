@@ -1,0 +1,21 @@
+{{ banner(title ~ (author is defined and author and (" - " ~ author) or "")) }}
+
+{{ "Titre"|dotpad(title|default("")) }}
+{{ "Auteur"|dotpad(author|default("")) }}
+{{ "Format"|dotpad(format|default("")) }}
+{{ "Langue"|dotpad(language|default("")) }}
+{{ "Pages"|dotpad(pages|default("")) }}
+{{ "Fichier(s)"|dotpad(file_count|default("")) }}
+{{ "Taille"|dotpad(total_size_dec|default("")) }}
+{{ "ISBN"|dotpad(isbn|default("")) }}
+{% if avg_resolution is defined and avg_resolution %}
+{{ "Resolution moyenne"|dotpad(avg_resolution) }}
+{% endif %}
+{% if items is defined and items %}
+
+{{ banner("CONTENU DU PACK") }}
+
+{% for it in items %}
+{{ "%02d. %s"|format(loop.index, it) }}
+{% endfor %}
+{% endif %}

@@ -1,0 +1,102 @@
+General
+Unique ID                                : 214924644914062684879036183800609921493 (0xA1B0FB1F0F3455F2A9B1B84677D659D5)
+Complete name                            : Van.Wilder.3.La.Premiere.Annee.De.Fac.2009.MULTI.VFF.1080p.WEB-DL.AC3.2.0.h264-LCDS.mkv
+Format                                   : Matroska
+Format version                           : Version 4
+File size                                : 3.97 GiB
+Duration                                 : 1 h 38 min
+Overall bit rate                         : 5 799 kb/s
+Encoded date                             : UTC 2016-05-21 23:28:21
+Writing application                      : mkvmerge v9.1.0 ('Little Earthquakes') 64bit
+Writing library                          : libebml v1.3.3 + libmatroska v1.4.4
+
+Video
+ID                                       : 1
+Format                                   : AVC
+Format/Info                              : Advanced Video Codec
+Format profile                           : High@L4
+Format settings                          : CABAC / 4 Ref Frames
+Format settings, CABAC                   : Yes
+Format settings, Reference frames        : 4 frames
+Codec ID                                 : V_MPEG4/ISO/AVC
+Duration                                 : 1 h 38 min
+Bit rate                                 : 5 221 kb/s
+Width                                    : 1 916 pixels
+Height                                   : 1 076 pixels
+Display aspect ratio                     : 16:9
+Frame rate mode                          : Constant
+Frame rate                               : 23.976 (24000/1001) FPS
+Color space                              : YUV
+Chroma subsampling                       : 4:2:0
+Bit depth                                : 8 bits
+Scan type                                : Progressive
+Bits/(Pixel*Frame)                       : 0.106
+Stream size                              : 3.58 GiB (90%)
+Default                                  : Yes
+Forced                                   : No
+Color range                              : Limited
+Color primaries                          : BT.709
+Transfer characteristics                 : BT.709
+Matrix coefficients                      : BT.709
+
+Audio #1
+ID                                       : 2
+Format                                   : AC-3
+Format/Info                              : Audio Coding 3
+Commercial name                          : Dolby Digital
+Codec ID                                 : A_AC3
+Duration                                 : 1 h 38 min
+Bit rate mode                            : Constant
+Bit rate                                 : 192 kb/s
+Channel(s)                               : 2 channels
+Channel layout                           : L R
+Sampling rate                            : 48.0 kHz
+Frame rate                               : 31.250 FPS (1536 SPF)
+Compression mode                         : Lossy
+Stream size                              : 135 MiB (3%)
+Title                                    : Francais AC3 2.0
+Language                                 : French
+Service kind                             : Complete Main
+Default                                  : Yes
+Forced                                   : No
+
+Audio #2
+ID                                       : 3
+Format                                   : AC-3
+Format/Info                              : Audio Coding 3
+Commercial name                          : Dolby Digital
+Codec ID                                 : A_AC3
+Duration                                 : 1 h 38 min
+Bit rate mode                            : Constant
+Bit rate                                 : 384 kb/s
+Channel(s)                               : 6 channels
+Channel layout                           : L R C LFE Ls Rs
+Sampling rate                            : 48.0 kHz
+Frame rate                               : 31.250 FPS (1536 SPF)
+Compression mode                         : Lossy
+Stream size                              : 269 MiB (7%)
+Title                                    : Anglais AC3 5.1
+Language                                 : English
+Service kind                             : Complete Main
+Default                                  : No
+Forced                                   : No
+
+Menu
+00:00:00.000                             : en:Chapter 1
+00:05:49.000                             : en:Chapter 2
+00:10:20.000                             : en:Chapter 3
+00:16:08.000                             : en:Chapter 4
+00:22:00.000                             : en:Chapter 5
+00:26:42.000                             : en:Chapter 6
+00:33:58.000                             : en:Chapter 7
+00:39:07.000                             : en:Chapter 8
+00:45:03.000                             : en:Chapter 9
+00:49:54.000                             : en:Chapter 10
+00:54:56.000                             : en:Chapter 11
+00:59:59.000                             : en:Chapter 12
+01:04:59.000                             : en:Chapter 13
+01:12:03.000                             : en:Chapter 14
+01:17:02.000                             : en:Chapter 15
+01:26:04.000                             : en:Chapter 16
+01:32:08.000                             : en:Chapter 17
+

@@ -1,0 +1,11 @@
+# Environnement Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Fixtures de test video reelles : trop volumineuses pour Git (plusieurs Go)
+# et potentiellement soumises au droit d'auteur. Restent en local uniquement.
+tests/Video test/

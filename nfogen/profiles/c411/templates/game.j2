@@ -1,0 +1,33 @@
+{{ banner(title ~ (version is defined and version and (" (" ~ version ~ ")") or "")) }}
+
+{{ "Date Sortie"|colonpad(release_date|default(""), 15) }}
+{{ "Genre"|colonpad(genre|default(""), 15) }}
+{{ "Plateforme"|colonpad(platform|default(""), 15) }}
+{{ "Version"|colonpad(version|default(""), 15) }}
+{{ "Format"|colonpad(format|default(""), 15) }}
+{{ "Fichier(s)"|colonpad(file_count|default(""), 15) }}
+{{ "Poids total"|colonpad(total_size_dec|default(""), 15) }}
+{% if crack is defined and crack %}
+{{ "Crack"|colonpad(crack, 15) }}
+{% endif %}
+
+{{ banner("LANGUES") }}
+
+{{ "Audio"|colonpad(languages_audio|default(""), 15) }}
+{{ "Texte"|colonpad(languages_text|default(""), 15) }}
+{% if requirements %}
+
+{{ banner("CONFIGURATION REQUISE") }}
+
+{% for label, value in requirements.items() %}
+{{ label|colonpad(value, 15) }}
+{% endfor %}
+{% endif %}
+{% if install_steps %}
+
+{{ banner("INSTALLATION") }}
+
+{% for step in install_steps %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+{% endif %}

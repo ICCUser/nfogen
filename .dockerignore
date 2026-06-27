@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.git/
+tests/
+examples/
+
+# Frontend : seuls les sources et package*.json servent a l'etape de build
+# (cf. Dockerfile, stage frontend-build) ; node_modules/dist sont regeneres
+# dans l'image, jamais copies depuis l'hote (peuvent etre absents/perimes).
+frontend/node_modules/
+frontend/dist/

@@ -1,0 +1,24 @@
+{{ banner(artist ~ " - " ~ album) }}
+
+{{ "Artiste"|dotpad(artist) }}
+{{ "Album"|dotpad(album) }}
+{{ "Genre(s)"|dotpad(genre) }}
+{{ "Year"|dotpad(year) }}
+
+{{ "Codec"|dotpad(codec) }}
+{{ "Format"|dotpad(format) }}
+{{ "Overall bit rate"|dotpad(overall_bit_rate) }}
+{{ "Bit rate mode"|dotpad(bit_rate_mode) }}
+{{ "Channel"|dotpad(channel) }}
+{{ "Quality"|dotpad(quality) }}
+{{ "Writing library"|dotpad(writing_library) }}
+{{ "Encoding settings"|dotpad(encoding_settings) }}
+
+{{ banner("TRACKLIST") }}
+
+{% for t in tracklist %}
+{{ "%02d. %s"|format(t.index, t.name) | string }}{{ " " * ([name_width - (("%02d. %s"|format(t.index, t.name))|length), 1]|max) }}[{{ t.size|human_bin }}] [{{ t.duration|mmss }}]
+{% endfor %}
+
+{{ "Playing Time"|dotpad(playing_time) }}
+{{ "Total Size"|dotpad(total_size_dec) }}

@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "nfogen rules.json",
+  "description": "Schema generique d'un fichier de regles de profil nfogen. Chaque cle de premier niveau est un nom de categorie (video/audio/game/ebook/print3d) ; voir nfogen/rules.py pour la semantique exacte de chaque champ.",
+  "type": "object",
+  "additionalProperties": { "$ref": "#/$defs/category" },
+  "$defs": {
+    "category": {
+      "type": "object",
+      "properties": {
+        "requires_field": { "type": "string" },
+        "doc": { "type": "string" },
+        "example": { "type": "string" },
+        "forbid_spaces": { "type": "boolean" },
+        "forbid_non_ascii": { "type": "boolean" },
+        "tokens": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/token" }
+        },
+        "require_one_of_groups": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "filename_template": { "type": "string" },
+        "cross_checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cross_check" }
+        },
+        "track_language_checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/track_language_check" }
+        },
+        "name_proposal": { "$ref": "#/$defs/name_proposal" }
+      },
+      "additionalProperties": false
+    },
+    "name_proposal": {
+      "type": "object",
+      "description": "Proposition de release_name a partir des noms de fichiers (categorie video uniquement, cf. nfogen/name_proposal.py). Placeholders disponibles dans 'template' : {title} {identifier} {language} {resolution} {video_codec} {audio} {source} {team}.",
+      "properties": {
+        "template": { "type": "string" },
+        "language_aliases": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "token": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "pattern": { "type": "string" },
+        "level": { "type": "string", "enum": ["required", "recommended"] },
+        "group": { "type": "string" },
+        "error": { "type": "string" },
+        "warning": { "type": "string" }
+      },
+      "required": ["name", "pattern"],
+      "additionalProperties": false
+    },
+    "cross_check": {
+      "type": "object",
+      "properties": {
+        "capture": { "type": "string" },
+        "metadata_field": { "type": "string" },
+        "comparator": { "type": "string", "enum": ["int_equals", "codec_alias"] },
+        "message": { "type": "string" },
+        "aliases": {
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "required": ["capture", "metadata_field", "comparator", "message"],
+      "additionalProperties": false
+    },
+    "track_language_check": {
+      "type": "object",
+      "properties": {
+        "metadata_field": { "type": "string" },
+        "label": { "type": "string" },
+        "hint_capture": { "type": "string" },
+        "warn_if_empty": { "type": "string" }
+      },
+      "required": ["metadata_field", "label"],
+      "additionalProperties": false
+    }
+  }
+}

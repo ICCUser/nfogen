@@ -1,0 +1,25 @@
+{
+  "title": "Dead Space Remake",
+  "version": "Build 10602756",
+  "release_date": "27/01/2023",
+  "genre": "Action/Survival-Horror",
+  "platform": "PC",
+  "format": "ISO",
+  "total_size_dec": "31,44 Go",
+  "crack": "voices38/MrGoldberg",
+  "languages_audio": "Anglais, Japonais",
+  "languages_text": "Francais, Anglais, Allemand, Espagnol, Italien",
+  "requirements": {
+    "OS": "Windows 10 64 bits +",
+    "Processeur": "Ryzen 5 5600X, Core i5 11600K",
+    "RAM": "16 Go",
+    "GPU": "Radeon RX 6700 XT, GeForce RTX 2070",
+    "DirectX": "Version 12",
+    "Espace disque": "80 Go"
+  },
+  "install_steps": [
+    "Monter l'ISO avec un logiciel du type Daemon Tools",
+    "Installer en suivant l'assistant d'installation",
+    "Jouer (Bon jeu a tous)"
+  ]
+}

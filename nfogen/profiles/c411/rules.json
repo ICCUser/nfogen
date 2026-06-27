@@ -1,0 +1,94 @@
+{
+  "video": {
+    "requires_field": "release_name",
+    "doc": "convention C411 'Films & videos' : point-separe, sans espace ni accent, terminee par CodecVideo-TEAM, avec annee/saison/COLLECTION/INTEGRALE",
+    "example": "Mr.Robot.S01.MULTI.VFF.1080p.WEB.EAC3.5.1.H264-FW",
+    "forbid_spaces": true,
+    "forbid_non_ascii": true,
+    "tokens": [
+      {
+        "name": "video_codec_team",
+        "pattern": "\\.(?P<video_codec>[xX]26[45]|[Hh]\\.?26[45]|HEVC|AVC|MPEG2)-[A-Za-z0-9-]+$",
+        "level": "required",
+        "error": "doit se terminer par un codec video reconnu (x264/x265/H264/H265/HEVC/AVC/MPEG2) suivi de '-TEAM'"
+      },
+      {
+        "name": "year",
+        "pattern": "\\.\\d{4}(?:\\.\\d{4})?\\.",
+        "group": "identifier"
+      },
+      {
+        "name": "season",
+        "pattern": "\\.S\\d{2}(?:E\\d{2}(?:-?E\\d{2})?)?\\.",
+        "group": "identifier"
+      },
+      {
+        "name": "collection",
+        "pattern": "\\.(?:COLLECTION|INTEGRALE)\\.",
+        "group": "identifier"
+      },
+      {
+        "name": "language",
+        "pattern": "\\.(?:MULTI\\.)?(?P<language>VFF|VFQ|VF2|VFI|VOF|VO|VOSTFR|FRENCH|TRUEFRENCH)\\.",
+        "level": "recommended",
+        "warning": "aucun tag de langue reconnu (VFF/VFQ/VF2/VFI/VOF/VO/VOSTFR/FRENCH/TRUEFRENCH, eventuellement precede de MULTI) ; normal seulement pour les clips/concerts"
+      },
+      {
+        "name": "resolution",
+        "pattern": "\\.(?P<resolution>\\d{3,4})p\\.",
+        "level": "recommended",
+        "warning": "aucune resolution (ex: 1080p) trouvee ; admis seulement si la qualite est < 720p"
+      }
+    ],
+    "require_one_of_groups": {
+      "identifier": "aucune annee (AAAA), tag de saison (SXX[EXX]) ni COLLECTION/INTEGRALE trouve"
+    },
+    "filename_template": "{release_name}.nfo",
+    "cross_checks": [
+      {
+        "capture": "resolution",
+        "metadata_field": "video_height",
+        "comparator": "int_equals",
+        "message": "Resolution annoncee dans release_name ({capture}p) differente de celle du fichier ({actual}p)."
+      },
+      {
+        "capture": "video_codec",
+        "metadata_field": "video_format",
+        "comparator": "codec_alias",
+        "aliases": {
+          "x264": ["avc"], "h264": ["avc"], "avc": ["avc"],
+          "x265": ["hevc"], "h265": ["hevc"], "hevc": ["hevc"],
+          "mpeg2": ["mpeg"]
+        },
+        "message": "Codec video annonce dans release_name ({capture}) different de celui du fichier ({actual})."
+      }
+    ],
+    "track_language_checks": [
+      {
+        "metadata_field": "audio_languages",
+        "label": "Piste audio",
+        "hint_capture": "language",
+        "warn_if_empty": "Aucune piste audio detectee dans le fichier source."
+      },
+      {
+        "metadata_field": "subtitle_languages",
+        "label": "Piste de sous-titres",
+        "hint_capture": "language"
+      }
+    ],
+    "name_proposal": {
+      "template": "{title}.{identifier}.{language}.{resolution}p.{source}.{audio}.{video_codec}-{team}",
+      "language_aliases": {
+        "FR": "VFF",
+        "VF": "VFF",
+        "FR+EN": "MULTI.VFF",
+        "EN+FR": "MULTI.VFF",
+        "FR+JA": "MULTI.VFF",
+        "JA+FR": "MULTI.VFF",
+        "VO": "VO",
+        "VOSTFR": "VOSTFR",
+        "EN+VOSTFR": "VOSTFR"
+      }
+    }
+  }
+}
