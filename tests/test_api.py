@@ -118,6 +118,51 @@ def test_accepts_payload_under_limit(reload_api):
     assert resp.status_code == 200
 
 
+def test_generate_upload_enforces_real_byte_count_even_if_content_length_lies(reload_api):
+    """Regression : le middleware `_limit_upload_size` ne controle que le
+    Content-Length DECLARE par le client -- un client malhonnete (ou un
+    transfert sans Content-Length) le contournerait entierement. Le total des
+    octets REELLEMENT ecrits sur disque dans `generate_upload` doit lui aussi
+    appliquer la limite, independamment de l'en-tete annonce."""
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_MAX_UPLOAD_MB="1")
+    client = TestClient(mod.app)
+    big = b"x" * (2 * 1024 * 1024)  # 2 Mo > plafond de 1 Mo
+    resp = client.post(
+        "/generate",
+        data={"category": "ebook", "data": '{"title": "Test"}'},
+        files={"files": ("big.bin", big, "application/octet-stream")},
+        headers={"content-length": "100"},  # ment sur la taille declaree
+    )
+    assert resp.status_code == 413
+
+
+# --------------------------------------------------------------------------- #
+# Nom de fichier pour Content-Disposition : pas d'injection d'en-tete HTTP
+# --------------------------------------------------------------------------- #
+def test_filename_strips_crlf_from_profile_declared_name():
+    """Regression : un release_name fourni par l'utilisateur peut devenir le
+    nom de fichier impose par un profil (`filename_template`), qui finit
+    directement dans l'en-tete Content-Disposition. uvicorn rejette une
+    injection CRLF au niveau protocole (verifie manuellement), mais le code
+    ne doit pas en dependre : `_filename` doit neutraliser ces caracteres
+    lui-meme, quel que soit le serveur ASGI utilise."""
+    name = api_module._filename("video", {}, "foo\r\nX-Evil: 1\r\n\r\n<script>")
+    assert "\r" not in name
+    assert "\n" not in name
+    assert name == "fooX-Evil: 1<script>"
+
+
+def test_filename_strips_quotes_and_backslash():
+    name = api_module._filename("video", {}, 'foo".nfo\\')
+    assert '"' not in name
+    assert "\\" not in name
+
+
+def test_filename_fallback_path_already_safe():
+    name = api_module._filename("game", {"title": "foo\r\nX-Evil: 1"}, None)
+    assert "\r" not in name and "\n" not in name
+
+
 # --------------------------------------------------------------------------- #
 # Frontend buildé optionnel (NFOGEN_FRONTEND_DIST) : pas de traversee de chemin
 # --------------------------------------------------------------------------- #
@@ -205,6 +250,34 @@ def test_propose_name_unsupported_profile_category_is_400(reload_api):
     client = TestClient(mod.app)
     resp = client.post("/propose-name", json={"category": "audio", "filenames": ["x.flac"]})
     assert resp.status_code == 400
+
+
+# --------------------------------------------------------------------------- #
+# Upload multipart : nom de fichier "speciaux" sans crash
+# --------------------------------------------------------------------------- #
+def test_generate_upload_filename_dotdot_does_not_crash(reload_api):
+    """Regression : Path("..").name vaut litteralement ".." (pas une chaine
+    vide) -- un fichier uploade nomme ".." ecrivait dans le PARENT du dossier
+    temporaire (IsADirectoryError non rattrapee -> erreur serveur brute)."""
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post(
+        "/generate",
+        data={"category": "ebook", "data": '{"title": "Test"}'},
+        files={"files": ("..", b"contenu", "application/octet-stream")},
+    )
+    assert resp.status_code == 200
+
+
+def test_generate_upload_filename_dot_does_not_crash(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post(
+        "/generate",
+        data={"category": "ebook", "data": '{"title": "Test"}'},
+        files={"files": (".", b"contenu", "application/octet-stream")},
+    )
+    assert resp.status_code == 200
 
 
 # --------------------------------------------------------------------------- #

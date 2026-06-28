@@ -26,5 +26,14 @@ RUN pip install --no-cache-dir ".[api]"
 COPY --from=frontend-build /app/frontend/dist ./frontend_dist
 ENV NFOGEN_FRONTEND_DIST=/app/frontend_dist
 
+# Utilisateur non privilegie : par defaut Docker execute CMD en root dans le
+# conteneur, sans rapport avec les droits sur l'hote mais qui maximise quand
+# meme l'impact d'une eventuelle execution de code dans le processus (RCE
+# applicative, faille dans une dependance...). Pas de home/shell de connexion
+# necessaire, comme l'utilisateur systeme dedie de scripts/install.sh.
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin nfogen \
+    && chown -R nfogen:nfogen /app
+USER nfogen
+
 EXPOSE 8000
 CMD ["uvicorn", "nfogen.api:app", "--host", "0.0.0.0", "--port", "8000"]

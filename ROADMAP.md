@@ -46,3 +46,50 @@ détaillé des changements, voir `git log`.
   serveur) demande un flux de login qui n'existe pas encore. À traiter en
   même temps que les droits d'accès multi-utilisateurs ci-dessus, pas
   séparément.
+- **`rules.json` : motifs regex admin-fournis sans timeout** (`nfogen/rules.py`,
+  `re.search(token["pattern"], value)`) — un motif pathologique (ReDoS)
+  bloquerait le processus. Accepté pour l'instant : écrire/modifier un
+  `rules.json` exige déjà le token API (`require_token`), donc pas exploitable
+  sans lui. À revoir avec les droits d'accès multi-utilisateurs (un rôle
+  "admin" moins fiable qu'aujourd'hui changerait l'évaluation du risque).
+
+## Audit sécurité du 2026-06-28 (suite des alertes CodeQL)
+
+À la demande explicite de prioriser la sécurité même au prix des bonnes
+pratiques, relecture complète du backend, du frontend, des scripts de
+déploiement et des bornes de dépendances. Corrigé :
+
+- **Injection d'en-tête HTTP (`Content-Disposition`)** : Starlette ne filtre
+  pas les valeurs d'en-tête (CRLF, guillemets) avant de les écrire ; seul
+  uvicorn le fait (vérifié manuellement, protocole HTTP). Un `release_name`
+  utilisateur pouvait devenir le nom de fichier d'un profil
+  (`filename_template`) et finir directement dans l'en-tête. Ajout de
+  `_header_safe()` (`nfogen/api.py`) : neutralise caractères de contrôle,
+  guillemets et antislash avant toute utilisation dans un en-tête, sans
+  dépendre du comportement d'un serveur ASGI particulier.
+- **Upload multipart, nom de fichier `".."`/`"."`** : `Path("..").name`
+  vaut littéralement `".."` (pas une chaîne vide) — un fichier uploadé
+  nommé `".."` écrivait dans le PARENT du dossier temporaire
+  (`IsADirectoryError` non rattrapée). Garde-fou explicite ajouté dans
+  `generate_upload`.
+- **Plafond d'upload contournable (`NFOGEN_MAX_UPLOAD_MB`)** : le middleware
+  `_limit_upload_size` ne contrôlait que le `Content-Length` *déclaré* par
+  le client — un client malhonnête (ou un transfert sans `Content-Length`)
+  le contournait entièrement et pouvait saturer le disque. Le total des
+  octets réellement écrits est désormais compté pendant le streaming dans
+  `generate_upload` et compare à la même limite, indépendamment de l'en-tête.
+- **Image Docker exécutée en root** : ajout d'un utilisateur système dédié
+  (`USER nfogen` dans le `Dockerfile`), même logique que l'utilisateur de
+  service de `scripts/install.sh` — réduit l'impact d'une éventuelle
+  exécution de code dans le conteneur.
+- **Plancher de version `jinja2`** relevé à `>=3.1.6` (`pyproject.toml`) :
+  versions antérieures vulnérables à des contournements du
+  `SandboxedEnvironment` utilisé par `nfogen/render.py` (CVE-2024-56326,
+  CVE-2025-27516).
+
+Revérifié sans correctif nécessaire : `nfogen/extract.py`, `nfogen/cli.py`,
+`nfogen/registry.py` (pas d'entrée utilisateur non validée dans un contexte
+sensible), le frontend (`frontend/src/`, aucun `innerHTML`/`eval`, WASM
+mediainfo.js servi en local et non depuis un CDN), `scripts/install.sh` /
+`update.sh` (déjà durcis : utilisateur système dédié, `chmod 600` sur
+l'env file, hardening systemd), `npm audit` (0 vulnérabilité côté frontend).

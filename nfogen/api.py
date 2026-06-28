@@ -189,19 +189,35 @@ class JsonRequest(BaseModel):
     options: dict[str, Any] = {}
 
 
+def _header_safe(value: str) -> str:
+    """Retire tout caractere de controle (CR/LF inclus) et les guillemets/
+    antislash d'une valeur destinee a un en-tete HTTP (`Content-Disposition`).
+
+    Le serveur ASGI (uvicorn) rejette deja une injection CRLF au niveau
+    protocole (`HEADER_VALUE_RE`), mais on ne doit pas en dependre : une
+    valeur fournie par l'utilisateur (`release_name`...) ne doit jamais
+    pouvoir atteindre un en-tete sans normalisation explicite ici, quel que
+    soit le serveur ASGI utilise. Guillemets/antislash retires en plus pour
+    rester bien forme dans `filename="..."` (chaine entre guillemets)."""
+    return "".join(c for c in value if ord(c) >= 0x20 and c != "\x7f" and c not in '"\\')
+
+
 def _filename(category: str, data: dict, declared_by_profile: str | None) -> str:
     """Nom de fichier pour le header Content-Disposition.
 
     Si le profil/categorie impose un nom (regle `register_filename`), on
-    l'utilise tel quel : c'est la seule source de verite sur le nommage,
-    l'API ne doit pas reinventer sa propre heuristique. Sinon, repli
-    generique (pas de convention a respecter pour ce profil/categorie).
+    l'utilise tel quel (apres normalisation pour l'en-tete, cf. `_header_safe`) :
+    c'est la seule source de verite sur le nommage, l'API ne doit pas
+    reinventer sa propre heuristique. Sinon, repli generique (pas de
+    convention a respecter pour ce profil/categorie).
     """
     if declared_by_profile:
-        return declared_by_profile
-    base = data.get("title") or data.get("album") or category
-    safe = "".join(c if c.isalnum() or c in "-._ " else "_" for c in str(base)).strip()
-    return f"{safe or category}.nfo"
+        name = declared_by_profile
+    else:
+        base = data.get("title") or data.get("album") or category
+        safe = "".join(c if c.isalnum() or c in "-._ " else "_" for c in str(base)).strip()
+        name = f"{safe or category}.nfo"
+    return _header_safe(name)
 
 
 @app.post("/generate/json", dependencies=[Depends(require_token)])
@@ -272,13 +288,35 @@ async def generate_upload(
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         saved: list[Path] = []
-        for up in files:
-            dest = tmp_path / Path(up.filename or "upload.bin").name
+        total_written = 0
+        for index, up in enumerate(files):
+            # Path(...).name isole le dernier segment (pas de "../" possible)
+            # mais ".."/"." eux-memes restent litteralement leur propre .name
+            # (Path("..").name == ".."), donc un nom de fichier upload egal a
+            # ".." ecrirait dans le PARENT du dossier temporaire sans ce
+            # garde-fou explicite -- a verifier en plus du seul appel a .name.
+            candidate_name = Path(up.filename or "").name
+            if not candidate_name or candidate_name in (".", ".."):
+                candidate_name = f"upload_{index}.bin"
+            dest = tmp_path / candidate_name
             # Ecriture par blocs : un fichier source (video, jeu, scan...) peut
             # peser plusieurs centaines de Go, hors de question de le charger
-            # entierement en memoire avant de l'ecrire sur disque.
+            # entierement en memoire avant de l'ecrire sur disque. Le total
+            # ecrit est en plus compte ici et compare a _MAX_UPLOAD_BYTES :
+            # le middleware `_limit_upload_size` ne fait foi que du
+            # Content-Length DECLARE par le client (un client malhonnete ou un
+            # transfert chunked sans Content-Length le contournerait
+            # entierement) -- ce compteur applique la meme limite sur les
+            # octets REELLEMENT ecrits sur disque, seule mesure fiable.
             with dest.open("wb") as out:
                 while chunk := await up.read(_UPLOAD_CHUNK_BYTES):
+                    total_written += len(chunk)
+                    if _MAX_UPLOAD_BYTES is not None and total_written > _MAX_UPLOAD_BYTES:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"Corps de requete trop volumineux "
+                            f"(max {_MAX_UPLOAD_BYTES // (1024 * 1024)} Mo).",
+                        )
                     out.write(chunk)
             saved.append(dest)
 
