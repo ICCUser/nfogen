@@ -128,7 +128,10 @@ _COOKIE_SAMESITE = os.environ.get("NFOGEN_COOKIE_SAMESITE", "lax")
 # d'environnement definie dans un terminal precedent et oubliee, par exemple,
 # peut rester active apres un redemarrage du processus dans le MEME
 # terminal). print() plutot que logger : doit etre visible quelle que soit
-# la configuration de logging.
+# la configuration de logging. flush=True : stdout est bufferise par bloc
+# (pas par ligne) des qu'il n'est pas un terminal -- sortie redirigee vers un
+# fichier, un service systemd, Docker... sans ca, cette ligne resterait
+# invisible en pratique, exactement dans les cas ou elle est le plus utile.
 _generate_protected = _API_TOKEN is not None and _REQUIRE_AUTH_FOR_GENERATE
 _store_protected = _API_TOKEN is not None
 print(
@@ -137,7 +140,8 @@ print(
     f"generation (/generate, /generate/json, /propose-name) : "
     f"{'protegee par token' if _generate_protected else 'ouverte a tous'} | "
     f"gestion de profils (/profiles/store*) : "
-    f"{'protegee par token' if _store_protected else 'ouverte a tous'}"
+    f"{'protegee par token' if _store_protected else 'ouverte a tous'}",
+    flush=True,
 )
 
 app = FastAPI(
