@@ -123,6 +123,23 @@ _COOKIE_SECURE = os.environ.get("NFOGEN_COOKIE_SECURE", "0") == "1"
 # SameSite=None sans Secure).
 _COOKIE_SAMESITE = os.environ.get("NFOGEN_COOKIE_SAMESITE", "lax")
 
+# Affiche au demarrage la configuration d'authentification REELLEMENT
+# appliquee : source frequente de confusion sinon (une variable
+# d'environnement definie dans un terminal precedent et oubliee, par exemple,
+# peut rester active apres un redemarrage du processus dans le MEME
+# terminal). print() plutot que logger : doit etre visible quelle que soit
+# la configuration de logging.
+_generate_protected = _API_TOKEN is not None and _REQUIRE_AUTH_FOR_GENERATE
+_store_protected = _API_TOKEN is not None
+print(
+    f"[nfogen] NFOGEN_API_TOKEN={'definie' if _API_TOKEN is not None else 'absente'} | "
+    f"NFOGEN_REQUIRE_AUTH_FOR_GENERATE={_REQUIRE_AUTH_FOR_GENERATE} -> "
+    f"generation (/generate, /generate/json, /propose-name) : "
+    f"{'protegee par token' if _generate_protected else 'ouverte a tous'} | "
+    f"gestion de profils (/profiles/store*) : "
+    f"{'protegee par token' if _store_protected else 'ouverte a tous'}"
+)
+
 app = FastAPI(
     title="nfogen",
     version="0.1.0",
