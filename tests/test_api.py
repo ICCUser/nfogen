@@ -42,7 +42,8 @@ GAME_PAYLOAD = {"category": "game", "data": {"title": "X", "platform": "PC"}}
 
 
 # --------------------------------------------------------------------------- #
-# Authentification par token
+# Authentification par token : /profiles/store* (toujours protegees par
+# NFOGEN_API_TOKEN, contrairement a la generation, cf. section suivante)
 # --------------------------------------------------------------------------- #
 def test_open_by_default_without_token(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN=None)
@@ -51,25 +52,38 @@ def test_open_by_default_without_token(reload_api):
     assert resp.status_code == 200
 
 
-def test_blocks_without_token_when_configured(reload_api):
-    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+def test_blocks_with_wrong_token(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_PROFILES_DIR=str(tmp_path))
+    client = TestClient(mod.app)
+    resp = client.get("/profiles/store", headers={"Authorization": "Bearer mauvais"})
+    assert resp.status_code == 401
+
+
+def test_allows_with_correct_token(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_PROFILES_DIR=str(tmp_path))
+    client = TestClient(mod.app)
+    resp = client.get("/profiles/store", headers={"Authorization": "Bearer secret123"})
+    assert resp.status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# /generate, /generate/json, /propose-name : ouverts par defaut (deux niveaux
+# distincts de la gestion des profils ci-dessus), verrouillables explicitement
+# --------------------------------------------------------------------------- #
+def test_generate_open_by_default_even_with_token_configured(reload_api):
+    """NFOGEN_API_TOKEN protege /profiles/store* mais ne verrouille plus la
+    generation a lui seul : la gestion de profils (admin) et la generation
+    (ouverte a tous via le web) sont deux niveaux distincts."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_REQUIRE_AUTH_FOR_GENERATE=None)
     client = TestClient(mod.app)
     resp = client.post("/generate/json", json=GAME_PAYLOAD)
-    assert resp.status_code == 401
+    assert resp.status_code == 200
 
 
-def test_blocks_with_wrong_token(reload_api):
-    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+def test_generate_lockable_via_require_auth_for_generate(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_REQUIRE_AUTH_FOR_GENERATE="1")
     client = TestClient(mod.app)
-    resp = client.post(
-        "/generate/json", json=GAME_PAYLOAD, headers={"Authorization": "Bearer mauvais"}
-    )
-    assert resp.status_code == 401
-
-
-def test_allows_with_correct_token(reload_api):
-    mod = reload_api(NFOGEN_API_TOKEN="secret123")
-    client = TestClient(mod.app)
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 401
     resp = client.post(
         "/generate/json", json=GAME_PAYLOAD, headers={"Authorization": "Bearer secret123"}
     )
@@ -91,12 +105,14 @@ def test_auth_status_requires_login_when_token_configured(reload_api):
     assert resp.json() == {"auth_required": True, "authenticated": False}
 
 
-def test_login_sets_httponly_session_cookie_and_unlocks_access(reload_api):
+def test_login_sets_httponly_session_cookie_and_unlocks_access(reload_api, tmp_path):
     """Regression : remplace le stockage du token en localStorage cote
     frontend (alerte CodeQL "Clear text storage of sensitive information").
     Le cookie pose par /login doit etre httpOnly (jamais lisible par du
-    JavaScript), et doit a lui seul suffire pour passer require_token."""
-    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    JavaScript), et doit a lui seul suffire pour passer require_token. Teste
+    via /profiles/store (toujours protegee), pas /generate (ouverte par
+    defaut, cf. section dediee)."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_PROFILES_DIR=str(tmp_path))
     client = TestClient(mod.app)
 
     login = client.post("/login", json={"token": "secret123"})
@@ -107,16 +123,16 @@ def test_login_sets_httponly_session_cookie_and_unlocks_access(reload_api):
     status = client.get("/auth/status")
     assert status.json() == {"auth_required": True, "authenticated": True}
 
-    resp = client.post("/generate/json", json=GAME_PAYLOAD)
+    resp = client.get("/profiles/store")
     assert resp.status_code == 200
 
 
-def test_login_rejects_wrong_token(reload_api):
-    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+def test_login_rejects_wrong_token(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_PROFILES_DIR=str(tmp_path))
     client = TestClient(mod.app)
     resp = client.post("/login", json={"token": "mauvais"})
     assert resp.status_code == 401
-    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 401
+    assert client.get("/profiles/store").status_code == 401
 
 
 def test_login_requires_auth_to_be_configured(reload_api):
@@ -126,15 +142,15 @@ def test_login_requires_auth_to_be_configured(reload_api):
     assert resp.status_code == 400
 
 
-def test_logout_clears_session_cookie(reload_api):
-    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+def test_logout_clears_session_cookie(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_PROFILES_DIR=str(tmp_path))
     client = TestClient(mod.app)
     client.post("/login", json={"token": "secret123"})
-    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+    assert client.get("/profiles/store").status_code == 200
 
     logout = client.post("/logout")
     assert logout.status_code == 200
-    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 401
+    assert client.get("/profiles/store").status_code == 401
 
 
 def test_health_never_requires_token(reload_api):
@@ -264,8 +280,15 @@ def test_frontend_dist_blocks_path_traversal(reload_api, tmp_path):
 # --------------------------------------------------------------------------- #
 # Proposition de nom (POST /propose-name, noms de fichiers seuls)
 # --------------------------------------------------------------------------- #
-def test_propose_name_requires_token_when_configured(reload_api):
+def test_propose_name_open_by_default_even_with_token_configured(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    client = TestClient(mod.app)
+    resp = client.post("/propose-name", json={"category": "video", "filenames": ["x.mkv"]})
+    assert resp.status_code == 200
+
+
+def test_propose_name_lockable_via_require_auth_for_generate(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_REQUIRE_AUTH_FOR_GENERATE="1")
     client = TestClient(mod.app)
     resp = client.post("/propose-name", json={"category": "video", "filenames": ["x.mkv"]})
     assert resp.status_code == 401

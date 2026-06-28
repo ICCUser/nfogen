@@ -258,9 +258,9 @@ uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 | `GET /auth/status` | non | `{auth_required, authenticated}` — ne révèle jamais le token |
 | `POST /login` | non (c'est la connexion) | `{"token": "..."}` → pose un cookie de session httpOnly si correct (utilisé par le frontend) |
 | `POST /logout` | non | efface le cookie de session |
-| `POST /generate` | si `NFOGEN_API_TOKEN` définie | multipart : envoi de fichier(s) → NFO |
-| `POST /generate/json` | si `NFOGEN_API_TOKEN` définie | JSON : métadonnées → NFO (sans fichier) |
-| `POST /propose-name` | si `NFOGEN_API_TOKEN` définie | JSON : noms de fichiers (+ `title_hints` optionnels) → suggestion de `release_name` (aucun upload) |
+| `POST /generate` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | multipart : envoi de fichier(s) → NFO |
+| `POST /generate/json` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | JSON : métadonnées → NFO (sans fichier) |
+| `POST /propose-name` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | JSON : noms de fichiers (+ `title_hints` optionnels) → suggestion de `release_name` (aucun upload) |
 | `GET /profiles/store` | si `NFOGEN_API_TOKEN` définie | liste des profils **utilisateur** (`NFOGEN_PROFILES_DIR`) |
 | `GET /profiles/store/{name}` | idem | règles + templates d'un profil utilisateur |
 | `PUT /profiles/store/{name}` | idem | crée/remplace un profil utilisateur |
@@ -272,7 +272,8 @@ uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 
 | Variable | Effet |
 |---|---|
-| `NFOGEN_API_TOKEN` | Si définie, `/generate`, `/generate/json` et toutes les routes `/profiles/store*` exigent soit l'en-tête `Authorization: Bearer <token>` (CLI/scripts), soit le cookie de session posé par `POST /login` (frontend web — le token n'est alors jamais stocké en clair côté navigateur). Sans `NFOGEN_API_TOKEN`, ces routes restent ouvertes — à définir explicitement pour exposer l'API publiquement. |
+| `NFOGEN_API_TOKEN` | Si définie, toutes les routes `/profiles/store*` (gestion de profils, réservée aux admins) exigent soit l'en-tête `Authorization: Bearer <token>` (CLI/scripts), soit le cookie de session posé par `POST /login` (frontend web — le token n'est alors jamais stocké en clair côté navigateur). **N'affecte pas `/generate`, `/generate/json`, `/propose-name`** (génération ouverte à tous par défaut, voir `NFOGEN_REQUIRE_AUTH_FOR_GENERATE`) : gestion de profils et génération sont deux niveaux distincts. Sans `NFOGEN_API_TOKEN`, tout reste ouvert. |
+| `NFOGEN_REQUIRE_AUTH_FOR_GENERATE` | `1` pour exiger aussi le token (même mécanisme que `NFOGEN_API_TOKEN`) sur `/generate`, `/generate/json` et `/propose-name`. Désactivé par défaut — ces routes restent ouvertes à tous via le web même quand `NFOGEN_API_TOKEN` protège la gestion de profils. À activer si l'API est exposée publiquement et que l'abus (uploads volumineux) est une préoccupation. |
 | `NFOGEN_CORS_ORIGINS` | Origines autorisées en cross-origin, séparées par des virgules (ex. `http://localhost:5173`). Aucun CORS n'est activé par défaut. |
 | `NFOGEN_COOKIE_SECURE` | `1` pour marquer le cookie de session `Secure` (envoyé uniquement en HTTPS). `0` par défaut, car l'installation native documentée (`scripts/install.sh`) sert l'API en HTTP brut par défaut — à activer derrière un reverse-proxy TLS. |
 | `NFOGEN_COOKIE_SAMESITE` | `lax` par défaut (frontend et API sur la même origine, déploiement documenté). Passer à `none` si le frontend est hébergé sur un **autre** domaine que l'API — nécessite alors `NFOGEN_COOKIE_SECURE=1` (obligatoire pour `SameSite=None`). |
@@ -281,7 +282,14 @@ uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 | `NFOGEN_FRONTEND_DIST` | Dossier du build frontend (`frontend/dist`, après `npm run build`). Si définie, l'API sert aussi le frontend (fichiers statiques + repli sur `index.html` pour les routes React Router) sur le **même** processus/port — c'est ce que font `scripts/install.sh` et l'image Docker. Absente par défaut : l'API reste API-only (usage en développement, avec `vite dev` séparé). |
 
 ```bash
+# Generation : ouverte par defaut, pas de token necessaire.
+curl -H 'Content-Type: application/json' \
+     -d '{"category":"game","data":{"title":"X","platform":"PC"}}' \
+     http://localhost:8000/generate/json
+
+# Avec NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1, le token devient necessaire ici aussi :
 export NFOGEN_API_TOKEN=change-moi
+export NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1
 curl -H "Authorization: Bearer change-moi" \
      -H 'Content-Type: application/json' \
      -d '{"category":"game","data":{"title":"X","platform":"PC"}}' \

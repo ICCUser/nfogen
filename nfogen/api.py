@@ -19,11 +19,25 @@ seuls NOMS de fichiers (pas leur contenu) pour les profils qui declarent un
 remplir le champ avant generation, dans un script ou dans le frontend.
 
 Configuration (variables d'environnement, toutes optionnelles) :
-    NFOGEN_API_TOKEN      Si definie, /generate et /generate/json exigent
-                           l'en-tete `Authorization: Bearer <token>`. Si
-                           absente, ces routes restent ouvertes (comportement
-                           historique) : a definir par l'operateur pour
-                           activer l'authentification.
+    NFOGEN_API_TOKEN      Si definie, exige soit l'en-tete `Authorization:
+                           Bearer <token>` (CLI/scripts), soit le cookie de
+                           session pose par POST /login (frontend web), pour
+                           les routes /profiles/store* (gestion de profils,
+                           toujours protegees si la variable est definie).
+                           N'affecte PAS /generate, /generate/json et
+                           /propose-name par defaut (cf.
+                           NFOGEN_REQUIRE_AUTH_FOR_GENERATE) : generation
+                           ouverte a tous et gestion de profils reservee a
+                           qui a le token sont deux niveaux distincts. Si la
+                           variable est absente, tout reste ouvert.
+    NFOGEN_REQUIRE_AUTH_FOR_GENERATE
+                           "1" pour exiger aussi le token (meme mecanisme que
+                           ci-dessus) sur /generate, /generate/json et
+                           /propose-name. Inactif par defaut : ces routes
+                           restent ouvertes a tous via le web meme quand
+                           NFOGEN_API_TOKEN protege la gestion de profils.
+                           A activer si l'API est exposee publiquement et que
+                           l'operateur craint l'abus (uploads volumineux).
     NFOGEN_CORS_ORIGINS   Liste d'origines autorisees, separees par des
                            virgules (ex. "http://localhost:5173"). Si absente,
                            aucun CORS n'est active (pas d'appel cross-origin).
@@ -83,6 +97,11 @@ _CORS_ORIGINS = [o.strip() for o in os.environ.get("NFOGEN_CORS_ORIGINS", "").sp
 _max_upload_mb = os.environ.get("NFOGEN_MAX_UPLOAD_MB")
 _MAX_UPLOAD_BYTES = int(_max_upload_mb) * 1024 * 1024 if _max_upload_mb else None
 _UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
+# Par defaut, /generate, /generate/json et /propose-name restent ouverts a
+# tous MEME quand NFOGEN_API_TOKEN protege /profiles/store* (cf.
+# require_token_for_generate ci-dessous) : a "1" pour reactiver
+# l'authentification sur la generation aussi.
+_REQUIRE_AUTH_FOR_GENERATE = os.environ.get("NFOGEN_REQUIRE_AUTH_FOR_GENERATE", "0") == "1"
 
 # Authentification par cookie de session (en plus de l'en-tete Authorization,
 # cf. require_token ci-dessous) : le frontend web pose le token via POST
@@ -162,6 +181,25 @@ def require_token(
     if session_cookie == _API_TOKEN:
         return
     raise HTTPException(status_code=401, detail="Token API invalide ou manquant.")
+
+
+def require_token_for_generate(
+    authorization: Optional[str] = Header(default=None),
+    session_cookie: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
+) -> None:
+    """Protege `/generate`, `/generate/json` et `/propose-name` -- separement
+    de `/profiles/store*`, toujours protegees par `require_token` seul.
+
+    Par defaut, la generation de NFO reste ouverte a tous via le web MEME
+    quand `NFOGEN_API_TOKEN` est definie pour proteger la gestion des profils
+    (cf. ROADMAP.md, "Droits d'acces multi-utilisateurs") : un token unique
+    ne doit pas forcer a choisir entre "tout ouvert" et "tout ferme".
+    Definir `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` reactive l'ancien
+    comportement (utile si un operateur craint l'abus -- uploads volumineux,
+    saturation disque -- sur un serveur expose publiquement)."""
+    if not _REQUIRE_AUTH_FOR_GENERATE:
+        return
+    require_token(authorization=authorization, session_cookie=session_cookie)
 
 
 class LoginRequest(BaseModel):
@@ -302,7 +340,7 @@ def _filename(category: str, data: dict, declared_by_profile: str | None) -> str
     return _header_safe(name)
 
 
-@app.post("/generate/json", dependencies=[Depends(require_token)])
+@app.post("/generate/json", dependencies=[Depends(require_token_for_generate)])
 def generate_json(req: JsonRequest, download: bool = Query(False)) -> Any:
     """Genere un NFO a partir de metadonnees JSON (sans fichier)."""
     warnings: list[str] = []
@@ -331,7 +369,7 @@ class NameProposalRequest(BaseModel):
     title_hints: Optional[list[Optional[str]]] = None
 
 
-@app.post("/propose-name", dependencies=[Depends(require_token)])
+@app.post("/propose-name", dependencies=[Depends(require_token_for_generate)])
 def propose_name(req: NameProposalRequest) -> dict[str, Any]:
     """Suggere un release_name a partir des NOMS de fichiers (jamais leur
     contenu : aucun upload necessaire) et, optionnellement, du tag `Title`
@@ -347,7 +385,7 @@ def propose_name(req: NameProposalRequest) -> dict[str, Any]:
     return {"name": proposal.name, "fields": proposal.fields, "warnings": proposal.warnings}
 
 
-@app.post("/generate", dependencies=[Depends(require_token)])
+@app.post("/generate", dependencies=[Depends(require_token_for_generate)])
 async def generate_upload(
     category: Optional[str] = Form(None),
     profile: str = Form("c411"),

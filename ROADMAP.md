@@ -12,16 +12,18 @@ détaillé des changements, voir `git log`.
 |---|---|
 | Frontend | Édite `rules.json` + templates des profils existants (catégories fixes). Pas de moteur de rendu inédit. |
 | Stockage des profils | Fichiers sur disque (`NFOGEN_PROFILES_DIR`), un profil = un dossier. Export/import `.zip`. Pas de base de données. |
-| Authentification | Token API simple (`NFOGEN_API_TOKEN`), partagé par tous les clients. Présenté soit via `Authorization: Bearer` (CLI/scripts), soit via un cookie de session `httpOnly` posé par `POST /login` (frontend web). À revoir pour un usage multi-utilisateurs (voir idées ci-dessous) — toujours un seul secret partagé, pas de comptes. |
+| Authentification | Token API simple (`NFOGEN_API_TOKEN`), partagé par tous les clients. Présenté soit via `Authorization: Bearer` (CLI/scripts), soit via un cookie de session `httpOnly` posé par `POST /login` (frontend web). Protège toujours `/profiles/store*` (gestion de profils) ; protège `/generate*`/`/propose-name` seulement si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` (génération ouverte à tous par défaut). Reste un seul secret partagé, pas de comptes — à revoir pour un usage multi-utilisateurs (voir idées ci-dessous). |
 | Stack frontend | React + Vite (SPA), consomme l'API FastAPI existante. |
 | Déploiement | Repo unique (front + back) ; script natif Debian/Ubuntu (`scripts/install.sh`) en priorité, image Docker tout-en-un en option. |
 
 ## Idées / prochaines pistes
 
-- **Droits d'accès multi-utilisateurs** (priorité actuelle) : génération de
-  NFO ouverte à tous, gestion des profils réservée aux admins. Le token
-  unique actuel ne distingue pas ces deux niveaux — il faudra des rôles
-  (admin / standard), probablement plusieurs tokens ou de vrais comptes.
+- **Droits d'accès multi-utilisateurs** (priorité actuelle) : la séparation
+  "génération ouverte à tous / gestion de profils réservée aux admins" est
+  faite (`NFOGEN_API_TOKEN` + `NFOGEN_REQUIRE_AUTH_FOR_GENERATE`, voir
+  tableau ci-dessus) mais avec un seul secret partagé, pas de vrais comptes
+  ni de rôles. Reste à faire : plusieurs tokens/comptes distincts, avec leurs
+  propres permissions (ex. plusieurs admins, chacun avec ses profils).
 - CLI : pas d'équivalent des routes `/profiles/store*` (gérer un profil
   utilisateur sans passer par l'API).
 - Pas de verrou sur les écritures concurrentes de `profile_store.py` (deux
