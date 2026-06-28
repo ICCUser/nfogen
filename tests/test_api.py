@@ -76,6 +76,67 @@ def test_allows_with_correct_token(reload_api):
     assert resp.status_code == 200
 
 
+def test_auth_status_open_when_no_token_configured(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.get("/auth/status")
+    assert resp.status_code == 200
+    assert resp.json() == {"auth_required": False, "authenticated": True}
+
+
+def test_auth_status_requires_login_when_token_configured(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    client = TestClient(mod.app)
+    resp = client.get("/auth/status")
+    assert resp.json() == {"auth_required": True, "authenticated": False}
+
+
+def test_login_sets_httponly_session_cookie_and_unlocks_access(reload_api):
+    """Regression : remplace le stockage du token en localStorage cote
+    frontend (alerte CodeQL "Clear text storage of sensitive information").
+    Le cookie pose par /login doit etre httpOnly (jamais lisible par du
+    JavaScript), et doit a lui seul suffire pour passer require_token."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    client = TestClient(mod.app)
+
+    login = client.post("/login", json={"token": "secret123"})
+    assert login.status_code == 200
+    cookie = next(c for c in client.cookies.jar if c.name == "nfogen_session")
+    assert cookie._rest.get("HttpOnly") is not None or cookie.has_nonstandard_attr("HttpOnly")
+
+    status = client.get("/auth/status")
+    assert status.json() == {"auth_required": True, "authenticated": True}
+
+    resp = client.post("/generate/json", json=GAME_PAYLOAD)
+    assert resp.status_code == 200
+
+
+def test_login_rejects_wrong_token(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    client = TestClient(mod.app)
+    resp = client.post("/login", json={"token": "mauvais"})
+    assert resp.status_code == 401
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 401
+
+
+def test_login_requires_auth_to_be_configured(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post("/login", json={"token": "peu-importe"})
+    assert resp.status_code == 400
+
+
+def test_logout_clears_session_cookie(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    client = TestClient(mod.app)
+    client.post("/login", json={"token": "secret123"})
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+
+    logout = client.post("/logout")
+    assert logout.status_code == 200
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 401
+
+
 def test_health_never_requires_token(reload_api):
     """/health doit rester accessible (supervision) meme avec un token configure."""
     mod = reload_api(NFOGEN_API_TOKEN="secret123")

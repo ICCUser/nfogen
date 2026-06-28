@@ -1,4 +1,4 @@
-import { getBaseUrl, getToken } from "./settings";
+import { getBaseUrl } from "./settings";
 import type {
   GenerateResult,
   ManagedProfile,
@@ -28,14 +28,15 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const token = getToken();
   const headers = new Headers(init.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  const resp = await safeFetch(`${getBaseUrl()}${path}`, { ...init, headers });
+  // credentials: "include" -- l'authentification se fait via le cookie de
+  // session httpOnly pose par POST /login (nfogen/api.py), jamais via un
+  // en-tete construit ici : ce module n'a plus jamais acces au token.
+  const resp = await safeFetch(`${getBaseUrl()}${path}`, { ...init, headers, credentials: "include" });
   if (!resp.ok) {
     let detail = resp.statusText;
     try {
@@ -88,11 +89,8 @@ export function deleteManagedProfile(name: string): Promise<void> {
 }
 
 export async function exportManagedProfile(name: string): Promise<Blob> {
-  const token = getToken();
-  const headers = new Headers();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   const resp = await safeFetch(`${getBaseUrl()}/profiles/store/${encodeURIComponent(name)}/export`, {
-    headers,
+    credentials: "include",
   });
   if (!resp.ok) throw new ApiError(resp.status, resp.statusText);
   return resp.blob();
@@ -131,12 +129,10 @@ export async function previewGenerate(
   category: string,
   data: Record<string, unknown>,
 ): Promise<GenerateResult> {
-  const token = getToken();
-  const headers = new Headers({ "Content-Type": "application/json" });
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   const resp = await safeFetch(`${getBaseUrl()}/generate/json`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ profile, category, data }),
   });
   const warnings = (resp.headers.get("X-Nfogen-Warnings") || "")
@@ -165,12 +161,10 @@ export async function generateFromMetadata(opts: {
   category: string;
   data: Record<string, unknown>;
 }): Promise<GenerateResult> {
-  const token = getToken();
-  const headers = new Headers({ "Content-Type": "application/json" });
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   const resp = await safeFetch(`${getBaseUrl()}/generate/json?download=1`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(opts),
   });
   const warnings = (resp.headers.get("X-Nfogen-Warnings") || "").split(" | ").filter(Boolean);
@@ -216,12 +210,9 @@ export async function generateUpload(opts: {
   data: Record<string, unknown>;
   files: File[];
 }): Promise<GenerateResult> {
-  const token = getToken();
-  const headers = new Headers();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   const resp = await safeFetch(`${getBaseUrl()}/generate?download=1`, {
     method: "POST",
-    headers,
+    credentials: "include",
     body: buildUploadForm(opts),
   });
   const warnings = (resp.headers.get("X-Nfogen-Warnings") || "").split(" | ").filter(Boolean);

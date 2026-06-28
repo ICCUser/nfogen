@@ -67,7 +67,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Cookie, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -84,6 +84,26 @@ _max_upload_mb = os.environ.get("NFOGEN_MAX_UPLOAD_MB")
 _MAX_UPLOAD_BYTES = int(_max_upload_mb) * 1024 * 1024 if _max_upload_mb else None
 _UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 
+# Authentification par cookie de session (en plus de l'en-tete Authorization,
+# cf. require_token ci-dessous) : le frontend web pose le token via POST
+# /login puis ne le manipule plus jamais lui-meme -- le navigateur stocke le
+# cookie, jamais lisible par du JavaScript (httponly=True), contrairement a
+# l'ancien stockage en localStorage (alerte CodeQL "Clear text storage of
+# sensitive information", cf. ROADMAP.md). L'en-tete Authorization reste
+# disponible pour les clients non-navigateur (CLI, scripts, curl).
+_SESSION_COOKIE_NAME = "nfogen_session"
+# Secure (cookie envoye uniquement en HTTPS) desactive par defaut : l'install
+# native documentee (scripts/install.sh) sert l'API en HTTP brut sur le
+# reseau local par defaut (pas de TLS termine par nfogen lui-meme). A activer
+# explicitement (NFOGEN_COOKIE_SECURE=1) derriere un reverse-proxy TLS.
+_COOKIE_SECURE = os.environ.get("NFOGEN_COOKIE_SECURE", "0") == "1"
+# SameSite=lax convient au deploiement documente (frontend et API sur la
+# meme origine, directement ou via le proxy de dev/un reverse-proxy) ; un
+# frontend heberge sur un AUTRE domaine que l'API doit passer a "none" (et
+# alors NFOGEN_COOKIE_SECURE=1 est obligatoire, les navigateurs rejettent
+# SameSite=None sans Secure).
+_COOKIE_SAMESITE = os.environ.get("NFOGEN_COOKIE_SAMESITE", "lax")
+
 app = FastAPI(
     title="nfogen",
     version="0.1.0",
@@ -94,6 +114,12 @@ if _CORS_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_CORS_ORIGINS,
+        # Necessaire pour que le navigateur envoie/accepte le cookie de
+        # session sur des requetes cross-origin (frontend et API sur des
+        # domaines differents) ; sans danger ici car `allow_origins` est
+        # toujours une liste explicite (jamais "*", incompatible avec les
+        # credentials par les navigateurs eux-memes).
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -116,17 +142,73 @@ async def _limit_upload_size(request: Request, call_next):
     return await call_next(request)
 
 
-def require_token(authorization: Optional[str] = Header(default=None)) -> None:
+def require_token(
+    authorization: Optional[str] = Header(default=None),
+    session_cookie: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
+) -> None:
     """Protege une route par token si `NFOGEN_API_TOKEN` est definie.
 
-    Sans cette variable d'environnement, l'API reste ouverte : c'est un
-    choix explicite de l'operateur d'activer l'authentification, pas un
-    comportement force.
+    Accepte soit l'en-tete `Authorization: Bearer <token>` (clients non-
+    navigateur : CLI, scripts, curl), soit le cookie de session pose par
+    `POST /login` (frontend web -- jamais manipule directement en
+    JavaScript, cf. `_SESSION_COOKIE_NAME`). Sans `NFOGEN_API_TOKEN`, l'API
+    reste ouverte : c'est un choix explicite de l'operateur d'activer
+    l'authentification, pas un comportement force.
     """
     if _API_TOKEN is None:
         return
-    if authorization != f"Bearer {_API_TOKEN}":
-        raise HTTPException(status_code=401, detail="Token API invalide ou manquant.")
+    if authorization == f"Bearer {_API_TOKEN}":
+        return
+    if session_cookie == _API_TOKEN:
+        return
+    raise HTTPException(status_code=401, detail="Token API invalide ou manquant.")
+
+
+class LoginRequest(BaseModel):
+    token: str
+
+
+@app.post("/login")
+def login(req: LoginRequest, response: Response) -> dict[str, str]:
+    """Verifie le token API et pose le cookie de session httpOnly (jamais
+    lisible par du JavaScript, contrairement a l'ancien stockage en
+    localStorage cote frontend)."""
+    if _API_TOKEN is None:
+        raise HTTPException(
+            status_code=400, detail="Authentification non configuree (NFOGEN_API_TOKEN absente)."
+        )
+    if req.token != _API_TOKEN:
+        raise HTTPException(status_code=401, detail="Token API invalide.")
+    response.set_cookie(
+        _SESSION_COOKIE_NAME,
+        req.token,
+        httponly=True,
+        secure=_COOKIE_SECURE,
+        samesite=_COOKIE_SAMESITE,
+        path="/",
+        # Pas de max_age/expires : cookie de session, efface a la fermeture
+        # du navigateur (jamais persistant sur disque comme localStorage).
+    )
+    return {"status": "ok"}
+
+
+@app.post("/logout")
+def logout(response: Response) -> dict[str, str]:
+    response.delete_cookie(_SESSION_COOKIE_NAME, path="/")
+    return {"status": "ok"}
+
+
+@app.get("/auth/status")
+def auth_status(
+    session_cookie: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
+) -> dict[str, bool]:
+    """Etat d'authentification, sans exiger le token : permet au frontend de
+    savoir s'il doit afficher un formulaire de connexion (ne revele jamais le
+    token lui-meme, seulement deux booleens)."""
+    return {
+        "auth_required": _API_TOKEN is not None,
+        "authenticated": _API_TOKEN is None or session_cookie == _API_TOKEN,
+    }
 
 
 def _run_propose(**kwargs: Any) -> Any:

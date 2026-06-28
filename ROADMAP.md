@@ -12,7 +12,7 @@ détaillé des changements, voir `git log`.
 |---|---|
 | Frontend | Édite `rules.json` + templates des profils existants (catégories fixes). Pas de moteur de rendu inédit. |
 | Stockage des profils | Fichiers sur disque (`NFOGEN_PROFILES_DIR`), un profil = un dossier. Export/import `.zip`. Pas de base de données. |
-| Authentification | Token API simple (`NFOGEN_API_TOKEN`). À revoir pour un usage multi-utilisateurs (voir idées ci-dessous). |
+| Authentification | Token API simple (`NFOGEN_API_TOKEN`), partagé par tous les clients. Présenté soit via `Authorization: Bearer` (CLI/scripts), soit via un cookie de session `httpOnly` posé par `POST /login` (frontend web). À revoir pour un usage multi-utilisateurs (voir idées ci-dessous) — toujours un seul secret partagé, pas de comptes. |
 | Stack frontend | React + Vite (SPA), consomme l'API FastAPI existante. |
 | Déploiement | Repo unique (front + back) ; script natif Debian/Ubuntu (`scripts/install.sh`) en priorité, image Docker tout-en-un en option. |
 
@@ -38,14 +38,6 @@ détaillé des changements, voir `git log`.
   distribuer plutôt comme un `.zip` téléchargeable séparément (le mécanisme
   d'import existe déjà, `POST /profiles/store/{name}/import`) — pour bien
   marquer que c'est un exemple/point de départ, pas "le" profil de nfogen.
-- **Token API en `localStorage`** (alerte CodeQL "Clear text storage of
-  sensitive information", `frontend/src/api/settings.ts`) : accepté pour
-  l'instant — aucune faille XSS présente dans le code actuel (pas de
-  `dangerouslySetInnerHTML`/`innerHTML`/`eval`) donc pas de vecteur de vol
-  démontré, et un vrai correctif (cookie de session `httpOnly` posé par le
-  serveur) demande un flux de login qui n'existe pas encore. À traiter en
-  même temps que les droits d'accès multi-utilisateurs ci-dessus, pas
-  séparément.
 - **`rules.json` : motifs regex admin-fournis sans timeout** (`nfogen/rules.py`,
   `re.search(token["pattern"], value)`) — un motif pathologique (ReDoS)
   bloquerait le processus. Accepté pour l'instant : écrire/modifier un
@@ -93,3 +85,32 @@ sensible), le frontend (`frontend/src/`, aucun `innerHTML`/`eval`, WASM
 mediainfo.js servi en local et non depuis un CDN), `scripts/install.sh` /
 `update.sh` (déjà durcis : utilisateur système dédié, `chmod 600` sur
 l'env file, hardening systemd), `npm audit` (0 vulnérabilité côté frontend).
+
+Deux correctifs supplémentaires, après un rescan CodeQL post-push :
+
+- **Faux positifs CodeQL persistants** (`py/path-injection`) sur les deux
+  protections ci-dessus (`serve_frontend`, `write_profile`) : CodeQL ne
+  modélise ni `Path.is_relative_to()` ni un contrôle d'appartenance à une
+  liste fixe comme barrière de taint-tracking. Réécrits dans des idiomes
+  plus largement reconnus : `os.path.realpath()` + préfixe avec séparateur
+  final (`nfogen/api.py`), et table de correspondance figée
+  `_TEMPLATE_FILENAMES` construite depuis `CATEGORIES` — `category` ne sert
+  plus qu'à indexer cette table, jamais à composer une chaîne de chemin
+  (`nfogen/profile_store.py`). Comportement inchangé (tests de régression
+  existants), seulement la façon de le prouver statiquement.
+- **Token API en `localStorage`** (alerte CodeQL "Clear text storage of
+  sensitive information", ex-`frontend/src/api/settings.ts`) : **corrigé**.
+  Vérifié au préalable que la suggestion Copilot Autofix (passer à
+  `sessionStorage`) n'aurait pas fermé l'alerte (CodeQL modélise les deux
+  comme sinks identiques, classe `WebStorageSink` — confirmé dans la source
+  CodeQL). Vrai correctif à la place : `POST /login` vérifie le token et
+  pose un cookie de session `httpOnly` (jamais lisible en JavaScript,
+  `nfogen/api.py`) ; `require_token` accepte ce cookie en plus de l'en-tête
+  `Authorization` (CLI/scripts inchangés) ; `GET /auth/status` /
+  `POST /logout` complètent le flux. Frontend (`SettingsPage.tsx`) : vrai
+  formulaire connexion/déconnexion, plus aucun token en `localStorage`.
+  Vérifié dans un vrai navigateur (Playwright) : `localStorage` reste vide
+  avant/après connexion, `document.cookie` ne révèle pas le cookie de
+  session, génération NFO acceptée après connexion / refusée (401) sans.
+  Nouvelles variables d'environnement : `NFOGEN_COOKIE_SECURE`,
+  `NFOGEN_COOKIE_SAMESITE` (voir README.md).

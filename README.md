@@ -255,6 +255,9 @@ uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 |---|---|---|
 | `GET /health` | non | sonde de supervision |
 | `GET /profiles` | non | liste profils/catégories disponibles (profils livrés + utilisateur) |
+| `GET /auth/status` | non | `{auth_required, authenticated}` — ne révèle jamais le token |
+| `POST /login` | non (c'est la connexion) | `{"token": "..."}` → pose un cookie de session httpOnly si correct (utilisé par le frontend) |
+| `POST /logout` | non | efface le cookie de session |
 | `POST /generate` | si `NFOGEN_API_TOKEN` définie | multipart : envoi de fichier(s) → NFO |
 | `POST /generate/json` | si `NFOGEN_API_TOKEN` définie | JSON : métadonnées → NFO (sans fichier) |
 | `POST /propose-name` | si `NFOGEN_API_TOKEN` définie | JSON : noms de fichiers (+ `title_hints` optionnels) → suggestion de `release_name` (aucun upload) |
@@ -269,8 +272,10 @@ uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 
 | Variable | Effet |
 |---|---|
-| `NFOGEN_API_TOKEN` | Si définie, `/generate`, `/generate/json` et toutes les routes `/profiles/store*` exigent l'en-tête `Authorization: Bearer <token>`. Sans elle, ces routes restent ouvertes — à définir explicitement pour exposer l'API publiquement. |
+| `NFOGEN_API_TOKEN` | Si définie, `/generate`, `/generate/json` et toutes les routes `/profiles/store*` exigent soit l'en-tête `Authorization: Bearer <token>` (CLI/scripts), soit le cookie de session posé par `POST /login` (frontend web — le token n'est alors jamais stocké en clair côté navigateur). Sans `NFOGEN_API_TOKEN`, ces routes restent ouvertes — à définir explicitement pour exposer l'API publiquement. |
 | `NFOGEN_CORS_ORIGINS` | Origines autorisées en cross-origin, séparées par des virgules (ex. `http://localhost:5173`). Aucun CORS n'est activé par défaut. |
+| `NFOGEN_COOKIE_SECURE` | `1` pour marquer le cookie de session `Secure` (envoyé uniquement en HTTPS). `0` par défaut, car l'installation native documentée (`scripts/install.sh`) sert l'API en HTTP brut par défaut — à activer derrière un reverse-proxy TLS. |
+| `NFOGEN_COOKIE_SAMESITE` | `lax` par défaut (frontend et API sur la même origine, déploiement documenté). Passer à `none` si le frontend est hébergé sur un **autre** domaine que l'API — nécessite alors `NFOGEN_COOKIE_SECURE=1` (obligatoire pour `SameSite=None`). |
 | `NFOGEN_MAX_UPLOAD_MB` | Taille maximale acceptée par requête, en Mo. **Illimitée par défaut** (variable absente) — les fichiers sources (vidéo, jeux, scans...) peuvent légitimement peser plusieurs centaines de Go ; ils sont écrits sur disque par blocs, jamais chargés entièrement en mémoire. Définir une valeur pour appliquer un plafond (utile si l'API est exposée publiquement) ; au-delà, réponse `413`. |
 | `NFOGEN_PROFILES_DIR` | Dossier de profils **utilisateur**, gérables à chaud via `/profiles/store*` (voir section suivante). Sans elle, ces routes renvoient une erreur 400 explicite. |
 | `NFOGEN_FRONTEND_DIST` | Dossier du build frontend (`frontend/dist`, après `npm run build`). Si définie, l'API sert aussi le frontend (fichiers statiques + repli sur `index.html` pour les routes React Router) sur le **même** processus/port — c'est ce que font `scripts/install.sh` et l'image Docker. Absente par défaut : l'API reste API-only (usage en développement, avec `vite dev` séparé). |
