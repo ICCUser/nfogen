@@ -425,19 +425,23 @@ if _frontend_dist:
         )
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="frontend-assets")
 
+    _FRONTEND_DIR_REAL = os.path.realpath(_FRONTEND_DIR) + os.sep
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend(full_path: str) -> FileResponse:
         """Sert le frontend (SPA) : un fichier statique reel (favicon...) tel
         quel, sinon `index.html` pour laisser React Router decider cote
         navigateur quelle page afficher (deep link sur /settings, /profils...).
 
-        `full_path` vient directement de l'URL (non fiable) : `.resolve()` +
-        verification d'appartenance a `_FRONTEND_DIR` AVANT tout acces disque
-        empechent une traversee de chemin (ex. `GET /../../etc/passwd`) de
-        sortir du dossier frontend -- sans ca, `_FRONTEND_DIR / full_path`
-        suivrait des `..` et pourrait lire n'importe quel fichier lisible par
-        le processus, sur une route sans authentification."""
-        candidate = (_FRONTEND_DIR / full_path).resolve()
-        if full_path and candidate.is_relative_to(_FRONTEND_DIR) and candidate.is_file():
+        `full_path` vient directement de l'URL (non fiable) : on resout les
+        liens symboliques et les `..` (`os.path.realpath`) puis on verifie
+        que le resultat reste sous `_FRONTEND_DIR_REAL` (prefixe se terminant
+        par le separateur, pour ne pas confondre un dossier voisin de meme
+        prefixe, ex. `frontend_dist_evil`) AVANT tout acces disque -- sans
+        ca, une requete comme `GET /../../etc/passwd` pourrait lire n'importe
+        quel fichier lisible par le processus, sur une route sans
+        authentification."""
+        candidate = os.path.realpath(os.path.join(str(_FRONTEND_DIR), full_path))
+        if full_path and candidate.startswith(_FRONTEND_DIR_REAL) and os.path.isfile(candidate):
             return FileResponse(candidate)
         return FileResponse(_FRONTEND_DIR / "index.html")

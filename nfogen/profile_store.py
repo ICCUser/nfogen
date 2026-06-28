@@ -29,6 +29,13 @@ from .declarative_profile import CATEGORIES, register_declarative_profile
 from .registry import unregister_profile
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+# Noms de fichier de template, indexes par categorie -- construits une seule
+# fois a partir de la liste fixe CATEGORIES (jamais d'une valeur fournie par
+# l'appelant). Utiliser ce dict comme table de correspondance (au lieu de
+# formater `category` directement dans un nom de fichier) fait que la valeur
+# qui finit dans le chemin ecrit n'est jamais, syntaxiquement, derivee de
+# l'entree utilisateur : `category` ne sert plus qu'a une recherche de cle.
+_TEMPLATE_FILENAMES = {category: f"{category}.j2" for category in CATEGORIES}
 
 
 class ProfileStoreError(ValueError):
@@ -102,14 +109,15 @@ def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]
     templates_dir.mkdir(parents=True)
     (path / "rules.json").write_text(json.dumps(rules, indent=2, ensure_ascii=False), encoding="utf-8")
     for category, content in templates.items():
-        # `category` est revalide ici (pas seulement dans la boucle
-        # ci-dessus) : le nom de fichier ecrit doit rester visiblement issu
-        # d'une liste fixe (CATEGORIES), jamais d'une valeur arbitraire, pour
-        # exclure toute traversee de chemin sans devoir faire confiance a une
-        # validation distante dans la fonction.
-        if category not in CATEGORIES:
-            raise ProfileStoreError(f"Categorie de template inconnue : '{category}'.")
-        (templates_dir / f"{category}.j2").write_text(content, encoding="utf-8")
+        # `category` ne sert qu'a indexer _TEMPLATE_FILENAMES (revalide ici,
+        # pas seulement dans la boucle ci-dessus) : le nom de fichier ecrit
+        # est toujours l'une des valeurs fixes de ce dict, jamais une chaine
+        # construite a partir de `category` lui-meme.
+        try:
+            filename = _TEMPLATE_FILENAMES[category]
+        except KeyError:
+            raise ProfileStoreError(f"Categorie de template inconnue : '{category}'.") from None
+        (templates_dir / filename).write_text(content, encoding="utf-8")
 
     _reregister(name, rules)
 
