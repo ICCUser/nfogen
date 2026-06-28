@@ -119,6 +119,43 @@ def test_accepts_payload_under_limit(reload_api):
 
 
 # --------------------------------------------------------------------------- #
+# Frontend buildé optionnel (NFOGEN_FRONTEND_DIST) : pas de traversee de chemin
+# --------------------------------------------------------------------------- #
+def test_frontend_dist_serves_real_files(reload_api, tmp_path):
+    frontend_dir = tmp_path / "dist"
+    (frontend_dir / "assets").mkdir(parents=True)
+    (frontend_dir / "index.html").write_text("<html>index</html>", encoding="utf-8")
+    (frontend_dir / "favicon.svg").write_text("<svg></svg>", encoding="utf-8")
+
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_FRONTEND_DIST=str(frontend_dir))
+    client = TestClient(mod.app)
+
+    assert client.get("/").text == "<html>index</html>"
+    assert client.get("/favicon.svg").text == "<svg></svg>"
+    assert client.get("/settings").text == "<html>index</html>"  # repli SPA
+
+
+def test_frontend_dist_blocks_path_traversal(reload_api, tmp_path):
+    """Regression : `full_path` (issu de l'URL) etait utilise sans
+    normalisation pour construire un chemin disque -- une requete comme
+    `GET /../secret.txt` pouvait potentiellement lire un fichier hors du
+    dossier frontend, sur une route sans authentification (alerte CodeQL,
+    cf. ROADMAP.md)."""
+    frontend_dir = tmp_path / "dist"
+    (frontend_dir / "assets").mkdir(parents=True)
+    (frontend_dir / "index.html").write_text("<html>index</html>", encoding="utf-8")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("ne doit jamais etre lisible via l'API", encoding="utf-8")
+
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_FRONTEND_DIST=str(frontend_dir))
+    client = TestClient(mod.app)
+
+    for path in ("/../secret.txt", "/assets/../../secret.txt", "/%2e%2e/secret.txt"):
+        resp = client.get(path)
+        assert "ne doit jamais" not in resp.text, f"fuite via {path!r}"
+
+
+# --------------------------------------------------------------------------- #
 # Proposition de nom (POST /propose-name, noms de fichiers seuls)
 # --------------------------------------------------------------------------- #
 def test_propose_name_requires_token_when_configured(reload_api):

@@ -102,6 +102,13 @@ def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]
     templates_dir.mkdir(parents=True)
     (path / "rules.json").write_text(json.dumps(rules, indent=2, ensure_ascii=False), encoding="utf-8")
     for category, content in templates.items():
+        # `category` est revalide ici (pas seulement dans la boucle
+        # ci-dessus) : le nom de fichier ecrit doit rester visiblement issu
+        # d'une liste fixe (CATEGORIES), jamais d'une valeur arbitraire, pour
+        # exclure toute traversee de chemin sans devoir faire confiance a une
+        # validation distante dans la fonction.
+        if category not in CATEGORIES:
+            raise ProfileStoreError(f"Categorie de template inconnue : '{category}'.")
         (templates_dir / f"{category}.j2").write_text(content, encoding="utf-8")
 
     _reregister(name, rules)

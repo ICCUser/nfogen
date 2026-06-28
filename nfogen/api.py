@@ -379,7 +379,7 @@ async def import_managed_profile(name: str, file: UploadFile = File(...)) -> dic
 # matche (cf. ordre de resolution des routes Starlette/FastAPI).
 _frontend_dist = os.environ.get("NFOGEN_FRONTEND_DIST")
 if _frontend_dist:
-    _FRONTEND_DIR = Path(_frontend_dist)
+    _FRONTEND_DIR = Path(_frontend_dist).resolve()
     if not (_FRONTEND_DIR / "index.html").is_file():
         raise RuntimeError(
             f"NFOGEN_FRONTEND_DIST='{_frontend_dist}' ne contient pas index.html "
@@ -391,8 +391,15 @@ if _frontend_dist:
     async def serve_frontend(full_path: str) -> FileResponse:
         """Sert le frontend (SPA) : un fichier statique reel (favicon...) tel
         quel, sinon `index.html` pour laisser React Router decider cote
-        navigateur quelle page afficher (deep link sur /settings, /profils...)."""
-        candidate = _FRONTEND_DIR / full_path
-        if full_path and candidate.is_file():
+        navigateur quelle page afficher (deep link sur /settings, /profils...).
+
+        `full_path` vient directement de l'URL (non fiable) : `.resolve()` +
+        verification d'appartenance a `_FRONTEND_DIR` AVANT tout acces disque
+        empechent une traversee de chemin (ex. `GET /../../etc/passwd`) de
+        sortir du dossier frontend -- sans ca, `_FRONTEND_DIR / full_path`
+        suivrait des `..` et pourrait lire n'importe quel fichier lisible par
+        le processus, sur une route sans authentification."""
+        candidate = (_FRONTEND_DIR / full_path).resolve()
+        if full_path and candidate.is_relative_to(_FRONTEND_DIR) and candidate.is_file():
             return FileResponse(candidate)
         return FileResponse(_FRONTEND_DIR / "index.html")

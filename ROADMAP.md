@@ -38,3 +38,11 @@ détaillé des changements, voir `git log`.
   distribuer plutôt comme un `.zip` téléchargeable séparément (le mécanisme
   d'import existe déjà, `POST /profiles/store/{name}/import`) — pour bien
   marquer que c'est un exemple/point de départ, pas "le" profil de nfogen.
+- **Token API en `localStorage`** (alerte CodeQL "Clear text storage of
+  sensitive information", `frontend/src/api/settings.ts`) : accepté pour
+  l'instant — aucune faille XSS présente dans le code actuel (pas de
+  `dangerouslySetInnerHTML`/`innerHTML`/`eval`) donc pas de vecteur de vol
+  démontré, et un vrai correctif (cookie de session `httpOnly` posé par le
+  serveur) demande un flux de login qui n'existe pas encore. À traiter en
+  même temps que les droits d'accès multi-utilisateurs ci-dessus, pas
+  séparément.
