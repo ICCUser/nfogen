@@ -11,13 +11,16 @@ Importer ce paquet enregistre :
 
 Pour ajouter un nouveau profil livre *avec le paquet* (distinct d'un profil
 utilisateur gere dynamiquement) : creer un dossier ici sur le modele de
-`c411/` et l'importer ci-dessous.
+`c411/`, l'importer ci-dessous, et l'ajouter a `BUILTIN_PROFILE_DIRS`.
 
 Un profil utilisateur peut porter le meme nom qu'un profil livre (ex.
 "c411") : il le surcharge entierement (regles + templates), exactement comme
 `NFOGEN_TEMPLATES` surcharge des templates individuels. Aucun profil livre
 n'est donc reellement "protege" — c'est juste l'etat par defaut tant
-qu'aucun dossier utilisateur du meme nom n'existe.
+qu'aucun dossier utilisateur du meme nom n'existe. C'est le mecanisme
+qu'utilise `nfogen.profile_store` (et donc `/profiles/store/{name}` cote
+API) pour permettre a un administrateur de modifier un profil livre comme
+n'importe quel profil utilisateur, via `BUILTIN_PROFILE_DIRS` ci-dessous.
 """
 from __future__ import annotations
 
@@ -32,7 +35,14 @@ from . import c411  # noqa: F401  (auto-enregistrement)
 
 logger = logging.getLogger("nfogen.profiles")
 
-__all__ = ["c411"]
+__all__ = ["c411", "BUILTIN_PROFILE_DIRS"]
+
+# Dossier source de chaque profil livre avec le paquet, par nom -- permet a
+# nfogen.profile_store de lire/exporter leur contenu actuel (rules.json +
+# templates/*.j2 UNIQUEMENT, jamais __init__.py ni __pycache__) avant qu'un
+# administrateur n'enregistre une surcharge du meme nom, et de restaurer le
+# profil livre si cette surcharge est ensuite supprimee.
+BUILTIN_PROFILE_DIRS: dict[str, Path] = {"c411": Path(__file__).parent / "c411"}
 
 
 def _load_external_profiles() -> None:

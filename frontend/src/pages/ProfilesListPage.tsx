@@ -107,11 +107,9 @@ export default function ProfilesListPage() {
                   )}
                 </td>
                 <td className="px-4 py-2 text-right">
-                  {row.editable && (
-                    <Link to={`/profiles/${encodeURIComponent(row.name)}`} className="text-sm text-slate-700 underline">
-                      Gérer
-                    </Link>
-                  )}
+                  <Link to={`/profiles/${encodeURIComponent(row.name)}`} className="text-sm text-slate-700 underline">
+                    Gérer
+                  </Link>
                 </td>
               </tr>
             ))}

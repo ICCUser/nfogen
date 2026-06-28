@@ -113,3 +113,64 @@ def test_requires_profiles_dir_configured(monkeypatch):
     monkeypatch.delenv("NFOGEN_PROFILES_DIR", raising=False)
     with pytest.raises(ps.ProfileStoreError):
         ps.list_profiles()
+
+
+# --------------------------------------------------------------------------- #
+# Profils livres avec le paquet (C411) : lisibles, exportables, et
+# modifiables comme un profil utilisateur normal (surcharge du meme nom).
+# --------------------------------------------------------------------------- #
+def test_read_builtin_profile_without_override():
+    data = ps.read_profile("c411")
+    assert "video" in data["rules"]
+    assert "video" in data["templates"]
+    assert "c411" not in ps.list_profiles()  # pas (encore) un profil GERE
+
+
+def test_read_builtin_profile_without_profiles_dir_configured(monkeypatch):
+    monkeypatch.delenv("NFOGEN_PROFILES_DIR", raising=False)
+    data = ps.read_profile("c411")
+    assert "video" in data["rules"]
+
+
+def test_write_profile_overrides_builtin_c411():
+    try:
+        ps.write_profile("c411", rules=RULES, templates=TEMPLATES)
+        assert ps.read_profile("c411")["rules"] == RULES
+        assert "c411" in ps.list_profiles()  # devenu un profil GERE
+        nfo = nfogen.generate(
+            profile="c411", category="game", data={"title": "X", "release_name": "Mon.Jeu-TEAM"}
+        )
+        assert nfo == "X - Mon.Jeu-TEAM\n"
+    finally:
+        ps.delete_profile("c411")  # restaure le profil livre (cf. test ci-dessous)
+
+
+def test_delete_override_restores_builtin_c411():
+    original = ps.read_profile("c411")["rules"]
+    ps.write_profile("c411", rules=RULES, templates=TEMPLATES)
+    assert ps.read_profile("c411")["rules"] == RULES
+
+    ps.delete_profile("c411")
+
+    assert "c411" not in ps.list_profiles()
+    assert ps.read_profile("c411")["rules"] == original
+    # Le profil livre redevient utilisable pour generer (pas seulement lisible).
+    assert "video" in nfogen.list_available()["c411"]
+
+
+def test_export_builtin_profile_excludes_package_files():
+    blob = ps.export_profile_zip("c411")
+    import zipfile
+    from io import BytesIO
+
+    with zipfile.ZipFile(BytesIO(blob)) as zf:
+        names = zf.namelist()
+    assert "rules.json" in names
+    assert any(n.startswith("templates/") and n.endswith(".j2") for n in names)
+    assert "__init__.py" not in names
+    assert not any("__pycache__" in n for n in names)
+
+
+def test_read_unknown_profile_still_raises():
+    with pytest.raises(ps.ProfileStoreError):
+        ps.read_profile("ni-gere-ni-livre")

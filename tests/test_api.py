@@ -489,3 +489,37 @@ def test_store_read_unknown_profile_is_400(reload_api, tmp_path):
     client = TestClient(mod.app)
     resp = client.get("/profiles/store/inexistant")
     assert resp.status_code == 400
+
+
+# --------------------------------------------------------------------------- #
+# Profil livre avec le paquet (C411) : lisible et modifiable comme un profil
+# utilisateur normal via /profiles/store/c411 (surcharge du meme nom, cf.
+# nfogen/profiles/__init__.py et profile_store.py).
+# --------------------------------------------------------------------------- #
+def test_store_reads_builtin_c411_without_prior_override(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_PROFILES_DIR=str(tmp_path), NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.get("/profiles/store/c411")
+    assert resp.status_code == 200
+    assert "video" in resp.json()["rules"]
+    assert client.get("/profiles/store").json() == []  # pas (encore) un profil GERE
+
+
+def test_store_can_override_then_restore_builtin_c411(reload_api, tmp_path):
+    """L'admin peut modifier C411 'dans tous les cas' (token valide) : PUT
+    sur /profiles/store/c411 le surcharge comme n'importe quel profil
+    utilisateur ; DELETE restaure ensuite la version livree avec le paquet."""
+    mod = reload_api(NFOGEN_PROFILES_DIR=str(tmp_path), NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+
+    original = client.get("/profiles/store/c411").json()["rules"]
+
+    put = client.put("/profiles/store/c411", json={"rules": MANAGED_RULES, "templates": MANAGED_TEMPLATES})
+    assert put.status_code == 200
+    assert client.get("/profiles/store/c411").json()["rules"] == MANAGED_RULES
+    assert client.get("/profiles/store").json() == ["c411"]
+
+    delete = client.delete("/profiles/store/c411")
+    assert delete.status_code == 200
+    assert client.get("/profiles/store").json() == []
+    assert client.get("/profiles/store/c411").json()["rules"] == original

@@ -9,9 +9,15 @@ un `rules.json` (optionnel) et un dossier `templates/` (fichiers
 rien de HTTP, pour rester utilisable aussi bien par l'API que par un futur
 usage CLI.
 
-Le profil livre avec le paquet (C411) n'est PAS gere ici : il est lecture
-seule, vit dans le code source, et n'a pas a etre cree/modifie/supprime a
-l'execution (voir ROADMAP.md, "Portee du frontend").
+Un profil livre avec le paquet (ex. C411, voir
+`nfogen.profiles.BUILTIN_PROFILE_DIRS`) peut etre LU (et exporte) ici meme
+sans avoir ete surcharge -- pour permettre a un administrateur de partir de
+son contenu actuel avant d'enregistrer une modification. L'ECRIRE (`write_
+profile`) cree alors un profil utilisateur du MEME nom dans
+`NFOGEN_PROFILES_DIR`, qui prend le dessus sur le profil livre (cf.
+`nfogen/profiles/__init__.py`) ; le code source du profil livre lui-meme
+n'est jamais modifie. Supprimer cette surcharge (`delete_profile`) restaure
+l'enregistrement du profil livre d'origine.
 """
 from __future__ import annotations
 
@@ -69,14 +75,35 @@ def _profile_dir(name: str, *, must_exist: bool) -> Path:
 
 
 def list_profiles() -> list[str]:
-    """Noms des profils utilisateur presents dans NFOGEN_PROFILES_DIR."""
+    """Noms des profils utilisateur presents dans NFOGEN_PROFILES_DIR (PAS
+    les profils livres avec le paquet non surcharges -- cf. `read_profile`
+    pour lire leur contenu malgre tout)."""
     return sorted(p.name for p in _root().iterdir() if p.is_dir())
 
 
-def read_profile(name: str) -> dict[str, Any]:
-    """Contenu d'un profil utilisateur : ses regles et le texte de chacun de
-    ses templates, indexes par categorie."""
-    path = _profile_dir(name, must_exist=True)
+def _resolve_readable_dir(name: str) -> Path:
+    """Dossier source d'un profil EXISTANT pour une operation de LECTURE
+    (`read_profile`, `export_profile_zip`) : un profil utilisateur
+    (`NFOGEN_PROFILES_DIR/<name>/`) s'il existe, sinon un profil livre avec
+    le paquet du meme nom (`nfogen.profiles.BUILTIN_PROFILE_DIRS`). Contraire
+    a `_profile_dir(must_exist=True)` : ne suppose pas que NFOGEN_PROFILES_DIR
+    est configuree (un profil livre doit rester lisible sans elle), et ne
+    leve qu'en dernier recours, si aucune des deux sources n'existe."""
+    _check_name(name)
+    root = os.environ.get("NFOGEN_PROFILES_DIR")
+    if root:
+        managed = Path(root) / name
+        if managed.is_dir():
+            return managed
+    from .profiles import BUILTIN_PROFILE_DIRS
+
+    builtin = BUILTIN_PROFILE_DIRS.get(name)
+    if builtin is not None:
+        return builtin
+    raise ProfileStoreError(f"Profil inconnu : '{name}'.")
+
+
+def _read_rules_and_templates(path: Path) -> dict[str, Any]:
     rules_file = path / "rules.json"
     rules = json.loads(rules_file.read_text(encoding="utf-8")) if rules_file.is_file() else {}
     templates_dir = path / "templates"
@@ -84,7 +111,15 @@ def read_profile(name: str) -> dict[str, Any]:
         f.stem: f.read_text(encoding="utf-8")
         for f in sorted(templates_dir.glob("*.j2"))
     } if templates_dir.is_dir() else {}
-    return {"name": name, "rules": rules, "templates": templates}
+    return {"rules": rules, "templates": templates}
+
+
+def read_profile(name: str) -> dict[str, Any]:
+    """Contenu d'un profil (utilisateur, ou livre avec le paquet et pas
+    encore surcharge -- cf. `_resolve_readable_dir`) : ses regles et le texte
+    de chacun de ses templates, indexes par categorie."""
+    path = _resolve_readable_dir(name)
+    return {"name": name, **_read_rules_and_templates(path)}
 
 
 def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]) -> None:
@@ -123,23 +158,45 @@ def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]
 
 
 def delete_profile(name: str) -> None:
-    """Supprime un profil utilisateur du disque et du registre."""
+    """Supprime un profil utilisateur du disque et du registre.
+
+    Si `name` correspond aussi a un profil livre avec le paquet (ex.
+    "c411") que ce profil utilisateur surchargeait, restaure l'enregistrement
+    du profil livre d'origine -- sinon il resterait inscrit nulle part
+    jusqu'au prochain redemarrage du processus (cf. `unregister_profile`
+    ci-dessous, qui ne sait pas qu'un profil livre du meme nom existe)."""
     path = _profile_dir(name, must_exist=True)
     shutil.rmtree(path)
     unregister_profile(name)
+
+    from .profiles import BUILTIN_PROFILE_DIRS
+
+    builtin_dir = BUILTIN_PROFILE_DIRS.get(name)
+    if builtin_dir is not None:
+        register_declarative_profile(name, _read_rules_and_templates(builtin_dir)["rules"])
     _clear_template_cache()
 
 
 def export_profile_zip(name: str) -> bytes:
-    """Empaquette `rules.json` + `templates/*.j2` d'un profil utilisateur en
-    `.zip` (meme structure que sur disque, prete a etre redeposee ailleurs ou
-    versionnee dans un depot git)."""
-    path = _profile_dir(name, must_exist=True)
+    """Empaquette `rules.json` + `templates/*.j2` d'un profil (utilisateur,
+    ou livre avec le paquet et pas encore surcharge) en `.zip` (meme
+    structure que sur disque, prete a etre redeposee ailleurs ou versionnee
+    dans un depot git).
+
+    N'inclut QUE ces deux types de fichiers (jamais un `rglob` du dossier
+    entier) : un profil livre avec le paquet contient aussi `__init__.py` et
+    `__pycache__/`, qui ne doivent jamais finir dans une archive destinee a
+    etre partagee."""
+    path = _resolve_readable_dir(name)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file in sorted(path.rglob("*")):
-            if file.is_file():
-                zf.write(file, file.relative_to(path).as_posix())
+        rules_file = path / "rules.json"
+        if rules_file.is_file():
+            zf.write(rules_file, "rules.json")
+        templates_dir = path / "templates"
+        if templates_dir.is_dir():
+            for f in sorted(templates_dir.glob("*.j2")):
+                zf.write(f, f"templates/{f.name}")
     return buf.getvalue()
 
 

@@ -69,7 +69,13 @@ export default function ProfileEditorPage({ mode }: Props) {
 
   async function remove() {
     if (!params.name) return;
-    if (!confirm(`Supprimer définitivement le profil '${params.name}' ?`)) return;
+    if (
+      !confirm(
+        `Supprimer la version personnalisée du profil '${params.name}' ? ` +
+          `Si ce nom correspond à un profil livré avec nfogen (ex. c411), sa version d'origine sera restaurée.`,
+      )
+    )
+      return;
     try {
       await deleteManagedProfile(params.name);
       navigate("/profils");
