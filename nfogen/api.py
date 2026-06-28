@@ -60,8 +60,30 @@ Configuration (variables d'environnement, toutes optionnelles) :
                            sans nginx ni service separe. Absente par defaut :
                            l'API reste API-only (comportement historique, ex.
                            dev avec `vite dev` separe).
+    NFOGEN_ACCOUNTS_FILE  Fichier JSON de comptes administrateurs nommes
+                           (identifiant + mot de passe hache), alternative a
+                           NFOGEN_API_TOKEN pour distinguer/revoquer un acces
+                           individuel sans toucher au secret des autres (un
+                           seul role existe : un compte donne les memes droits
+                           que le token). Voir `nfogen/accounts.py` et les
+                           routes `/accounts*` ci-dessous. Sans elle, ces
+                           routes renvoient une erreur 400 explicite.
 
     POST   /propose-name          suggestion de release_name (noms de fichiers seuls)
+
+Authentification (voir `require_token`/`require_token_for_generate`) :
+    GET    /auth/status    {auth_required, authenticated, ...} (jamais le secret)
+    POST   /login          {"token": "..."} OU {"username", "password"} -> cookie de session
+    POST   /logout          efface le cookie de session
+
+Comptes administrateurs nommes (NFOGEN_ACCOUNTS_FILE ; voir nfogen/accounts.py) :
+    GET    /accounts              liste des identifiants (jamais les mots de passe)
+    POST   /accounts              cree un compte -- ouvert SANS authentification
+                                   UNIQUEMENT si aucun token ni compte n'existe
+                                   encore (amorçage du tout premier compte sur une
+                                   instance pas encore protegee) ; sinon protege
+                                   par require_token comme les routes ci-dessous
+    DELETE /accounts/{username}   supprime un compte (refuse pour le dernier restant)
 
 Gestion de profils utilisateur (toutes les routes `/profiles/store*` exigent
 le token API comme `/generate` ; voir `nfogen/profile_store.py`) :
@@ -77,7 +99,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -87,7 +111,8 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import engine, profile_store
+from . import accounts, engine, profile_store
+from .accounts import AccountsError
 from .profile_store import ProfileStoreError
 
 logger = logging.getLogger("nfogen.api")
@@ -104,13 +129,35 @@ _UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 _REQUIRE_AUTH_FOR_GENERATE = os.environ.get("NFOGEN_REQUIRE_AUTH_FOR_GENERATE", "0") == "1"
 
 # Authentification par cookie de session (en plus de l'en-tete Authorization,
-# cf. require_token ci-dessous) : le frontend web pose le token via POST
-# /login puis ne le manipule plus jamais lui-meme -- le navigateur stocke le
-# cookie, jamais lisible par du JavaScript (httponly=True), contrairement a
-# l'ancien stockage en localStorage (alerte CodeQL "Clear text storage of
-# sensitive information", cf. ROADMAP.md). L'en-tete Authorization reste
-# disponible pour les clients non-navigateur (CLI, scripts, curl).
+# cf. require_token ci-dessous) : le frontend web se connecte via POST /login
+# (token partage OU identifiant+mot de passe, cf. nfogen/accounts.py) puis ne
+# manipule plus jamais de secret lui-meme -- le cookie ne contient qu'un
+# identifiant de session OPAQUE (genere aleatoirement, verifie cote serveur
+# via _SESSIONS), jamais le secret lui-meme, et jamais lisible par du
+# JavaScript (httponly=True). Contrairement a l'ancien stockage en
+# localStorage (alerte CodeQL "Clear text storage of sensitive information",
+# cf. ROADMAP.md). L'en-tete Authorization (avec le token partage
+# directement, pas une session) reste disponible pour les clients non-
+# navigateur (CLI, scripts, curl).
+#
+# En memoire seulement (pas de Redis/DB) : un redemarrage du processus
+# deconnecte tout le monde (acceptable, comportement standard d'un serveur
+# d'applications simple). Valeur = identifiant du compte nomme ayant ouvert
+# la session, ou None pour une connexion par le token partage (pas de compte
+# associe) -- permet de revoquer immediatement les sessions d'un compte
+# precis quand il est supprime (cf. delete_account_route ci-dessous).
+_SESSIONS: dict[str, Optional[str]] = {}
 _SESSION_COOKIE_NAME = "nfogen_session"
+
+# Protection simple contre le bruteforce sur /login : un identifiant/mot de
+# passe choisi par un humain est plus devinable qu'un long token aleatoire.
+# Cle = identifiant tente (comptes nommes) ou "token" (token partage) --
+# verrouille CETTE cle apres _MAX_LOGIN_ATTEMPTS echecs consecutifs, pas
+# l'IP (potentiellement partagee/spoofable derriere un reverse-proxy) ni
+# l'API entiere (n'impacte pas les autres comptes).
+_LOGIN_ATTEMPTS: dict[str, tuple[int, float]] = {}  # cle -> (echecs, verrouille_jusqu'a)
+_MAX_LOGIN_ATTEMPTS = 5
+_LOGIN_LOCKOUT_SECONDS = 30.0
 # Secure (cookie envoye uniquement en HTTPS) desactive par defaut : l'install
 # native documentee (scripts/install.sh) sert l'API en HTTP brut sur le
 # reseau local par defaut (pas de TLS termine par nfogen lui-meme). A activer
@@ -132,15 +179,37 @@ _COOKIE_SAMESITE = os.environ.get("NFOGEN_COOKIE_SAMESITE", "lax")
 # (pas par ligne) des qu'il n'est pas un terminal -- sortie redirigee vers un
 # fichier, un service systemd, Docker... sans ca, cette ligne resterait
 # invisible en pratique, exactement dans les cas ou elle est le plus utile.
-_generate_protected = _API_TOKEN is not None and _REQUIRE_AUTH_FOR_GENERATE
-_store_protected = _API_TOKEN is not None
+def _admin_auth_configured() -> bool:
+    """Vrai si au moins un mecanisme d'authentification admin est actif
+    (token partage OU comptes nommes) -- les deux donnent le meme role
+    unique, voir nfogen/accounts.py."""
+    return _API_TOKEN is not None or accounts.is_configured()
+
+
+def _accounts_bootstrap_available() -> bool:
+    """Vrai si le tout premier compte peut etre cree sans authentification
+    (cf. create_account_route) : NFOGEN_ACCOUNTS_FILE configuree, aucun
+    token, et aucun compte n'existe encore -- permet au frontend d'afficher
+    directement un formulaire de creation plutot qu'un formulaire de
+    connexion, sans pouvoir interroger /accounts (protegee) au prealable."""
+    if _API_TOKEN is not None or not accounts.is_configured():
+        return False
+    try:
+        return not accounts.list_accounts()
+    except AccountsError:
+        return False
+
+
+_store_protected = _admin_auth_configured()
+_generate_protected = _store_protected and _REQUIRE_AUTH_FOR_GENERATE
 print(
     f"[nfogen] NFOGEN_API_TOKEN={'definie' if _API_TOKEN is not None else 'absente'} | "
+    f"NFOGEN_ACCOUNTS_FILE={'definie' if accounts.is_configured() else 'absente'} | "
     f"NFOGEN_REQUIRE_AUTH_FOR_GENERATE={_REQUIRE_AUTH_FOR_GENERATE} -> "
     f"generation (/generate, /generate/json, /propose-name) : "
-    f"{'protegee par token' if _generate_protected else 'ouverte a tous'} | "
+    f"{'protegee' if _generate_protected else 'ouverte a tous'} | "
     f"gestion de profils (/profiles/store*) : "
-    f"{'protegee par token' if _store_protected else 'ouverte a tous'}",
+    f"{'protegee' if _store_protected else 'ouverte a tous'}",
     flush=True,
 )
 
@@ -186,22 +255,23 @@ def require_token(
     authorization: Optional[str] = Header(default=None),
     session_cookie: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
 ) -> None:
-    """Protege une route par token si `NFOGEN_API_TOKEN` est definie.
+    """Protege une route si un mecanisme d'authentification admin est actif
+    (`NFOGEN_API_TOKEN` et/ou `NFOGEN_ACCOUNTS_FILE`).
 
-    Accepte soit l'en-tete `Authorization: Bearer <token>` (clients non-
-    navigateur : CLI, scripts, curl), soit le cookie de session pose par
-    `POST /login` (frontend web -- jamais manipule directement en
-    JavaScript, cf. `_SESSION_COOKIE_NAME`). Sans `NFOGEN_API_TOKEN`, l'API
-    reste ouverte : c'est un choix explicite de l'operateur d'activer
-    l'authentification, pas un comportement force.
+    Accepte soit l'en-tete `Authorization: Bearer <token>` (le token PARTAGE
+    directement, pas une session -- clients non-navigateur : CLI, scripts,
+    curl), soit le cookie de session pose par `POST /login` (frontend web,
+    valable que la connexion ait ete faite avec le token ou un compte nomme).
+    Sans aucun mecanisme configure, l'API reste ouverte : un choix explicite
+    de l'operateur, pas un comportement force.
     """
-    if _API_TOKEN is None:
+    if not _admin_auth_configured():
         return
-    if authorization == f"Bearer {_API_TOKEN}":
+    if _API_TOKEN is not None and authorization == f"Bearer {_API_TOKEN}":
         return
-    if session_cookie == _API_TOKEN:
+    if session_cookie is not None and session_cookie in _SESSIONS:
         return
-    raise HTTPException(status_code=401, detail="Token API invalide ou manquant.")
+    raise HTTPException(status_code=401, detail="Authentification invalide ou manquante.")
 
 
 def require_token_for_generate(
@@ -212,47 +282,104 @@ def require_token_for_generate(
     de `/profiles/store*`, toujours protegees par `require_token` seul.
 
     Par defaut, la generation de NFO reste ouverte a tous via le web MEME
-    quand `NFOGEN_API_TOKEN` est definie pour proteger la gestion des profils
-    (cf. ROADMAP.md, "Droits d'acces multi-utilisateurs") : un token unique
-    ne doit pas forcer a choisir entre "tout ouvert" et "tout ferme".
-    Definir `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` reactive l'ancien
-    comportement (utile si un operateur craint l'abus -- uploads volumineux,
-    saturation disque -- sur un serveur expose publiquement)."""
+    quand un mecanisme admin protege la gestion des profils (cf. ROADMAP.md,
+    "Droits d'acces multi-utilisateurs") : ca ne doit pas forcer a choisir
+    entre "tout ouvert" et "tout ferme". Definir
+    `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` reactive l'ancien comportement
+    (utile si un operateur craint l'abus -- uploads volumineux, saturation
+    disque -- sur un serveur expose publiquement)."""
     if not _REQUIRE_AUTH_FOR_GENERATE:
         return
     require_token(authorization=authorization, session_cookie=session_cookie)
 
 
+def _login_throttle_key(username: Optional[str]) -> str:
+    return f"user:{username}" if username else "token"
+
+
+def _check_not_locked(key: str) -> None:
+    count, locked_until = _LOGIN_ATTEMPTS.get(key, (0, 0.0))
+    if locked_until > time.monotonic():
+        raise HTTPException(
+            status_code=429, detail="Trop de tentatives, reessayez plus tard."
+        )
+
+
+def _record_login_failure(key: str) -> None:
+    count, _ = _LOGIN_ATTEMPTS.get(key, (0, 0.0))
+    count += 1
+    locked_until = time.monotonic() + _LOGIN_LOCKOUT_SECONDS if count >= _MAX_LOGIN_ATTEMPTS else 0.0
+    _LOGIN_ATTEMPTS[key] = (count, locked_until)
+
+
+def _record_login_success(key: str) -> None:
+    _LOGIN_ATTEMPTS.pop(key, None)
+
+
 class LoginRequest(BaseModel):
-    token: str
+    token: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
 
 
 @app.post("/login")
 def login(req: LoginRequest, response: Response) -> dict[str, str]:
-    """Verifie le token API et pose le cookie de session httpOnly (jamais
-    lisible par du JavaScript, contrairement a l'ancien stockage en
-    localStorage cote frontend)."""
-    if _API_TOKEN is None:
-        raise HTTPException(
-            status_code=400, detail="Authentification non configuree (NFOGEN_API_TOKEN absente)."
-        )
-    if req.token != _API_TOKEN:
-        raise HTTPException(status_code=401, detail="Token API invalide.")
+    """Verifie soit le token partage (`token`), soit un compte nomme
+    (`username` + `password`, cf. `nfogen/accounts.py`), et pose un cookie de
+    session : un identifiant OPAQUE genere aleatoirement (`secrets.
+    token_urlsafe`), jamais le secret lui-meme -- verifie ensuite cote
+    serveur via `_SESSIONS` a chaque requete protegee."""
+    identity: Optional[str]
+    if req.username:
+        key = _login_throttle_key(req.username)
+        _check_not_locked(key)
+        if not accounts.is_configured():
+            raise HTTPException(
+                status_code=400, detail="Comptes nommes non configures (NFOGEN_ACCOUNTS_FILE absente)."
+            )
+        if not accounts.authenticate(req.username, req.password or ""):
+            _record_login_failure(key)
+            raise HTTPException(status_code=401, detail="Identifiant ou mot de passe invalide.")
+        identity = req.username
+    elif req.token is not None:
+        key = _login_throttle_key(None)
+        _check_not_locked(key)
+        if _API_TOKEN is None:
+            raise HTTPException(
+                status_code=400, detail="Authentification non configuree (NFOGEN_API_TOKEN absente)."
+            )
+        if req.token != _API_TOKEN:
+            _record_login_failure(key)
+            raise HTTPException(status_code=401, detail="Token API invalide.")
+        identity = None
+    else:
+        raise HTTPException(status_code=400, detail="Fournir 'token', ou 'username' et 'password'.")
+
+    _record_login_success(key)
+    session_id = secrets.token_urlsafe(32)
+    _SESSIONS[session_id] = identity
     response.set_cookie(
         _SESSION_COOKIE_NAME,
-        req.token,
+        session_id,
         httponly=True,
         secure=_COOKIE_SECURE,
         samesite=_COOKIE_SAMESITE,
         path="/",
         # Pas de max_age/expires : cookie de session, efface a la fermeture
         # du navigateur (jamais persistant sur disque comme localStorage).
+        # La session elle-meme est en memoire process (_SESSIONS) : un
+        # redemarrage du serveur deconnecte tout le monde de toute facon.
     )
     return {"status": "ok"}
 
 
 @app.post("/logout")
-def logout(response: Response) -> dict[str, str]:
+def logout(
+    response: Response,
+    session_cookie: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
+) -> dict[str, str]:
+    if session_cookie is not None:
+        _SESSIONS.pop(session_cookie, None)
     response.delete_cookie(_SESSION_COOKIE_NAME, path="/")
     return {"status": "ok"}
 
@@ -260,14 +387,75 @@ def logout(response: Response) -> dict[str, str]:
 @app.get("/auth/status")
 def auth_status(
     session_cookie: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
-) -> dict[str, bool]:
-    """Etat d'authentification, sans exiger le token : permet au frontend de
-    savoir s'il doit afficher un formulaire de connexion (ne revele jamais le
-    token lui-meme, seulement deux booleens)."""
+) -> dict[str, Any]:
+    """Etat d'authentification, sans rien exiger : permet au frontend de
+    savoir s'il doit afficher un formulaire de connexion, et lequel (token
+    partage et/ou comptes nommes peuvent etre actives independamment). Ne
+    revele jamais de secret, seulement des booleens."""
+    auth_required = _admin_auth_configured()
     return {
-        "auth_required": _API_TOKEN is not None,
-        "authenticated": _API_TOKEN is None or session_cookie == _API_TOKEN,
+        "auth_required": auth_required,
+        "authenticated": not auth_required or (session_cookie is not None and session_cookie in _SESSIONS),
+        "token_login_enabled": _API_TOKEN is not None,
+        "accounts_login_enabled": accounts.is_configured(),
+        "accounts_bootstrap_available": _accounts_bootstrap_available(),
     }
+
+
+def _run_accounts(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Meme principe que `_run_store`, pour la gestion des comptes
+    administrateurs (`nfogen/accounts.py`)."""
+    try:
+        return fn(*args, **kwargs)
+    except AccountsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Erreur inattendue pendant la gestion d'un compte")
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.") from exc
+
+
+@app.get("/accounts", dependencies=[Depends(require_token)])
+def list_accounts_route() -> list[str]:
+    return _run_accounts(accounts.list_accounts)
+
+
+class AccountCreateRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/accounts")
+def create_account_route(
+    req: AccountCreateRequest,
+    authorization: Optional[str] = Header(default=None),
+    session_cookie: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
+) -> dict[str, str]:
+    """Cree un compte administrateur.
+
+    Ouvert SANS authentification UNIQUEMENT pour amorcer le tout PREMIER
+    compte sur une instance pas encore protegee du tout (ni token, ni compte
+    existant) -- equivalent a activer la protection depuis un etat
+    entierement ouvert, pas a la contourner. Des qu'un mecanisme admin est
+    actif (token configure OU au moins un compte existant), exige la meme
+    authentification que les autres routes de gestion (`require_token`)."""
+    bootstrap = _API_TOKEN is None and not _run_accounts(accounts.list_accounts)
+    if not bootstrap:
+        require_token(authorization=authorization, session_cookie=session_cookie)
+    _run_accounts(accounts.create_account, req.username, req.password)
+    return {"status": "ok"}
+
+
+@app.delete("/accounts/{username}", dependencies=[Depends(require_token)])
+def delete_account_route(username: str) -> dict[str, str]:
+    """Supprime un compte et revoque IMMEDIATEMENT ses sessions actives (sans
+    ca, une session deja ouverte resterait valable jusqu'au redemarrage du
+    processus malgre la suppression du compte -- l'interet meme de comptes
+    nommes distincts est de pouvoir revoquer un acces precis sans attendre)."""
+    _run_accounts(accounts.delete_account, username)
+    for session_id, owner in list(_SESSIONS.items()):
+        if owner == username:
+            del _SESSIONS[session_id]
+    return {"status": "ok"}
 
 
 def _run_propose(**kwargs: Any) -> Any:

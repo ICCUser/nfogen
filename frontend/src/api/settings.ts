@@ -24,26 +24,47 @@ export function setBaseUrl(value: string): void {
 export interface AuthStatus {
   authRequired: boolean;
   authenticated: boolean;
+  /** Le token API partage (NFOGEN_API_TOKEN) peut etre utilise pour se connecter. */
+  tokenLoginEnabled: boolean;
+  /** Des comptes nommes (NFOGEN_ACCOUNTS_FILE) peuvent etre utilises pour se connecter. */
+  accountsLoginEnabled: boolean;
+  /** Aucun compte n'existe encore et rien d'autre ne protege l'instance :
+   * le tout premier compte peut etre cree sans etre connecte. */
+  accountsBootstrapAvailable: boolean;
 }
 
 export async function getAuthStatus(): Promise<AuthStatus> {
   const resp = await fetch(`${getBaseUrl()}/auth/status`, { credentials: "include" });
-  const body = (await resp.json()) as { auth_required: boolean; authenticated: boolean };
-  return { authRequired: body.auth_required, authenticated: body.authenticated };
+  const body = (await resp.json()) as {
+    auth_required: boolean;
+    authenticated: boolean;
+    token_login_enabled: boolean;
+    accounts_login_enabled: boolean;
+    accounts_bootstrap_available: boolean;
+  };
+  return {
+    authRequired: body.auth_required,
+    authenticated: body.authenticated,
+    tokenLoginEnabled: body.token_login_enabled,
+    accountsLoginEnabled: body.accounts_login_enabled,
+    accountsBootstrapAvailable: body.accounts_bootstrap_available,
+  };
 }
 
-/** Verifie le token auprès du serveur et, si correct, pose le cookie de
- * session httpOnly (la reponse ne contient jamais le token en retour). */
-export async function login(token: string): Promise<void> {
+export type LoginCredentials = { token: string } | { username: string; password: string };
+
+/** Verifie les identifiants auprès du serveur et, si corrects, pose le
+ * cookie de session httpOnly (la reponse ne contient jamais de secret). */
+export async function login(credentials: LoginCredentials): Promise<void> {
   const resp = await fetch(`${getBaseUrl()}/login`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token }),
+    body: JSON.stringify(credentials),
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error(body.detail || "Token invalide.");
+    throw new Error(body.detail || "Connexion refusee.");
   }
 }
 

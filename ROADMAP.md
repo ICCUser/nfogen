@@ -12,18 +12,24 @@ détaillé des changements, voir `git log`.
 |---|---|
 | Frontend | Édite `rules.json` + templates des profils existants (catégories fixes). Pas de moteur de rendu inédit. |
 | Stockage des profils | Fichiers sur disque (`NFOGEN_PROFILES_DIR`), un profil = un dossier. Export/import `.zip`. Pas de base de données. |
-| Authentification | Token API simple (`NFOGEN_API_TOKEN`), partagé par tous les clients. Présenté soit via `Authorization: Bearer` (CLI/scripts), soit via un cookie de session `httpOnly` posé par `POST /login` (frontend web). Protège toujours `/profiles/store*` (gestion de profils) ; protège `/generate*`/`/propose-name` seulement si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` (génération ouverte à tous par défaut). Reste un seul secret partagé, pas de comptes — à revoir pour un usage multi-utilisateurs (voir idées ci-dessous). |
+| Authentification | Deux mécanismes au choix, combinables : un token API partagé (`NFOGEN_API_TOKEN`, via `Authorization: Bearer`) et/ou des comptes nommés (`NFOGEN_ACCOUNTS_FILE`, un seul rôle "admin", pas de permissions par profil — voir `nfogen/accounts.py`). Les deux passent par `POST /login`, qui pose un cookie de session `httpOnly` (jamais lisible en JS) ; `require_token` accepte ce cookie ou l'en-tête `Authorization`. Protège toujours `/profiles/store*` et `/accounts*` ; protège `/generate*`/`/propose-name` seulement si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` (génération ouverte à tous par défaut). Pas de base de données : comptes stockés en JSON (mots de passe hashés PBKDF2-HMAC-SHA256), sessions en mémoire (perdues au redémarrage), throttle anti-bruteforce par compte (5 essais / 30s). |
 | Stack frontend | React + Vite (SPA), consomme l'API FastAPI existante. |
 | Déploiement | Repo unique (front + back) ; script natif Debian/Ubuntu (`scripts/install.sh`) en priorité, image Docker tout-en-un en option. |
 
 ## Idées / prochaines pistes
 
-- **Droits d'accès multi-utilisateurs** (priorité actuelle) : la séparation
-  "génération ouverte à tous / gestion de profils réservée aux admins" est
-  faite (`NFOGEN_API_TOKEN` + `NFOGEN_REQUIRE_AUTH_FOR_GENERATE`, voir
-  tableau ci-dessus) mais avec un seul secret partagé, pas de vrais comptes
-  ni de rôles. Reste à faire : plusieurs tokens/comptes distincts, avec leurs
-  propres permissions (ex. plusieurs admins, chacun avec ses profils).
+- **Droits d'accès multi-utilisateurs** : fait. Décision (après discussion
+  explicite sur l'intérêt d'une vraie BDD pour un déploiement multi-tenant) :
+  scope réduit à plusieurs admins du **même** tracker, un seul rôle
+  (admin oui/non, pas de permissions par profil), pas de base de données —
+  cohérent avec l'architecture 100% fichiers du reste du projet. Comptes
+  nommés (`NFOGEN_ACCOUNTS_FILE`, `nfogen/accounts.py`), amorçage du premier
+  compte sans authentification uniquement si l'instance est entièrement
+  ouverte, suppression d'un compte révoque immédiatement ses sessions
+  actives, UI dédiée dans Réglages (`SettingsPage.tsx`). Pistes encore
+  ouvertes si le besoin grandit : rôles différenciés, permissions par
+  profil, multi-tenant (plusieurs trackers isolés sur une même instance) —
+  nécessiterait alors de revisiter le refus de base de données ci-dessus.
 - CLI : pas d'équivalent des routes `/profiles/store*` (gérer un profil
   utilisateur sans passer par l'API).
 - Pas de verrou sur les écritures concurrentes de `profile_store.py` (deux
@@ -43,9 +49,11 @@ détaillé des changements, voir `git log`.
 - **`rules.json` : motifs regex admin-fournis sans timeout** (`nfogen/rules.py`,
   `re.search(token["pattern"], value)`) — un motif pathologique (ReDoS)
   bloquerait le processus. Accepté pour l'instant : écrire/modifier un
-  `rules.json` exige déjà le token API (`require_token`), donc pas exploitable
-  sans lui. À revoir avec les droits d'accès multi-utilisateurs (un rôle
-  "admin" moins fiable qu'aujourd'hui changerait l'évaluation du risque).
+  `rules.json` exige déjà une authentification admin (`require_token`,
+  token ou compte nommé), donc pas exploitable sans elle. Plusieurs comptes
+  admin (voir ci-dessus) ne changent pas ce raisonnement (même rôle, même
+  niveau de confiance) ; à revoir si des rôles moins fiables que "admin"
+  sont introduits un jour.
 
 ## Audit sécurité du 2026-06-28 (suite des alertes CodeQL)
 

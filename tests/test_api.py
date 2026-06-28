@@ -95,14 +95,26 @@ def test_auth_status_open_when_no_token_configured(reload_api):
     client = TestClient(mod.app)
     resp = client.get("/auth/status")
     assert resp.status_code == 200
-    assert resp.json() == {"auth_required": False, "authenticated": True}
+    assert resp.json() == {
+        "auth_required": False,
+        "authenticated": True,
+        "token_login_enabled": False,
+        "accounts_login_enabled": False,
+        "accounts_bootstrap_available": False,
+    }
 
 
 def test_auth_status_requires_login_when_token_configured(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN="secret123")
     client = TestClient(mod.app)
     resp = client.get("/auth/status")
-    assert resp.json() == {"auth_required": True, "authenticated": False}
+    assert resp.json() == {
+        "auth_required": True,
+        "authenticated": False,
+        "token_login_enabled": True,
+        "accounts_login_enabled": False,
+        "accounts_bootstrap_available": False,
+    }
 
 
 def test_login_sets_httponly_session_cookie_and_unlocks_access(reload_api, tmp_path):
@@ -121,7 +133,9 @@ def test_login_sets_httponly_session_cookie_and_unlocks_access(reload_api, tmp_p
     assert cookie._rest.get("HttpOnly") is not None or cookie.has_nonstandard_attr("HttpOnly")
 
     status = client.get("/auth/status")
-    assert status.json() == {"auth_required": True, "authenticated": True}
+    body = status.json()
+    assert body["auth_required"] is True
+    assert body["authenticated"] is True
 
     resp = client.get("/profiles/store")
     assert resp.status_code == 200
@@ -151,6 +165,144 @@ def test_logout_clears_session_cookie(reload_api, tmp_path):
     logout = client.post("/logout")
     assert logout.status_code == 200
     assert client.get("/profiles/store").status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# Comptes administrateurs nommes (NFOGEN_ACCOUNTS_FILE) : alternative au
+# token partage, meme role unique. Voir nfogen/accounts.py.
+# --------------------------------------------------------------------------- #
+def test_accounts_bootstrap_open_without_auth_on_fully_open_instance(reload_api, tmp_path):
+    """Le tout premier compte peut etre cree sans authentification, mais
+    UNIQUEMENT si rien ne protege encore l'instance (ni token, ni compte
+    existant) : equivalent a activer la protection depuis un etat
+    entierement ouvert, pas a la contourner."""
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
+    client = TestClient(mod.app)
+    assert client.get("/auth/status").json()["accounts_bootstrap_available"] is True
+
+    resp = client.post("/accounts", json={"username": "admin1", "password": "secret123"})
+    assert resp.status_code == 200
+    assert client.get("/auth/status").json()["accounts_bootstrap_available"] is False
+
+    login = client.post("/login", json={"username": "admin1", "password": "secret123"})
+    assert login.status_code == 200
+
+
+def test_accounts_bootstrap_blocked_once_token_configured(reload_api, tmp_path):
+    """Si un token est deja configure, la creation d'un compte exige une
+    authentification valable -- on ne peut pas creer un acces admin
+    supplementaire en contournant une protection deja active."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
+    client = TestClient(mod.app)
+    resp = client.post("/accounts", json={"username": "admin1", "password": "secret123"})
+    assert resp.status_code == 401
+
+
+def test_accounts_bootstrap_blocked_once_an_account_exists(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
+    client = TestClient(mod.app)
+    client.post("/accounts", json={"username": "admin1", "password": "secret123"})
+
+    resp = client.post("/accounts", json={"username": "admin2", "password": "autresecret"})
+    assert resp.status_code == 401
+
+
+def test_accounts_create_requires_token_once_protected(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
+    client = TestClient(mod.app)
+    resp = client.post(
+        "/accounts",
+        json={"username": "admin1", "password": "secret123"},
+        headers={"Authorization": "Bearer secret123"},
+    )
+    assert resp.status_code == 200
+    assert client.get("/accounts", headers={"Authorization": "Bearer secret123"}).json() == ["admin1"]
+
+
+def test_accounts_login_unlocks_profile_management(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
+    client = TestClient(mod.app)
+    client.post("/accounts", json={"username": "admin1", "password": "secret123"})
+
+    assert client.get("/profiles/store").status_code == 401  # le simple fichier ne suffit pas
+
+    login = client.post("/login", json={"username": "admin1", "password": "mauvais"})
+    assert login.status_code == 401
+
+    login = client.post("/login", json={"username": "admin1", "password": "secret123"})
+    assert login.status_code == 200
+    assert client.get("/profiles/store").status_code == 400  # NFOGEN_PROFILES_DIR absente, mais authentifie
+
+
+def test_accounts_delete_revokes_active_sessions_immediately(reload_api, tmp_path):
+    """L'interet de comptes distincts : revoquer UN acces precis sans
+    toucher aux autres. Une session deja ouverte pour le compte supprime
+    doit cesser de fonctionner immediatement, pas seulement au redemarrage."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN="secret123",
+        NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"),
+        NFOGEN_PROFILES_DIR=str(tmp_path / "profiles"),
+    )
+    admin_client = TestClient(mod.app)
+    headers = {"Authorization": "Bearer secret123"}
+    admin_client.post("/accounts", json={"username": "admin1", "password": "secret123"}, headers=headers)
+    # un 2e compte : supprimer le dernier compte restant est refuse (cf.
+    # test_accounts_delete_refuses_last_account), il en faut un autre.
+    admin_client.post("/accounts", json={"username": "admin2", "password": "autresecret"}, headers=headers)
+
+    victim_client = TestClient(mod.app)
+    victim_client.post("/login", json={"username": "admin1", "password": "secret123"})
+    assert victim_client.get("/profiles/store").status_code == 200  # session valable
+
+    admin_client.delete("/accounts/admin1", headers=headers)
+    assert victim_client.get("/profiles/store").status_code == 401  # session revoquee
+
+
+def test_accounts_delete_refuses_last_account(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
+    client = TestClient(mod.app)
+    headers = {"Authorization": "Bearer secret123"}
+    client.post("/accounts", json={"username": "admin1", "password": "secret123"}, headers=headers)
+
+    resp = client.delete("/accounts/admin1", headers=headers)
+    assert resp.status_code == 400
+
+
+def test_login_lockout_after_too_many_failed_attempts(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
+    client = TestClient(mod.app)
+    client.post("/accounts", json={"username": "admin1", "password": "secret123"})
+
+    for _ in range(5):
+        resp = client.post("/login", json={"username": "admin1", "password": "mauvais"})
+        assert resp.status_code == 401
+
+    locked = client.post("/login", json={"username": "admin1", "password": "secret123"})
+    assert locked.status_code == 429
+
+
+def test_login_lockout_is_per_account_not_global(reload_api, tmp_path):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
+    client = TestClient(mod.app)
+    client.post("/accounts", json={"username": "admin1", "password": "secret123"})  # amorcage
+    client.post("/login", json={"username": "admin1", "password": "secret123"})
+    # cree admin2 via la session d'admin1 (aucun token configure dans ce test)
+    client.post("/accounts", json={"username": "admin2", "password": "autresecret"})
+
+    for _ in range(5):
+        client.post("/login", json={"username": "admin1", "password": "mauvais"})
+
+    # admin1 verrouille, mais admin2 doit toujours pouvoir se connecter normalement
+    client2 = TestClient(mod.app)
+    resp = client2.post("/login", json={"username": "admin2", "password": "autresecret"})
+    assert resp.status_code == 200
+
+
+def test_login_requires_some_credential(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post("/login", json={})
+    assert resp.status_code == 400
 
 
 def test_health_never_requires_token(reload_api):

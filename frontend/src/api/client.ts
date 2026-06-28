@@ -106,6 +106,22 @@ export function importManagedProfile(name: string, file: File): Promise<void> {
 }
 
 // --------------------------------------------------------------------------- //
+// Comptes administrateurs nommes (NFOGEN_ACCOUNTS_FILE), alternative au
+// token partage -- meme role unique, juste un acces individuel revocable.
+// --------------------------------------------------------------------------- //
+export function listAccounts(): Promise<string[]> {
+  return request<string[]>("/accounts");
+}
+
+export function createAccount(username: string, password: string): Promise<void> {
+  return request("/accounts", { method: "POST", body: JSON.stringify({ username, password }) });
+}
+
+export function deleteAccount(username: string): Promise<void> {
+  return request(`/accounts/${encodeURIComponent(username)}`, { method: "DELETE" });
+}
+
+// --------------------------------------------------------------------------- //
 // Proposition de nom (noms de fichiers seuls, aucun upload)
 // --------------------------------------------------------------------------- //
 export function proposeReleaseName(opts: {

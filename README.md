@@ -255,25 +255,53 @@ uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 |---|---|---|
 | `GET /health` | non | sonde de supervision |
 | `GET /profiles` | non | liste profils/catégories disponibles (profils livrés + utilisateur) |
-| `GET /auth/status` | non | `{auth_required, authenticated}` — ne révèle jamais le token |
-| `POST /login` | non (c'est la connexion) | `{"token": "..."}` → pose un cookie de session httpOnly si correct (utilisé par le frontend) |
-| `POST /logout` | non | efface le cookie de session |
+| `GET /auth/status` | non | état d'authentification (jamais de secret) — voir ci-dessous |
+| `POST /login` | non (c'est la connexion) | `{"token": "..."}` OU `{"username", "password"}` → cookie de session httpOnly |
+| `POST /logout` | non | efface le cookie de session (et révoque la session côté serveur) |
+| `GET /accounts` | oui | liste des identifiants de comptes nommés (jamais les mots de passe) |
+| `POST /accounts` | non **seulement** en amorçage (voir plus bas), sinon oui | crée un compte administrateur nommé |
+| `DELETE /accounts/{username}` | oui | supprime un compte (refusé pour le dernier restant) |
 | `POST /generate` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | multipart : envoi de fichier(s) → NFO |
 | `POST /generate/json` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | JSON : métadonnées → NFO (sans fichier) |
 | `POST /propose-name` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | JSON : noms de fichiers (+ `title_hints` optionnels) → suggestion de `release_name` (aucun upload) |
-| `GET /profiles/store` | si `NFOGEN_API_TOKEN` définie | liste des profils **utilisateur** (`NFOGEN_PROFILES_DIR`) |
-| `GET /profiles/store/{name}` | idem | règles + templates d'un profil utilisateur |
-| `PUT /profiles/store/{name}` | idem | crée/remplace un profil utilisateur |
-| `DELETE /profiles/store/{name}` | idem | supprime un profil utilisateur |
+| `GET /profiles/store` | oui | liste des profils **utilisateur** (`NFOGEN_PROFILES_DIR`) |
+| `GET /profiles/store/{name}` | idem | règles + templates d'un profil (utilisateur, ou livré avec le paquet type C411 et pas encore surchargé) |
+| `PUT /profiles/store/{name}` | idem | crée/remplace un profil (surcharge un profil livré du même nom, ex. "c411") |
+| `DELETE /profiles/store/{name}` | idem | supprime la surcharge (restaure le profil livré d'origine s'il y en a un) |
 | `GET /profiles/store/{name}/export` | idem | archive `.zip` du profil |
 | `POST /profiles/store/{name}/import` | idem | dépose un `.zip` (crée/remplace) |
+
+**"oui" ci-dessus** veut dire : exige `NFOGEN_API_TOKEN` (en-tête `Authorization: Bearer <token>`) **ou** un compte nommé valide (`NFOGEN_ACCOUNTS_FILE`, connexion via `POST /login` puis cookie de session) — les deux donnent le même rôle unique d'administrateur, voir `NFOGEN_ACCOUNTS_FILE` ci-dessous.
+
+### Comptes administrateurs nommés (alternative au token unique)
+
+Pour distinguer/révoquer un accès individuel sans changer le secret de tout
+le monde (ex. plusieurs modérateurs d'un même tracker), définir
+`NFOGEN_ACCOUNTS_FILE` (chemin d'un fichier JSON, créé/géré automatiquement).
+Un seul rôle existe : un compte nommé a exactement les mêmes droits que le
+token partagé.
+
+- **Le tout premier compte** peut être créé sans authentification, **mais
+  uniquement** si rien ne protège encore l'instance (ni `NFOGEN_API_TOKEN`,
+  ni aucun compte existant) — équivalent à activer la protection depuis un
+  état entièrement ouvert, pas à la contourner. Faites-le immédiatement
+  après le démarrage, avant d'exposer l'instance publiquement (sans ça, n'
+  importe qui pourrait créer ce premier compte avant vous).
+- Une fois un compte créé (ou un token configuré), créer/supprimer des
+  comptes exige d'être déjà authentifié.
+- Supprimer un compte révoque **immédiatement** ses sessions actives (pas
+  besoin d'attendre un redémarrage).
+- Protection anti-bruteforce simple : un compte donné se verrouille 30
+  secondes après 5 échecs de connexion consécutifs (n'affecte pas les autres
+  comptes).
 
 ### Configuration (variables d'environnement, toutes optionnelles)
 
 | Variable | Effet |
 |---|---|
-| `NFOGEN_API_TOKEN` | Si définie, toutes les routes `/profiles/store*` (gestion de profils, réservée aux admins) exigent soit l'en-tête `Authorization: Bearer <token>` (CLI/scripts), soit le cookie de session posé par `POST /login` (frontend web — le token n'est alors jamais stocké en clair côté navigateur). **N'affecte pas `/generate`, `/generate/json`, `/propose-name`** (génération ouverte à tous par défaut, voir `NFOGEN_REQUIRE_AUTH_FOR_GENERATE`) : gestion de profils et génération sont deux niveaux distincts. Sans `NFOGEN_API_TOKEN`, tout reste ouvert. |
-| `NFOGEN_REQUIRE_AUTH_FOR_GENERATE` | `1` pour exiger aussi le token (même mécanisme que `NFOGEN_API_TOKEN`) sur `/generate`, `/generate/json` et `/propose-name`. Désactivé par défaut — ces routes restent ouvertes à tous via le web même quand `NFOGEN_API_TOKEN` protège la gestion de profils. À activer si l'API est exposée publiquement et que l'abus (uploads volumineux) est une préoccupation. |
+| `NFOGEN_API_TOKEN` | Si définie, toutes les routes `/profiles/store*` et `/accounts*` (gestion réservée aux admins) exigent soit l'en-tête `Authorization: Bearer <token>` (CLI/scripts), soit le cookie de session posé par `POST /login` (frontend web — le token n'est alors jamais stocké en clair côté navigateur). **N'affecte pas `/generate`, `/generate/json`, `/propose-name`** (génération ouverte à tous par défaut, voir `NFOGEN_REQUIRE_AUTH_FOR_GENERATE`) : gestion et génération sont deux niveaux distincts. Sans `NFOGEN_API_TOKEN` ni `NFOGEN_ACCOUNTS_FILE`, tout reste ouvert. |
+| `NFOGEN_ACCOUNTS_FILE` | Chemin d'un fichier JSON de comptes administrateurs nommés (identifiant + mot de passe haché), alternative à `NFOGEN_API_TOKEN` — voir "Comptes administrateurs nommés" ci-dessus. Géré entièrement via `POST/DELETE /accounts*` (ou la page Réglages du frontend), jamais édité à la main. |
+| `NFOGEN_REQUIRE_AUTH_FOR_GENERATE` | `1` pour exiger aussi une authentification (même mécanisme que ci-dessus) sur `/generate`, `/generate/json` et `/propose-name`. Désactivé par défaut — ces routes restent ouvertes à tous via le web même quand `NFOGEN_API_TOKEN`/`NFOGEN_ACCOUNTS_FILE` protège la gestion. À activer si l'API est exposée publiquement et que l'abus (uploads volumineux) est une préoccupation. |
 | `NFOGEN_CORS_ORIGINS` | Origines autorisées en cross-origin, séparées par des virgules (ex. `http://localhost:5173`). Aucun CORS n'est activé par défaut. |
 | `NFOGEN_COOKIE_SECURE` | `1` pour marquer le cookie de session `Secure` (envoyé uniquement en HTTPS). `0` par défaut, car l'installation native documentée (`scripts/install.sh`) sert l'API en HTTP brut par défaut — à activer derrière un reverse-proxy TLS. |
 | `NFOGEN_COOKIE_SAMESITE` | `lax` par défaut (frontend et API sur la même origine, déploiement documenté). Passer à `none` si le frontend est hébergé sur un **autre** domaine que l'API — nécessite alors `NFOGEN_COOKIE_SECURE=1` (obligatoire pour `SameSite=None`). |
@@ -390,6 +418,13 @@ Vite + Tailwind) pour les mêmes opérations : lister les profils (avec
 distinction lecture seule / éditable), éditer les règles via un formulaire
 dédié, éditer les templates, prévisualiser un rendu en direct, exporter/
 importer un `.zip`. Voir [`frontend/README.md`](frontend/README.md).
+
+Le bouton « Gérer » est disponible sur **tous** les profils, y compris ceux
+livrés en lecture seule (C411) : l'ouvrir sur un profil livré et sauvegarder
+crée la surcharge correspondante (`PUT /profiles/store/c411` en arrière-plan).
+Le profil reste signalé « livré » dans la liste, mais devient modifiable ;
+le supprimer restaure simplement la version livrée d'origine, qui n'est
+jamais perdue.
 
 ```bash
 cd frontend
