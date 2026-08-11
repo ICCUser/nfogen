@@ -22,7 +22,7 @@ dependencies = [
     "pymediainfo>=6.1",   # extraction des metadonnees video (necessite libmediainfo)
     "mutagen>=1.47",      # extraction des metadonnees audio
     "jinja2>=3.1.6",      # >=3.1.6 : corrige des contournements du SandboxedEnvironment (render.py)
-    "jsonschema>=4.0",    # validation des rules.json (profils livres et utilisateur)
+    "jsonschema>=4.26.0",    # validation des rules.json (profils livres et utilisateur)
     "google-re2>=1.1",    # execution des regex admin (rules.json) sans risque ReDoS (rules.py)
 ]
 
