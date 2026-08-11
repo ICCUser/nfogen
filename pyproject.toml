@@ -34,7 +34,7 @@ Issues = "https://github.com/ICCUser/nfogen/issues"
 [project.optional-dependencies]
 api = [
     "fastapi>=0.110",
-    "uvicorn[standard]>=0.29",
+    "uvicorn[standard]>=0.52.1",
     "python-multipart>=0.0.9",  # upload de fichiers via HTTP
 ]
 dev = ["pytest>=8.0", "ruff>=0.4", "httpx2"]  # httpx2 : requis par starlette.testclient (versions recentes)
