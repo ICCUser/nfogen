@@ -1,4 +1,5 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary";
 import GeneratePage from "./pages/GeneratePage";
 import ProfilesListPage from "./pages/ProfilesListPage";
 import ProfileEditorPage from "./pages/ProfileEditorPage";
@@ -30,13 +31,18 @@ export default function App() {
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6">
-        <Routes>
-          <Route path="/" element={<GeneratePage />} />
-          <Route path="/profils" element={<ProfilesListPage />} />
-          <Route path="/profiles/new" element={<ProfileEditorPage mode="create" />} />
-          <Route path="/profiles/:name" element={<ProfileEditorPage mode="edit" />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
+        {/* key=pathname : une erreur de rendu sur une page ne doit pas rester
+            affichee apres avoir navigue ailleurs -- remonte la limite
+            d'erreur (et donc reessaie le rendu) a chaque changement de route. */}
+        <ErrorBoundary key={useLocation().pathname}>
+          <Routes>
+            <Route path="/" element={<GeneratePage />} />
+            <Route path="/profils" element={<ProfilesListPage />} />
+            <Route path="/profiles/new" element={<ProfileEditorPage mode="create" />} />
+            <Route path="/profiles/:name" element={<ProfileEditorPage mode="edit" />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   );

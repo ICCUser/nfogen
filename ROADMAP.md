@@ -98,3 +98,16 @@ Priorité 1 close. Priorité 2 : voir "Idées / prochaines pistes" ci-dessus.
   vers `${DATA_DIR}/home` (persistant, créé/chowné avant les étapes
   Python/npm) pour toutes les commandes lancées en tant que `nfogen`
   (`run_as_nfogen`, nouveau helper du script).
+- **Page blanche au clic, déploiement natif (`NFOGEN_FRONTEND_DIST`)** :
+  `frontend/src/api/settings.ts` défaut sur `/api`, mais `nfogen/api.py`
+  monte ses routes SANS préfixe (`/profiles`, `/generate`...). En un seul
+  processus (exactement ce que fait `scripts/install.sh`), `/api/profiles`
+  tombait silencieusement sur le SPA fallback (`index.html`, 200 OK, mauvais
+  contenu) au lieu du JSON attendu — `ProfilesListPage` plantait ensuite
+  (`categories.join is not a function`), et sans error boundary, React
+  démontait tout l'arbre : page blanche à chaque navigation. Corrigé :
+  `DEFAULT_BASE_URL` vaut `""` (même origine) en build de production
+  (`import.meta.env.DEV`), `/api` seulement en dev (proxy Vite). Ajout aussi
+  d'un `ErrorBoundary` (`src/components/ErrorBoundary.tsx`, remonté à chaque
+  changement de route) : un futur bug de rendu affichera un message au lieu
+  d'une page blanche silencieuse.

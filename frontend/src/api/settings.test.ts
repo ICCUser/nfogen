@@ -12,13 +12,31 @@ function fakeResponse(body: unknown, init: { ok?: boolean } = {}): Response {
 describe("getBaseUrl / setBaseUrl", () => {
   beforeEach(() => localStorage.clear());
 
-  it("defaults to /api when nothing stored", () => {
+  it("defaults to /api in dev (import.meta.env.DEV, matches vite dev's proxy)", () => {
     expect(getBaseUrl()).toBe("/api");
   });
 
   it("round-trips a value through localStorage", () => {
     setBaseUrl("https://example.test/api");
     expect(getBaseUrl()).toBe("https://example.test/api");
+  });
+});
+
+describe("DEFAULT_BASE_URL in a production build", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("defaults to same-origin (no /api prefix), matching nfogen/api.py's unprefixed routes", async () => {
+    // nfogen/api.py monte /profiles, /generate... SANS prefixe /api : servi
+    // en un seul processus (NFOGEN_FRONTEND_DIST, scripts/install.sh), un
+    // frontend qui garderait le prefixe /api de dev tomberait sur le SPA
+    // fallback (index.html) au lieu du JSON attendu -- cause exacte d'un
+    // crash de rendu observe en production (ProfilesListPage, "categories.join
+    // is not a function") avant ce correctif.
+    vi.stubEnv("DEV", false);
+    vi.resetModules();
+    const prodSettings = await import("./settings");
+    localStorage.clear();
+    expect(prodSettings.getBaseUrl()).toBe("");
   });
 });
 

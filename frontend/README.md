@@ -44,8 +44,11 @@ npm run build        # -> dist/
 npm run preview      # sert le build localement
 ```
 
-En production, configurez l'URL de l'API dans l'écran Réglages, ou servez
-`dist/` derrière un reverse-proxy qui mappe `/api` vers l'API.
+En production (build), l'URL de l'API par défaut est la même origine, sans
+préfixe `/api` (`nfogen/api.py` monte ses routes sans préfixe) : fonctionne
+tel quel avec le déploiement documenté (`scripts/install.sh`,
+`NFOGEN_FRONTEND_DIST`). Si le frontend est servi séparément de l'API (autre
+domaine/port), configurez l'URL réelle dans l'écran Réglages.
 
 ## Tests
 

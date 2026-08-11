@@ -8,10 +8,19 @@
 
 const BASE_URL_KEY = "nfogen.apiBaseUrl";
 
-// Par defaut : "/api", proxy vers http://localhost:8000 en dev (vite.config.ts).
-// En production, pointez vers l'URL reelle de l'API nfogen (ou servez le
-// frontend derriere un reverse-proxy qui mappe /api -> l'API).
-const DEFAULT_BASE_URL = "/api";
+// En dev (`vite dev`) : "/api", proxy vers http://localhost:8000 (vite.config.ts).
+// En production (`vite build`, ce que sert NFOGEN_FRONTEND_DIST) : chaine
+// vide (meme origine, sans prefixe) -- nfogen/api.py monte ses routes SANS
+// prefixe /api (`/profiles`, `/generate`...), donc "/api/xxx" n'existe pas
+// et retombe sur le SPA fallback (index.html au lieu du JSON attendu),
+// silencieusement (200 OK, juste le mauvais contenu) : c'est ce qui cassait
+// le deploiement natif (scripts/install.sh) des le premier chargement, sans
+// configuration manuelle prealable dans Reglages. `import.meta.env.DEV` est
+// injecte par Vite au build, distingue les deux cas sans variable a definir.
+// Si le frontend est servi separement de l'API (reverse-proxy sur un autre
+// domaine/port), configurez l'URL reelle dans Reglages (prioritaire, stocke
+// en localStorage).
+const DEFAULT_BASE_URL = import.meta.env.DEV ? "/api" : "";
 
 export function getBaseUrl(): string {
   return localStorage.getItem(BASE_URL_KEY) || DEFAULT_BASE_URL;
