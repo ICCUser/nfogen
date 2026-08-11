@@ -2,9 +2,8 @@
 
 ## Supported versions
 
-Seule la derniere version de la branche `main` recoit des correctifs de
-securite. nfogen est un projet jeune (pas encore de releases etiquetees) :
-utilisez le code a jour de `main`, ou le paquet publie le plus recent.
+Seule la derniere version de `main` recoit des correctifs de securite (pas
+encore de releases etiquetees).
 
 | Version          | Supported          |
 | ---------------- | ------------------ |
@@ -13,35 +12,29 @@ utilisez le code a jour de `main`, ou le paquet publie le plus recent.
 
 ## Reporting a Vulnerability
 
-Merci de NE PAS ouvrir une issue publique pour une vulnerabilite. Signalez-la
-en prive afin qu'on puisse la corriger avant toute divulgation :
+Ne pas ouvrir d'issue publique. Signaler en prive :
 
-- **GitHub** : outil "Report a vulnerability" de l'onglet **Security** du depot
-  (https://github.com/ICCUser/nfogen/security/advisories/new), voie privilegiee.
-- A defaut : ouvrez une issue *vide* demandant un canal de contact prive, ou
-  contactez le mainteneur via son profil GitHub.
+- **GitHub** : "Report a vulnerability" de l'onglet Security du depot
+  (https://github.com/ICCUser/nfogen/security/advisories/new).
+- A defaut : issue vide demandant un canal prive, ou contact via le profil
+  GitHub du mainteneur.
 
-### Ce qu'inclure dans le signalement
+### A inclure
 
-- Description du probleme et de son impact (attaquant non authentifie ?
-  privilege admin requis ?).
-- Etapes minimales pour le reproduire (commande `curl`, payload, version de
-  Python / du navigateur, variables d'environnement pertinentes).
-- Le mode de deploiement vise (instance ouverte / protegee par token /
-  comptes nommes / frontend servi par l'API).
+- Impact (attaquant non authentifie ? privilege admin requis ?).
+- Etapes de reproduction (commande, payload, versions, variables d'env pertinentes).
+- Mode de deploiement vise (instance ouverte / token / comptes nommes / frontend servi par l'API).
 
-### Calendre de reponse
+### Delais
 
-- **Accuse de reception** : sous 7 jours.
-- **Mise a jour d'avancement** : au moins tous les 14 jours jusqu'a resolution.
-- **Decision** : accepte (correctif en cours + credit au rapporteur dans
-  l'advisory), demande d'informations complementaires, ou decline (avec
-  justification) -- en principe dans les 30 jours.
+- Accuse de reception : 7 jours.
+- Avancement : au moins tous les 14 jours.
+- Decision (accepte/infos complementaires/decline) : sous 30 jours.
 
 ## Posture de securite
 
-nfogen est concu pour etre operable par plusieurs administrateurs d'un **meme**
-tracker (un seul role "admin"). Les composants sensibles sont :
+nfogen est concu pour plusieurs administrateurs d'un meme tracker (un seul
+role "admin"). Composants sensibles :
 
 - **Authentification** : token API partage (`NFOGEN_API_TOKEN`) et/ou comptes
   nommes (`NFOGEN_ACCOUNTS_FILE`), sessions en cookie `httpOnly` (jamais en

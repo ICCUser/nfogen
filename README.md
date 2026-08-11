@@ -4,48 +4,29 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Générateur de fichiers **NFO** générique, piloté par des **profils** : un
-profil décrit la convention de nommage et la mise en forme d'**un** tracker
-ou communauté, sans toucher au code. nfogen ne connaît aucun tracker en
-particulier — tout ce qui est spécifique à l'un d'eux vit dans son profil.
+profil décrit la convention de nommage et la mise en forme d'un tracker,
+sans toucher au code.
 
-L'outil sépare nettement trois responsabilités, ce qui le rend extensible
-sans toucher au cœur :
+Trois responsabilités séparées :
 
-1. **Extraction** (`extract.py`) — lire les métadonnées d'un fichier/dossier
-   (vidéo via *libmediainfo*, audio via *mutagen*, scan générique).
-2. **Profils** (`profiles/`) — décrire *comment* écrire le NFO. Un profil est
-   **100% déclaratif** : un `rules.json` (règles de nommage par catégorie) et
-   des templates Jinja2 (`templates/<cat>.j2`), interprétés par un moteur
-   générique ([`nfogen/declarative_profile.py`](nfogen/declarative_profile.py)).
-   Tous les profils — celui livré en exemple ou les profils que vous créez/
-   importez — passent par *exactement* le même mécanisme.
-3. **Cœur** (`engine.py`, `registry.py`) — orchestrer, sans rien connaître
-   d'un tracker en particulier.
+1. **Extraction** (`extract.py`) — métadonnées d'un fichier/dossier (vidéo
+   via *libmediainfo*, audio via *mutagen*, scan générique).
+2. **Profils** (`profiles/`) — un `rules.json` (règles de nommage) et des
+   templates Jinja2 (`templates/<cat>.j2`), interprétés par
+   [`nfogen/declarative_profile.py`](nfogen/declarative_profile.py).
+3. **Cœur** (`engine.py`, `registry.py`) — orchestre, sans connaître aucun tracker.
 
 Le paquet est livré avec **un seul profil d'exemple, C411** (Films & Vidéos,
-Audio, Jeux/Applications, eBook, Impression 3D), pour avoir quelque chose qui
-fonctionne immédiatement après installation. Il n'a rien de spécial : il
-peut être ignoré, surchargé ou supprimé exactement comme n'importe quel
-profil que vous créeriez vous-même (voir [Gérer des profils
+Audio, Jeux/Applications, eBook, Impression 3D). Il peut être ignoré,
+surchargé ou supprimé comme n'importe quel profil (voir [Gérer des profils
 utilisateur](#gérer-des-profils-utilisateur-sans-toucher-au-code)). Un profil
-se partage en `.zip` (export/import intégrés) : c'est la manière prévue de
-distribuer la convention d'un tracker sans toucher au code de nfogen.
-
-> Exemple concret de ce que permet le moteur de templates : le NFO « Films &
-> Vidéos » du profil C411 **est** la sortie texte par défaut de MediaInfo —
-> son template `video.j2` se contente de la reproduire fidèlement
-> (`{{ raw_text }}`), sans aucune mise en forme. Rien n'empêche un autre
-> profil de formater sa catégorie vidéo différemment. Seule exception
-> délibérée, appliquée à tous les profils : le champ `Complete name` est
-> réduit au seul nom de fichier (jamais le chemin complet local/temporaire,
-> qui peut révéler un nom d'utilisateur ou une arborescence de dossiers —
-> sans intérêt pour qui lit un NFO partagé publiquement).
+se partage en `.zip` (export/import intégrés).
 
 ## Installation
 
 ### Sur un serveur (Debian/Ubuntu, recommandé)
 
-Installe tout (Python, Node.js, libmediainfo), build le frontend, et lance
+Installe tout (Python, Node.js, libmediainfo), build le frontend, lance
 l'API + l'interface comme service `systemd` :
 
 ```bash
@@ -54,16 +35,14 @@ cd nfogen
 sudo ./scripts/install.sh
 ```
 
-Le script affiche l'URL et le token API généré à la fin. Pour mettre à jour
-plus tard, depuis le même dossier :
+Affiche l'URL et le token API généré à la fin. Mise à jour :
 
 ```bash
 sudo ./scripts/update.sh
 ```
 
-Le code applicatif est remplacé, mais le token API et les profils créés via
-l'interface ne sont **jamais perdus** (stockés à part, dans `/etc/nfogen` et
-`/var/lib/nfogen`).
+Le code applicatif est remplacé ; token API et profils utilisateur ne sont
+jamais perdus (`/etc/nfogen`, `/var/lib/nfogen`).
 
 ### Avec Docker (autres distributions)
 
@@ -81,8 +60,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[api]"
 ```
 
-Pour le frontend (rechargement à chaud), voir
-[frontend/README.md](frontend/README.md).
+Frontend (rechargement à chaud) : [frontend/README.md](frontend/README.md).
 
 ## Utilisation en ligne de commande
 
@@ -95,47 +73,35 @@ nfogen -c game  --data examples/game.json -o jeu.nfo
 ```
 
 `--data fichier.json` fournit les champs non extractibles automatiquement
-(synopsis, config requise, étapes d'installation…). Ces valeurs **complètent
-ou surchargent** ce qui est extrait de la source.
+(synopsis, config requise, étapes d'installation…), complète ou surcharge
+ce qui est extrait de la source.
 
-### Exigences obligatoires (validation) — moteur de regles declaratif
+### Exigences obligatoires (validation)
 
-Les exigences de nommage d'un profil ne sont **pas codees en dur en Python**.
-Elles vivent dans un fichier JSON par profil (ex.
-[`profiles/c411/rules.json`](nfogen/profiles/c411/rules.json)), interprete
-par un moteur generique ([`nfogen/rules.py`](nfogen/rules.py)) qui ne connaît
-aucun tracker en particulier. **Modifier une regle existante, ou en ajouter
-une, se fait en editant le JSON — jamais en touchant a `rules.py`,
-`engine.py`, `registry.py` ni un quelconque `__init__.py` de profil.**
+Les exigences de nommage vivent dans un fichier JSON par profil (ex.
+[`profiles/c411/rules.json`](nfogen/profiles/c411/rules.json)), interprété
+par [`nfogen/rules.py`](nfogen/rules.py). Modifier/ajouter une règle se fait
+en éditant le JSON, jamais `rules.py`/`engine.py`/`registry.py`.
 
-Tout `rules.json` (livre avec le paquet ou utilisateur) est valide contre un
-schema formel ([`nfogen/rules.schema.json`](nfogen/rules.schema.json)) avant
-d'etre enregistre — un fichier malforme est rejete avec un message explicite
-plutot que de provoquer une erreur confuse plus tard.
+Tout `rules.json` est validé contre [`nfogen/rules.schema.json`](nfogen/rules.schema.json)
+avant d'être enregistré (erreur explicite si malformé).
 
-Principe (inspire des conventions de nommage par variables de Sonarr/Radarr) :
-un profil declare des **tokens nommes** (regex avec groupes nommes Python
+Un profil déclare des **tokens nommés** (regex avec groupes nommés
 `(?P<nom>...)`), chacun `required` (bloquant), `recommended` (avertissement),
-ou membre d'un `group` (au moins un du groupe doit matcher). L'ordre exact
-des tokens n'est jamais impose : on verifie leur *presence*, pas une
-sequence figee, pour absorber les sous-formats tres variables d'une vraie
-convention (Films, Series, Collections, HDR, REMUX/BDMV/ISO...).
+ou membre d'un `group` (au moins un du groupe doit matcher). L'ordre des
+tokens n'est jamais imposé, seule leur présence compte.
 
-Une regle `required` non satisfaite **bloque la generation** (erreur
-explicite, message tire du JSON) ; une regle `recommended` ou un
-`cross_check` (coherence entre ce que `release_name` annonce et ce que
-MediaInfo lit reellement dans le fichier) ne fait que produire un
-avertissement informatif.
+Un `required` non satisfait bloque la génération ; un `recommended` ou un
+`cross_check` (cohérence release_name / MediaInfo réel) ne produit qu'un
+avertissement.
 
 <details>
 <summary>Exemple concret : la convention du profil C411 fourni</summary>
 
-Pour la categorie `video` de C411, `release_name` doit respecter la
-convention C411 (wiki "Le Nommage de l'upload") : separateur point
-uniquement (pas d'espace/accent), terminer par un codec video reconnu
-(x264/x265/H264/H265/HEVC/AVC/MPEG2) suivi de `-TEAM`, et contenir une
-annee, un tag de saison/episode (`SXX`/`SXXEXX`) ou `COLLECTION`/`INTEGRALE`.
-Exemples conformes :
+Pour `video`, `release_name` doit respecter la convention C411 (wiki "Le
+Nommage de l'upload") : séparateur point uniquement, terminer par un codec
+vidéo reconnu suivi de `-TEAM`, et contenir une année, un tag saison/épisode
+ou `COLLECTION`/`INTEGRALE`. Exemples conformes :
 
 ```
 Mr.Robot.S01.MULTI.VFF.1080p.WEB.EAC3.5.1.H264-FW
@@ -143,67 +109,42 @@ Breaking.Bad.INTEGRALE.MULTI.VFF.1080p.WEB.EAC3.5.1.H265-BTT
 Le.Comte.de.Monte.Cristo.2024.VOF.2160p.UHD.BluRay.REMUX.DV.HDR10PLUS.TrueHD.Atmos.7.1.HEVC-ZEKEY
 ```
 
-C'est une convention parmi d'autres possibles : un profil different (le
-votre) declare ses propres tokens dans son `rules.json`, sans rapport avec
-celle-ci.
+Un autre profil déclare ses propres tokens, sans rapport avec celle-ci.
 
 </details>
 
 ### Proposition automatique de `release_name`
 
-Plutot que de taper le `release_name` a la main, `nfogen` peut en **proposer
-un** a partir des seuls NOMS de fichiers (jamais leur contenu : aucune
-lecture/upload necessaire, instantane meme pour des fichiers de plusieurs
-centaines de Go) :
+À partir des seuls NOMS de fichiers (jamais leur contenu, instantané même
+pour des fichiers de plusieurs centaines de Go) :
 
 ```bash
 nfogen --propose-name -c video -i "One Piece/Season 01"
 # -> One.Piece.S01.MULTI.VFF.1080p.WEB.AC3.2.0.x264-NOTAG
 ```
 
-- Plusieurs fichiers de la **meme saison** -> pack saison (`S01`, sans
-  episode) ; un seul fichier -> episode (`S01E04`) ; sinon annee si presente.
-- Le **tag d'equipe** (`-TEAM`) est recupere s'il est identique sur tous les
-  fichiers, sinon `NOTAG` (placeholder a corriger) ; des tags differents
-  entre fichiers d'un meme lot sont une erreur (lot ambigu), pas une devinette.
-- Les **tags de langue** des noms scrapes (ex. `FR+JA`) sont convertis via une
-  table de correspondance configurable par profil (`rules.json -> video ->
-  name_proposal.language_aliases`, ex. `"FR+JA": "MULTI.VFF"`), modifiable
-  aussi depuis l'editeur de profil du frontend.
-- La resolution/le codec video/le codec audio/la source/l'equipe sont
-  recherches n'importe ou dans le nom de fichier (pas seulement entre
-  crochets `[...]`) : un nom "scene" comme `Show.S01E01.1080p.WEB.x264-TEAM`
-  fonctionne aussi bien qu'un nom a crochets.
-- Optionnellement, le tag **`Title`** du conteneur video (piste General,
-  souvent renseigne a la main par l'auteur de la release avec un descriptif
-  complet, ex. `One Piece S01 ''Arc Morgan'' WebDl 1080p x264 - Chris44`)
-  peut etre transmis via `title_hints` (CLI : lu automatiquement depuis les
-  fichiers locaux ; frontend : extrait cote navigateur via mediainfo.js, sans
-  upload) — il est prioritaire sur le nom de fichier pour la resolution/le
-  codec/la source/l'equipe, car c'est une indication ecrite par l'auteur de
-  la release et donc souvent plus fiable qu'un nom de fichier generique. La
-  saison/l'episode restent determines en priorite par le nom de fichier (plus
-  fiable pour la numerotation precise).
-- C'est une **proposition a relire**, jamais une valeur appliquee a
-  l'aveugle : les champs non determinables ont un placeholder explicite et
-  chaque avertissement (langue inconnue, tag d'equipe absent...) est renvoye
-  pour etre corrige avant generation.
-- Disponible aussi en API (`POST /propose-name`, JSON, voir plus bas) et dans
-  le frontend (pre-rempli automatiquement a la selection des fichiers, page
-  « Generer »). Un profil sans `name_proposal` dans son `rules.json` n'a
-  simplement pas cette fonctionnalite (pas une erreur).
+- Même saison sur plusieurs fichiers -> pack (`S01`) ; un seul fichier ->
+  épisode (`S01E04`) ; sinon année si présente.
+- Tag d'équipe (`-TEAM`) repris s'il est identique sur tous les fichiers,
+  sinon `NOTAG` ; des tags différents dans un même lot sont une erreur.
+- Tags de langue (ex. `FR+JA`) convertis via une table configurable par
+  profil (`rules.json -> video -> name_proposal.language_aliases`).
+- Résolution/codec/source/équipe recherchés n'importe où dans le nom (pas
+  seulement entre crochets).
+- Le tag `Title` du conteneur video, s'il est fourni via `title_hints`, est
+  prioritaire sur le nom de fichier pour résolution/codec/source/équipe
+  (saison/épisode restent déterminés par le nom de fichier).
+- Toujours une proposition à relire : champs indéterminables en placeholder
+  explicite, chaque ambiguïté renvoyée en avertissement.
+- Disponible en API (`POST /propose-name`) et dans le frontend. Un profil
+  sans `name_proposal` dans `rules.json` n'a simplement pas la fonctionnalité.
 
 ### Génération vidéo côté navigateur, sans upload
 
-La page « Générer » du frontend analyse les fichiers **vidéo directement
-dans le navigateur**, via une compilation WebAssembly de MediaInfoLib
-([`mediainfo.js`](https://github.com/buzz/mediainfo.js)) : elle lit
-seulement les plages d'octets nécessaires (`Blob.slice()`), jamais le
-fichier entier, et n'envoie au serveur que le texte résultant
-(`data.raw_text` et les métadonnées structurées `data.video_metadata`) via
-`POST /generate/json` — quelques Ko, jamais les fichiers source. Résultat :
-un pack saison de plusieurs Go se génère en une fraction de seconde plutôt
-qu'en dizaines de secondes d'upload.
+La page « Générer » du frontend analyse les fichiers vidéo dans le
+navigateur via WebAssembly ([`mediainfo.js`](https://github.com/buzz/mediainfo.js)) :
+lit seulement les octets nécessaires, n'envoie que le texte résultant
+(`data.raw_text`, `data.video_metadata`) via `POST /generate/json`.
 
 ```json
 {
@@ -220,14 +161,11 @@ qu'en dizaines de secondes d'upload.
 }
 ```
 
-`video_metadata` (objet pour un fichier, liste pour un pack saison — voir
-`extract.extract_video_metadata`/`extract_video_dir_metadata` pour la forme
-exacte) permet aux `cross_checks`/`track_language_checks` du profil de
-fonctionner **sans fichier source côté serveur** : c'est ce qui préserve les
-avertissements existants (résolution/codec annoncés vs réels, langues
-manquantes) malgré l'absence d'upload. Si l'extraction locale échoue
-(navigateur sans WebAssembly...), le frontend retombe automatiquement sur
-l'upload classique (`POST /generate`, multipart).
+`video_metadata` (objet ou liste pour un pack, voir
+`extract.extract_video_metadata`/`extract_video_dir_metadata`) permet aux
+`cross_checks`/`track_language_checks` de fonctionner sans fichier côté
+serveur. Repli automatique sur l'upload classique (`POST /generate`) si
+l'extraction locale échoue.
 
 ## Utilisation comme bibliothèque
 
@@ -254,71 +192,61 @@ uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 | Endpoint | Auth | Usage |
 |---|---|---|
 | `GET /health` | non | sonde de supervision |
-| `GET /profiles` | non | liste profils/catégories disponibles (profils livrés + utilisateur) |
-| `GET /auth/status` | non | état d'authentification (jamais de secret) — voir ci-dessous |
-| `POST /login` | non (c'est la connexion) | `{"token": "..."}` OU `{"username", "password"}` → cookie de session httpOnly |
-| `POST /logout` | non | efface le cookie de session (et révoque la session côté serveur) |
-| `GET /accounts` | oui | liste des identifiants de comptes nommés (jamais les mots de passe) |
-| `POST /accounts` | non **seulement** en amorçage (voir plus bas), sinon oui | crée un compte administrateur nommé |
-| `DELETE /accounts/{username}` | oui | supprime un compte (refusé pour le dernier restant) |
-| `POST /generate` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | multipart : envoi de fichier(s) → NFO |
-| `POST /generate/json` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | JSON : métadonnées → NFO (sans fichier) |
-| `POST /propose-name` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | JSON : noms de fichiers (+ `title_hints` optionnels) → suggestion de `release_name` (aucun upload) |
-| `GET /profiles/store` | oui | liste des profils **utilisateur** (`NFOGEN_PROFILES_DIR`) |
-| `GET /profiles/store/{name}` | idem | règles + templates d'un profil (utilisateur, ou livré avec le paquet type C411 et pas encore surchargé) |
-| `PUT /profiles/store/{name}` | idem | crée/remplace un profil (surcharge un profil livré du même nom, ex. "c411") |
-| `DELETE /profiles/store/{name}` | idem | supprime la surcharge (restaure le profil livré d'origine s'il y en a un) |
-| `GET /profiles/store/{name}/export` | idem | archive `.zip` du profil |
-| `POST /profiles/store/{name}/import` | idem | dépose un `.zip` (crée/remplace) |
+| `GET /profiles` | non | liste profils/catégories |
+| `GET /auth/status` | non | état d'authentification |
+| `POST /login` | non | `{"token"}` ou `{"username","password"}` -> cookie de session httpOnly |
+| `POST /logout` | non | efface le cookie de session |
+| `GET /accounts` | oui | identifiants des comptes nommés |
+| `POST /accounts` | non seulement en amorçage, sinon oui | crée un compte admin |
+| `DELETE /accounts/{username}` | oui | supprime un compte (refusé pour le dernier) |
+| `POST /generate` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | multipart -> NFO |
+| `POST /generate/json` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | JSON -> NFO |
+| `POST /propose-name` | si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` | noms de fichiers -> `release_name` |
+| `GET /profiles/store` | oui | profils utilisateur |
+| `GET /profiles/store/{name}` | oui | règles + templates |
+| `PUT /profiles/store/{name}` | oui | crée/remplace |
+| `DELETE /profiles/store/{name}` | oui | supprime la surcharge |
+| `GET /profiles/store/{name}/export` | oui | `.zip` du profil |
+| `POST /profiles/store/{name}/import` | oui | dépose un `.zip` |
 
-**"oui" ci-dessus** veut dire : exige `NFOGEN_API_TOKEN` (en-tête `Authorization: Bearer <token>`) **ou** un compte nommé valide (`NFOGEN_ACCOUNTS_FILE`, connexion via `POST /login` puis cookie de session) — les deux donnent le même rôle unique d'administrateur, voir `NFOGEN_ACCOUNTS_FILE` ci-dessous.
+**"oui"** = `NFOGEN_API_TOKEN` (`Authorization: Bearer <token>`) ou compte
+nommé valide (`NFOGEN_ACCOUNTS_FILE`, `POST /login` -> cookie de session).
 
 ### Comptes administrateurs nommés (alternative au token unique)
 
-Pour distinguer/révoquer un accès individuel sans changer le secret de tout
-le monde (ex. plusieurs modérateurs d'un même tracker), définir
-`NFOGEN_ACCOUNTS_FILE` (chemin d'un fichier JSON, créé/géré automatiquement).
-Un seul rôle existe : un compte nommé a exactement les mêmes droits que le
-token partagé.
+Définir `NFOGEN_ACCOUNTS_FILE` pour distinguer/révoquer un accès individuel
+sans changer le secret partagé. Un seul rôle : mêmes droits que le token.
 
-- **Le tout premier compte** peut être créé sans authentification, **mais
-  uniquement** si rien ne protège encore l'instance (ni `NFOGEN_API_TOKEN`,
-  ni aucun compte existant) — équivalent à activer la protection depuis un
-  état entièrement ouvert, pas à la contourner. Faites-le immédiatement
-  après le démarrage, avant d'exposer l'instance publiquement (sans ça, n'
-  importe qui pourrait créer ce premier compte avant vous).
-- Une fois un compte créé (ou un token configuré), créer/supprimer des
-  comptes exige d'être déjà authentifié.
-- Supprimer un compte révoque **immédiatement** ses sessions actives (pas
-  besoin d'attendre un redémarrage).
-- Protection anti-bruteforce simple : un compte donné se verrouille 30
-  secondes après 5 échecs de connexion consécutifs (n'affecte pas les autres
-  comptes).
+- Le tout premier compte peut être créé sans authentification, uniquement si
+  rien ne protège encore l'instance. À faire avant d'exposer l'instance.
+- Créer/supprimer un compte exige ensuite d'être authentifié.
+- Supprimer un compte révoque immédiatement ses sessions actives.
+- Anti-bruteforce : verrouillage 30s après 5 échecs consécutifs par compte.
 
 ### Configuration (variables d'environnement, toutes optionnelles)
 
 | Variable | Effet |
 |---|---|
-| `NFOGEN_API_TOKEN` | Si définie, toutes les routes `/profiles/store*` et `/accounts*` (gestion réservée aux admins) exigent soit l'en-tête `Authorization: Bearer <token>` (CLI/scripts), soit le cookie de session posé par `POST /login` (frontend web — le token n'est alors jamais stocké en clair côté navigateur). **N'affecte pas `/generate`, `/generate/json`, `/propose-name`** (génération ouverte à tous par défaut, voir `NFOGEN_REQUIRE_AUTH_FOR_GENERATE`) : gestion et génération sont deux niveaux distincts. Sans `NFOGEN_API_TOKEN` ni `NFOGEN_ACCOUNTS_FILE`, tout reste ouvert. |
-| `NFOGEN_ACCOUNTS_FILE` | Chemin d'un fichier JSON de comptes administrateurs nommés (identifiant + mot de passe haché), alternative à `NFOGEN_API_TOKEN` — voir "Comptes administrateurs nommés" ci-dessus. Géré entièrement via `POST/DELETE /accounts*` (ou la page Réglages du frontend), jamais édité à la main. |
-| `NFOGEN_REQUIRE_AUTH_FOR_GENERATE` | `1` pour exiger aussi une authentification (même mécanisme que ci-dessus) sur `/generate`, `/generate/json` et `/propose-name`. Désactivé par défaut — ces routes restent ouvertes à tous via le web même quand `NFOGEN_API_TOKEN`/`NFOGEN_ACCOUNTS_FILE` protège la gestion. À activer si l'API est exposée publiquement et que l'abus (uploads volumineux) est une préoccupation. |
-| `NFOGEN_CORS_ORIGINS` | Origines autorisées en cross-origin, séparées par des virgules (ex. `http://localhost:5173`). Aucun CORS n'est activé par défaut. |
-| `NFOGEN_COOKIE_SECURE` | `1` pour marquer le cookie de session `Secure` (envoyé uniquement en HTTPS). `0` par défaut, car l'installation native documentée (`scripts/install.sh`) sert l'API en HTTP brut par défaut — à activer derrière un reverse-proxy TLS. |
-| `NFOGEN_COOKIE_SAMESITE` | `lax` par défaut (frontend et API sur la même origine, déploiement documenté). Passer à `none` si le frontend est hébergé sur un **autre** domaine que l'API — nécessite alors `NFOGEN_COOKIE_SECURE=1` (obligatoire pour `SameSite=None`). |
-| `NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES` | Durée d'inactivité (glissante) avant expiration d'une session (`POST /login`). `1440` (24h) par défaut : une session utilisée régulièrement ne se déconnecte jamais, seule l'absence d'activité compte. |
-| `NFOGEN_SESSION_MAX_LIFETIME_HOURS` | Durée de vie **absolue** d'une session, même en usage continu (contrairement au délai d'inactivité ci-dessus, celui-ci ne se réinitialise jamais). `168` (7 jours) par défaut : limite l'impact d'un cookie de session volé (XSS, machine partagée...). |
-| `NFOGEN_MAX_UPLOAD_MB` | Taille maximale acceptée par requête, en Mo. **Illimitée par défaut** (variable absente) — les fichiers sources (vidéo, jeux, scans...) peuvent légitimement peser plusieurs centaines de Go ; ils sont écrits sur disque par blocs, jamais chargés entièrement en mémoire. Définir une valeur pour appliquer un plafond (utile si l'API est exposée publiquement) ; au-delà, réponse `413`. |
-| `NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE` | Plafond de requêtes/minute **par adresse IP** sur `/generate`, `/generate/json` et `/propose-name`. **Illimité par défaut** (variable absente). Complémentaire de `NFOGEN_MAX_UPLOAD_MB` (qui borne la taille d'**une** requête, pas leur nombre) — utile si l'API est exposée publiquement et reste ouverte à tous (`NFOGEN_REQUIRE_AUTH_FOR_GENERATE=0`, défaut) ; au-delà, réponse `429` avec `Retry-After`. |
-| `NFOGEN_PROFILES_DIR` | Dossier de profils **utilisateur**, gérables à chaud via `/profiles/store*` (voir section suivante). Sans elle, ces routes renvoient une erreur 400 explicite. |
-| `NFOGEN_FRONTEND_DIST` | Dossier du build frontend (`frontend/dist`, après `npm run build`). Si définie, l'API sert aussi le frontend (fichiers statiques + repli sur `index.html` pour les routes React Router) sur le **même** processus/port — c'est ce que font `scripts/install.sh` et l'image Docker. Absente par défaut : l'API reste API-only (usage en développement, avec `vite dev` séparé). |
+| `NFOGEN_API_TOKEN` | Protège `/profiles/store*` et `/accounts*`. N'affecte pas `/generate*` (voir `NFOGEN_REQUIRE_AUTH_FOR_GENERATE`). Absente : tout ouvert. |
+| `NFOGEN_ACCOUNTS_FILE` | Comptes admin nommés, alternative au token — voir ci-dessus. |
+| `NFOGEN_REQUIRE_AUTH_FOR_GENERATE` | `1` pour protéger aussi `/generate`, `/generate/json`, `/propose-name`. Désactivé par défaut. |
+| `NFOGEN_CORS_ORIGINS` | Origines cross-origin autorisées, séparées par des virgules. Aucun CORS par défaut. |
+| `NFOGEN_COOKIE_SECURE` | `1` pour cookie `Secure` (HTTPS uniquement). `0` par défaut. |
+| `NFOGEN_COOKIE_SAMESITE` | `lax` par défaut ; `none` si frontend sur un autre domaine (exige `NFOGEN_COOKIE_SECURE=1`). |
+| `NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES` | Expiration de session par inactivité (glissante). Défaut `1440` (24h). |
+| `NFOGEN_SESSION_MAX_LIFETIME_HOURS` | Durée de vie absolue d'une session. Défaut `168` (7 jours). |
+| `NFOGEN_MAX_UPLOAD_MB` | Taille max par requête. Illimitée par défaut ; au-delà, `413`. |
+| `NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE` | Plafond de requêtes/minute par IP sur `/generate*`. Illimité par défaut ; au-delà, `429`. |
+| `NFOGEN_PROFILES_DIR` | Dossier de profils utilisateur, gérables via `/profiles/store*`. Sans elle, ces routes renvoient `400`. |
+| `NFOGEN_FRONTEND_DIST` | Si définie, l'API sert aussi le frontend build (même processus/port). |
 
 ```bash
-# Generation : ouverte par defaut, pas de token necessaire.
+# Generation : ouverte par defaut.
 curl -H 'Content-Type: application/json' \
      -d '{"category":"game","data":{"title":"X","platform":"PC"}}' \
      http://localhost:8000/generate/json
 
-# Avec NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1, le token devient necessaire ici aussi :
+# Avec NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1 :
 export NFOGEN_API_TOKEN=change-moi
 export NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1
 curl -H "Authorization: Bearer change-moi" \
@@ -327,18 +255,14 @@ curl -H "Authorization: Bearer change-moi" \
      http://localhost:8000/generate/json
 ```
 
-> Les réponses d'erreur distinguent **400** (entrée invalide : profil/catégorie
-> inconnue, nommage non conforme — message explicite) et **500** (erreur
-> serveur inattendue, journalisée côté serveur, message générique côté
-> client pour ne pas exposer de détails internes).
-
-Exemples :
+Erreurs : `400` (entrée invalide, message explicite) vs `500` (erreur
+serveur, journalisée, message générique côté client).
 
 ```bash
-# Upload d'un fichier vidéo -> NFO renvoyé en text/plain
+# Upload d'un fichier vidéo -> NFO en text/plain
 curl -F category=video -F files=@film.mkv http://localhost:8000/generate
 
-# Album : plusieurs fichiers audio (catégorie audio auto)
+# Album : plusieurs fichiers audio
 curl -F category=audio -F files=@01.flac -F files=@02.flac \
      http://localhost:8000/generate
 
@@ -347,58 +271,50 @@ curl -H 'Content-Type: application/json' \
      -d '{"category":"game","data":{"title":"X","platform":"PC"}}' \
      http://localhost:8000/generate/json
 
-# Vidéo SANS uploader plusieurs Go : le client extrait localement le texte
-# MediaInfo et le poste (champ data.raw_text).
+# Vidéo sans uploader : extraction locale du texte MediaInfo
 RAW=$(mediainfo film.mkv)
 jq -n --arg r "$RAW" '{category:"video",data:{raw_text:$r}}' \
   | curl -d @- -H 'Content-Type: application/json' \
          http://localhost:8000/generate/json
 ```
 
-Ajouter `?download=1` renvoie le NFO en pièce jointe (`Content-Disposition`).
+`?download=1` renvoie le NFO en pièce jointe (`Content-Disposition`).
 
 ## Gérer des profils utilisateur (sans toucher au code)
 
 Un profil est 100% déclaratif : un `rules.json` (optionnel) + des templates
-`.j2`. Pour en créer un sans redémarrer le processus ni écrire de Python,
-deux options.
+`.j2`. Trois façons de le créer, sans redémarrer le processus.
 
-**Sur disque, directement** — déposez un dossier dans `NFOGEN_PROFILES_DIR`
-avec la même structure qu'un profil embarqué :
+**Sur disque, directement** — déposez un dossier dans `NFOGEN_PROFILES_DIR` :
 
 ```text
 $NFOGEN_PROFILES_DIR/
 └── mon_tracker/
-    ├── rules.json          # optionnel : regles de nommage par categorie
+    ├── rules.json          # optionnel
     └── templates/
         ├── video.j2
         └── game.j2
 ```
 
-Le profil est chargé au démarrage du processus (`import nfogen` / lancement
-de l'API ou de la CLI).
+Chargé au démarrage du processus.
 
-**Via la CLI** (sans lancer l'API/uvicorn du tout — pratique en script ou
-pour produire le `.zip` d'un profil, y compris C411, à partager/verser dans
-un dépôt git séparé) :
+**Via la CLI** (sans lancer l'API) :
 
 ```bash
 export NFOGEN_PROFILES_DIR=/chemin/profils
 
-nfogen --profile-store-list                            # profils utilisateur
-nfogen --profile-store-show c411                        # regles + templates (JSON)
+nfogen --profile-store-list
+nfogen --profile-store-show c411
 nfogen --profile-store-write mon_tracker \
        --rules-file rules.json --templates-dir templates/
-nfogen --profile-store-export c411 -o c411.zip           # partage/sauvegarde
+nfogen --profile-store-export c411 -o c411.zip
 nfogen --profile-store-import mon_tracker --zip-file mon_tracker.zip
 nfogen --profile-store-delete mon_tracker
 ```
 
-`--profile-store-export`/`--profile-store-show` fonctionnent aussi sur un
-profil **livré avec le paquet** (C411) sans qu'il ait été surchargé au
-préalable — même logique que côté API (voir plus bas).
+Fonctionne aussi sur un profil livré avec le paquet (C411), sans surcharge préalable.
 
-**Via l'API** (création/édition/suppression à chaud, sans redémarrage) :
+**Via l'API** (à chaud) :
 
 ```bash
 export NFOGEN_PROFILES_DIR=/chemin/profils
@@ -412,42 +328,30 @@ curl -X PUT http://localhost:8000/profiles/store/mon_tracker \
          }'
 
 curl http://localhost:8000/profiles/store/mon_tracker/export \
-     -H "Authorization: Bearer change-moi" -o mon_tracker.zip   # partage/sauvegarde
+     -H "Authorization: Bearer change-moi" -o mon_tracker.zip
 
 curl -X DELETE http://localhost:8000/profiles/store/mon_tracker \
      -H "Authorization: Bearer change-moi"
 ```
 
-`rules.json` est validé contre [`nfogen/rules.schema.json`](nfogen/rules.schema.json)
-avant toute écriture : un schéma invalide est rejeté (`400`) sans toucher au
-disque ni casser les autres profils.
+`rules.json` validé contre [`nfogen/rules.schema.json`](nfogen/rules.schema.json)
+avant écriture (`400` si invalide, rien touché au disque).
 
-Par défaut, un profil **livré avec le paquet** (le seul fourni aujourd'hui :
-C411) est en lecture seule dans l'interface — mais rien ne l'empêche d'être
-*surchargé* : un profil utilisateur portant le même nom (`PUT
-/profiles/store/c411`, ou un dossier `c411/` dans `NFOGEN_PROFILES_DIR`)
-prend le dessus sur la version livrée, y compris après un redémarrage.
-Exactement le même principe que `NFOGEN_TEMPLATES` pour les templates seuls,
-mais pour le profil entier (règles + templates).
+Un profil livré (C411) est en lecture seule par défaut, mais peut être
+surchargé : un profil utilisateur du même nom (`PUT /profiles/store/c411`,
+ou un dossier `c411/`) prend le dessus, y compris après redémarrage.
 
-Le `.zip` exporté a la même structure que sur disque (`rules.json` +
-`templates/*.j2`) : il peut être partagé tel quel, ou versionné dans un
-dépôt git séparé pour profiter de l'historique/rollback gratuitement.
+Le `.zip` exporté a la même structure que sur disque, partageable ou
+versionnable dans un dépôt git.
 
 ### Interface graphique (frontend)
 
-Plutôt que `curl`, [`frontend/`](frontend/) fournit une interface web (React +
-Vite + Tailwind) pour les mêmes opérations : lister les profils (avec
-distinction lecture seule / éditable), éditer les règles via un formulaire
-dédié, éditer les templates, prévisualiser un rendu en direct, exporter/
-importer un `.zip`. Voir [`frontend/README.md`](frontend/README.md).
+[`frontend/`](frontend/) (React + Vite + Tailwind) : lister les profils,
+éditer règles/templates, prévisualiser, exporter/importer. Voir
+[`frontend/README.md`](frontend/README.md).
 
-Le bouton « Gérer » est disponible sur **tous** les profils, y compris ceux
-livrés en lecture seule (C411) : l'ouvrir sur un profil livré et sauvegarder
-crée la surcharge correspondante (`PUT /profiles/store/c411` en arrière-plan).
-Le profil reste signalé « livré » dans la liste, mais devient modifiable ;
-le supprimer restaure simplement la version livrée d'origine, qui n'est
-jamais perdue.
+Le bouton « Gérer » est disponible sur tous les profils, y compris C411 : le
+modifier crée la surcharge correspondante ; le supprimer restaure l'original.
 
 ```bash
 cd frontend
@@ -457,25 +361,22 @@ npm run dev          # http://localhost:5173, proxy /api -> localhost:8000
 
 ## Surcharger un template embarqué, ou écrire un profil 100% Python
 
-**Surcharger un template** sans toucher au code ni à `NFOGEN_PROFILES_DIR` :
-pointez `NFOGEN_TEMPLATES` vers un dossier contenant `c411/audio.j2` (ou un
-autre couple profil/cat). Prioritaire sur les templates embarqués.
+**Surcharger un template** sans toucher au code : `NFOGEN_TEMPLATES` pointe
+vers un dossier contenant `c411/audio.j2` (ou un autre couple profil/cat),
+prioritaire sur les templates embarqués.
 
 ```bash
 export NFOGEN_TEMPLATES=/chemin/mes_templates
 ```
 
-**Profil avec une logique de rendu inédite** (pas juste des règles/templates
-sur les 5 catégories fixes) : c'est le seul cas qui demande encore du Python,
-via les 3 mêmes décorateurs que `nfogen.declarative_profile` utilise en
-interne — le cœur (`engine.py`/`registry.py`) ne connaît jamais un tracker en
-particulier :
+**Profil avec une logique de rendu inédite** : seul cas qui demande encore
+du Python, via 3 décorateurs (le cœur ne connaît jamais un tracker en particulier) :
 
 | Décorateur | Signature | Rôle |
 |---|---|---|
 | `@register(profil, cat)` | `(ctx) -> str` | Obligatoire : produit le texte du NFO |
-| `@register_validator(profil, cat)` | `(ctx, nfo) -> list[str]` | Optionnel : lève une exception pour bloquer la génération (règle obligatoire), ou renvoie des avertissements non bloquants |
-| `@register_filename(profil, cat)` | `(ctx) -> str` | Optionnel : impose le nom du fichier `.nfo` final (ex. `f"{release_name}.nfo"`) |
+| `@register_validator(profil, cat)` | `(ctx, nfo) -> list[str]` | Optionnel : lève pour bloquer, ou renvoie des avertissements |
+| `@register_filename(profil, cat)` | `(ctx) -> str` | Optionnel : impose le nom du fichier `.nfo` |
 
 ```python
 # nfogen/profiles/mon_tracker/__init__.py
@@ -489,17 +390,12 @@ def video(ctx: RenderContext) -> str:
     return extract.extract_video_text(ctx.source)
 ```
 
-Puis importez le paquet dans `profiles/__init__.py`. Pour le cas courant
-(règles de nommage + templates sur les 5 catégories fixes), préférez la
-gestion déclarative ci-dessus : voir
-[`nfogen/declarative_profile.py`](nfogen/declarative_profile.py) et l'exemple
-concret [`profiles/c411/__init__.py`](nfogen/profiles/c411/__init__.py) (6
-lignes, aucune logique propre à C411).
+Puis importez le paquet dans `profiles/__init__.py`. Pour le cas courant,
+préférez la gestion déclarative ci-dessus : voir
+[`nfogen/declarative_profile.py`](nfogen/declarative_profile.py) et
+[`profiles/c411/__init__.py`](nfogen/profiles/c411/__init__.py).
 
 ## Catégories disponibles
-
-Cinq catégories fixes, gérées par le cœur générique (un profil peut n'en
-utiliser que certaines) :
 
 | Catégorie | Source auto | Rendu |
 |---|---|---|
@@ -509,9 +405,8 @@ utiliser que certaines) :
 | `ebook` | scan fichiers | template |
 | `print3d` | scan fichiers | template |
 
-Pour une catégorie hors de ces cinq (ex. "gps", "adulte"...), réutilisez le
-renderer d'une catégorie proche (Jeux/Vidéo/eBook) plutôt que d'en créer une
-nouvelle — c'est ce que fait le profil C411 fourni.
+Pour une catégorie hors de ces cinq, réutilisez le renderer d'une catégorie
+proche (comme fait le profil C411 fourni).
 
 ## Tests
 
@@ -523,6 +418,6 @@ ruff check .          # lint, execute aussi en CI
 
 ## Avertissement
 
-`nfogen` ne produit que des fichiers de **métadonnées** (texte). Il ne
+`nfogen` ne produit que des fichiers de métadonnées (texte). Il ne
 télécharge, n'héberge et ne distribue aucun contenu. L'usage qui en est fait
 relève de la responsabilité de l'utilisateur.

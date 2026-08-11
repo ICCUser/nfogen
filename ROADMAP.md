@@ -1,10 +1,8 @@
 # Roadmap nfogen
 
-`nfogen` génère des fichiers NFO pilotés par des profils (génériques, un
-profil = une convention de tracker), utilisable en CLI, en bibliothèque
-Python, en API HTTP, ou via le frontend web. Profil d'exemple livré avec le
-paquet : C411. Ce document liste les idées futures — pour l'historique
-détaillé des changements, voir `git log`.
+`nfogen` génère des fichiers NFO pilotés par des profils, utilisable en CLI,
+bibliothèque Python, API HTTP ou frontend web. Profil d'exemple livré :
+C411. Historique détaillé des changements : `git log`.
 
 ## Décisions verrouillées
 
@@ -12,202 +10,77 @@ détaillé des changements, voir `git log`.
 |---|---|
 | Frontend | Édite `rules.json` + templates des profils existants (catégories fixes). Pas de moteur de rendu inédit. |
 | Stockage des profils | Fichiers sur disque (`NFOGEN_PROFILES_DIR`), un profil = un dossier. Export/import `.zip`. Pas de base de données. |
-| Authentification | Deux mécanismes au choix, combinables : un token API partagé (`NFOGEN_API_TOKEN`, via `Authorization: Bearer`) et/ou des comptes nommés (`NFOGEN_ACCOUNTS_FILE`, un seul rôle "admin", pas de permissions par profil — voir `nfogen/accounts.py`). Les deux passent par `POST /login`, qui pose un cookie de session `httpOnly` (jamais lisible en JS) ; `require_token` accepte ce cookie ou l'en-tête `Authorization`. Protège toujours `/profiles/store*` et `/accounts*` ; protège `/generate*`/`/propose-name` seulement si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1` (génération ouverte à tous par défaut). Pas de base de données : comptes stockés en JSON (mots de passe hashés PBKDF2-HMAC-SHA256), sessions en mémoire (perdues au redémarrage), throttle anti-bruteforce par compte (5 essais / 30s). |
+| Authentification | Token API partagé (`NFOGEN_API_TOKEN`) et/ou comptes nommés (`NFOGEN_ACCOUNTS_FILE`, rôle admin unique, `nfogen/accounts.py`). `POST /login` pose un cookie httpOnly ; `require_token` accepte ce cookie ou l'en-tête `Authorization`. Protège toujours `/profiles/store*`/`/accounts*` ; protège `/generate*` seulement si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1`. Pas de base de données : comptes en JSON (PBKDF2-HMAC-SHA256), sessions en mémoire, throttle anti-bruteforce (5 essais/30s). |
 | Stack frontend | React + Vite (SPA), consomme l'API FastAPI existante. |
-| Déploiement | Repo unique (front + back) ; script natif Debian/Ubuntu (`scripts/install.sh`) en priorité, image Docker tout-en-un en option. |
+| Déploiement | Repo unique (front + back) ; script natif Debian/Ubuntu (`scripts/install.sh`) en priorité, image Docker en option. |
 
 ## Idées / prochaines pistes
 
-- **Droits d'accès multi-utilisateurs** : fait. Décision (après discussion
-  explicite sur l'intérêt d'une vraie BDD pour un déploiement multi-tenant) :
-  scope réduit à plusieurs admins du **même** tracker, un seul rôle
-  (admin oui/non, pas de permissions par profil), pas de base de données —
-  cohérent avec l'architecture 100% fichiers du reste du projet. Comptes
-  nommés (`NFOGEN_ACCOUNTS_FILE`, `nfogen/accounts.py`), amorçage du premier
-  compte sans authentification uniquement si l'instance est entièrement
-  ouverte, suppression d'un compte révoque immédiatement ses sessions
-  actives, UI dédiée dans Réglages (`SettingsPage.tsx`). Pistes encore
-  ouvertes si le besoin grandit : rôles différenciés, permissions par
-  profil, multi-tenant (plusieurs trackers isolés sur une même instance) —
-  nécessiterait alors de revisiter le refus de base de données ci-dessus.
-- CLI pour `/profiles/store*` : fait (`nfogen --profile-store-*`, voir
-  README.md) — gérer un profil utilisateur (lister/afficher/créer-remplacer/
-  supprimer/exporter/importer) sans lancer l'API. `--profile-store-export`
-  produit directement le `.zip` d'un profil (y compris C411, livré avec le
-  paquet) sans dépendance à uvicorn — sert aussi le point suivant.
-- Verrou sur les écritures concurrentes de `profile_store.py` : fait
-  (`_LOCK`, `threading.Lock` unique) — couvre aussi les lectures
-  (`read_profile`/`export_profile_zip`), qui pouvaient sinon tomber sur un
-  dossier partiellement écrit pendant un `write_profile`/`delete_profile`
-  concurrent.
+- **Droits d'accès multi-utilisateurs** : fait. Scope réduit à plusieurs
+  admins du même tracker, un seul rôle, pas de base de données. Comptes
+  nommés (`nfogen/accounts.py`), amorçage du premier compte sans auth
+  uniquement si l'instance est entièrement ouverte, suppression révoque les
+  sessions actives. Ouvert si le besoin grandit : rôles différenciés,
+  permissions par profil, multi-tenant.
+- **CLI pour `/profiles/store*`** : fait (`nfogen --profile-store-*`, voir
+  README.md).
+- **Verrou sur les écritures concurrentes de `profile_store.py`** : fait
+  (`_LOCK`, couvre aussi les lectures).
 - Pas de tests automatisés pour le frontend.
-- Extraction côté navigateur (sans upload) limitée à la catégorie vidéo ;
-  audio/jeux/ebook/3D passent encore par l'upload classique.
-- `name_proposal.py` : la saison/l'épisode restent déterminés en priorité
-  par le nom de fichier (pas le tag `Title` embarqué) — à revoir si un tag
-  contenant une numérotation différente est rencontré en pratique.
+- Extraction côté navigateur (sans upload) limitée à la vidéo ; audio/jeux/
+  ebook/3D passent encore par l'upload classique.
+- `name_proposal.py` : saison/épisode déterminés en priorité par le nom de
+  fichier (pas le tag `Title`) — à revoir si un cas contraire apparaît.
 - **Profils comme extensions** : décision (2026-08-11) — C411 reste livré
-  par défaut avec le paquet tant qu'aucun autre profil n'est disponible
-  (l'outil doit fonctionner immédiatement après installation) ; à
-  reconsidérer dès qu'un deuxième profil existe. Dans tous les cas, le
-  `.zip` du profil doit rester disponible **en plus** du profil embarqué —
-  déjà le cas via `GET /profiles/store/c411/export` (API) et
-  `nfogen --profile-store-export c411 -o c411.zip` (CLI, sans dépendance à
-  l'API) : les deux fonctionnent sur C411 sans qu'il ait besoin d'être
-  surchargé au préalable (cf. `profile_store._resolve_readable_dir`).
-- **`rules.json` : motifs regex admin-fournis sans timeout** : fait (audit du
-  2026-08-11, voir plus bas) — exécution via RE2, plus un risque accepté.
+  par défaut tant qu'aucun autre profil n'est disponible, à reconsidérer
+  dès qu'un deuxième existe. Le `.zip` du profil reste disponible en plus
+  (API et CLI, sans surcharge préalable).
+- **`rules.json` : motifs regex admin sans timeout** : fait, exécution via RE2.
 
 ## Audit sécurité du 2026-06-28 (suite des alertes CodeQL)
 
-À la demande explicite de prioriser la sécurité même au prix des bonnes
-pratiques, relecture complète du backend, du frontend, des scripts de
-déploiement et des bornes de dépendances. Corrigé :
+- **Injection d'en-tête HTTP** (`Content-Disposition`) : `release_name`
+  utilisateur pouvait atteindre un en-tête HTTP sans normalisation.
+  `_header_safe()` neutralise caractères de contrôle/guillemets/antislash.
+- **Upload multipart, nom de fichier `".."`** : `Path("..").name == ".."`,
+  écrivait dans le parent du dossier temporaire. Garde-fou ajouté.
+- **Plafond d'upload contournable** : `NFOGEN_MAX_UPLOAD_MB` ne vérifiait
+  que le `Content-Length` déclaré. Le total réellement écrit est compté
+  pendant le streaming.
+- **Image Docker en root** : utilisateur système dédié (`USER nfogen`).
+- **`jinja2`** relevé à `>=3.1.6` (contournements de sandbox connus).
+- **Faux positifs CodeQL** (`py/path-injection`) : réécrits en idiomes
+  reconnus (`os.path.realpath()` + préfixe, table de correspondance figée).
+- **Token API en `localStorage`** : remplacé par cookie de session httpOnly
+  (`POST /login`), `require_token` accepte le cookie en plus du header.
 
-- **Injection d'en-tête HTTP (`Content-Disposition`)** : Starlette ne filtre
-  pas les valeurs d'en-tête (CRLF, guillemets) avant de les écrire ; seul
-  uvicorn le fait (vérifié manuellement, protocole HTTP). Un `release_name`
-  utilisateur pouvait devenir le nom de fichier d'un profil
-  (`filename_template`) et finir directement dans l'en-tête. Ajout de
-  `_header_safe()` (`nfogen/api.py`) : neutralise caractères de contrôle,
-  guillemets et antislash avant toute utilisation dans un en-tête, sans
-  dépendre du comportement d'un serveur ASGI particulier.
-- **Upload multipart, nom de fichier `".."`/`"."`** : `Path("..").name`
-  vaut littéralement `".."` (pas une chaîne vide) — un fichier uploadé
-  nommé `".."` écrivait dans le PARENT du dossier temporaire
-  (`IsADirectoryError` non rattrapée). Garde-fou explicite ajouté dans
-  `generate_upload`.
-- **Plafond d'upload contournable (`NFOGEN_MAX_UPLOAD_MB`)** : le middleware
-  `_limit_upload_size` ne contrôlait que le `Content-Length` *déclaré* par
-  le client — un client malhonnête (ou un transfert sans `Content-Length`)
-  le contournait entièrement et pouvait saturer le disque. Le total des
-  octets réellement écrits est désormais compté pendant le streaming dans
-  `generate_upload` et compare à la même limite, indépendamment de l'en-tête.
-- **Image Docker exécutée en root** : ajout d'un utilisateur système dédié
-  (`USER nfogen` dans le `Dockerfile`), même logique que l'utilisateur de
-  service de `scripts/install.sh` — réduit l'impact d'une éventuelle
-  exécution de code dans le conteneur.
-- **Plancher de version `jinja2`** relevé à `>=3.1.6` (`pyproject.toml`) :
-  versions antérieures vulnérables à des contournements du
-  `SandboxedEnvironment` utilisé par `nfogen/render.py` (CVE-2024-56326,
-  CVE-2025-27516).
-
-Revérifié sans correctif nécessaire : `nfogen/extract.py`, `nfogen/cli.py`,
-`nfogen/registry.py` (pas d'entrée utilisateur non validée dans un contexte
-sensible), le frontend (`frontend/src/`, aucun `innerHTML`/`eval`, WASM
-mediainfo.js servi en local et non depuis un CDN), `scripts/install.sh` /
-`update.sh` (déjà durcis : utilisateur système dédié, `chmod 600` sur
-l'env file, hardening systemd), `npm audit` (0 vulnérabilité côté frontend).
-
-Deux correctifs supplémentaires, après un rescan CodeQL post-push :
-
-- **Faux positifs CodeQL persistants** (`py/path-injection`) sur les deux
-  protections ci-dessus (`serve_frontend`, `write_profile`) : CodeQL ne
-  modélise ni `Path.is_relative_to()` ni un contrôle d'appartenance à une
-  liste fixe comme barrière de taint-tracking. Réécrits dans des idiomes
-  plus largement reconnus : `os.path.realpath()` + préfixe avec séparateur
-  final (`nfogen/api.py`), et table de correspondance figée
-  `_TEMPLATE_FILENAMES` construite depuis `CATEGORIES` — `category` ne sert
-  plus qu'à indexer cette table, jamais à composer une chaîne de chemin
-  (`nfogen/profile_store.py`). Comportement inchangé (tests de régression
-  existants), seulement la façon de le prouver statiquement.
-- **Token API en `localStorage`** (alerte CodeQL "Clear text storage of
-  sensitive information", ex-`frontend/src/api/settings.ts`) : **corrigé**.
-  Vérifié au préalable que la suggestion Copilot Autofix (passer à
-  `sessionStorage`) n'aurait pas fermé l'alerte (CodeQL modélise les deux
-  comme sinks identiques, classe `WebStorageSink` — confirmé dans la source
-  CodeQL). Vrai correctif à la place : `POST /login` vérifie le token et
-  pose un cookie de session `httpOnly` (jamais lisible en JavaScript,
-  `nfogen/api.py`) ; `require_token` accepte ce cookie en plus de l'en-tête
-  `Authorization` (CLI/scripts inchangés) ; `GET /auth/status` /
-  `POST /logout` complètent le flux. Frontend (`SettingsPage.tsx`) : vrai
-  formulaire connexion/déconnexion, plus aucun token en `localStorage`.
-  Vérifié dans un vrai navigateur (Playwright) : `localStorage` reste vide
-  avant/après connexion, `document.cookie` ne révèle pas le cookie de
-  session, génération NFO acceptée après connexion / refusée (401) sans.
-  Nouvelles variables d'environnement : `NFOGEN_COOKIE_SECURE`,
-  `NFOGEN_COOKIE_SAMESITE` (voir README.md).
+Revérifié sans correctif nécessaire : `extract.py`, `cli.py`, `registry.py`,
+le frontend (aucun `innerHTML`/`eval`, WASM local), les scripts de
+déploiement, `npm audit` (0 vulnérabilité à l'époque).
 
 ## Audit sécurité + fonctionnel du 2026-08-11
 
-Audit complet (backend, frontend, dépendances, CI) à la demande explicite de
-prioriser la sécurité. Corrigé :
-
-- **ReDoS sur les motifs regex admin (`rules.json -> tokens[].pattern`)** :
-  l'item "accepté pour l'instant" ci-dessus est refermé, avec un changement
-  d'approche par rapport à l'idée initialement explorée (détection
-  heuristique par chronométrage à l'écriture, abandonnée : dépendante de la
-  vitesse de la machine et d'une entrée de sonde choisie à l'avance, donc
-  potentiellement contournable par un motif qui n'explose que sur une AUTRE
-  forme d'entrée). Remplacée par l'exécution de tout motif admin via **RE2**
-  (`google-re2`, moteur à automate fini, temps linéaire garanti quel que soit
-  le motif, sans backtracking exponentiel possible par construction) —
-  aussi bien à la validation d'un profil (écriture/import via
-  `profile_store`, ou dépôt direct dans `NFOGEN_PROFILES_DIR`) qu'à
-  **chaque génération** (`nfogen/rules.py: errors/warnings/captures`), pas
-  seulement à l'écriture. Contrepartie assumée : RE2 ne supporte ni
-  lookaround ni back-références (précisément ce qui permettrait un
-  backtracking exponentiel) — vérifié : les 6 patterns du profil C411 fourni
-  compilent tels quels sous RE2, aucune réécriture nécessaire. La validation
-  regex (`validate_regex_patterns`) est désormais appelée depuis un seul
-  point d'entrée (`validate_rules_document`), plutôt que dupliquée dans
-  `profile_store.write_profile` et `profiles/__init__._load_external_profiles`
-  séparément — évite qu'un futur chemin d'enregistrement de profil (ex. une
-  commande CLI de gestion de profils, cf. idée ouverte ci-dessus) oublie ce
-  contrôle.
-- **Amorçage du premier compte admin, course possible (TOCTOU)** :
-  `POST /accounts` exécute "vérifier qu'aucun compte n'existe" puis "en
-  créer un" — FastAPI exécute les routes synchrones dans un threadpool, donc
-  deux requêtes concurrentes pendant la fenêtre de bootstrap pouvaient
-  toutes les deux passer le contrôle avant qu'une écriture n'ait eu lieu, et
-  créer chacune un compte admin sans authentification. Verrouillé
-  (`threading.Lock`, `nfogen/api.py`) ; régression couverte par un test qui
-  élargit artificiellement la fenêtre de course pour la rendre
-  déterministe (`tests/test_api.py::test_accounts_bootstrap_is_not_a_race`).
-- **4 vulnérabilités high côté frontend** (`npm audit`) : `react-router`
-  (CSRF-bypass), `postcss` (divulgation de fichier `.map` par traversée de
-  chemin), `nanoid` — apparues depuis l'audit du 28/06 (dépendances
-  transitives, pas un choix direct du projet). Corrigées par `npm audit fix`
-  (bump de `package-lock.json` dans les plages semver déjà déclarées,
-  aucun changement de `package.json` nécessaire) ; build (`vite build`) et
-  lint (`oxlint`) revérifiés après coup.
-- **`_LOGIN_ATTEMPTS`/`_SESSIONS` (`nfogen/api.py`) jamais purgés** : un
-  attaquant anonyme pouvait faire grossir `_LOGIN_ATTEMPTS` indéfiniment
-  (identifiants distincts sur `/login`, non authentifié par nature) ; une
-  session n'expirait jamais côté serveur hors déconnexion/suppression de
-  compte/redémarrage. Corrigé par deux mécanismes indépendants : expiration
-  de session par inactivité glissante (`NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES`,
-  défaut 24h) et par durée de vie absolue non glissante
-  (`NFOGEN_SESSION_MAX_LIFETIME_HOURS`, défaut 7 jours — protège même un
-  cookie volé réutilisé à intervalles réguliers) ; balayage périodique
-  (`_sweep_stale_entries`, au plus une fois toutes les 5 min) qui purge aussi
-  les tentatives de connexion inactives depuis plus d'1h. Comparaison du
-  token en temps constant étendue à `POST /login` (déjà faite pour
-  `require_token`, `hmac.compare_digest`) au passage. Voir README.md pour les
-  deux nouvelles variables d'environnement.
-
-Revérifié sans correctif nécessaire (relecture complète du backend, dont
-`accounts.py`, `render.py`, `profile_store.py`, `name_proposal.py` — les
-motifs de ce dernier sont fixes/non admin-fournis, donc hors du changement
-RE2 ci-dessus) : les mêmes composants que l'audit du 28/06, plus `pip-audit`
-(aucune CVE connue sur les dépendances backend).
-
-- **CI backend uniquement** : un job `frontend` ajouté à `ci.yml` (`npm ci`,
-  `npm run lint` (oxlint), `npm run build` (`tsc -b && vite build`)) — un
-  changement cassant le build ou le lint du frontend ne passe plus inaperçu
-  jusqu'au déploiement.
-- **Pas de détection automatique des CVE de dépendances** : `.github/
-  dependabot.yml` ajouté (pip, npm, github-actions — mises à jour
-  hebdomadaires par PR), pour ne plus dépendre d'un audit manuel comme celui
-  qui a trouvé les 4 CVE npm ci-dessus.
+- **ReDoS sur les motifs regex admin** (`rules.json -> tokens[].pattern`) :
+  exécution via RE2 (temps linéaire garanti) au lieu d'une heuristique par
+  chronométrage. Validation centralisée dans `validate_rules_document`.
+- **Course sur l'amorçage du premier compte admin (TOCTOU)** : deux
+  requêtes concurrentes pouvaient chacune créer un compte sans
+  authentification. Verrouillé (`threading.Lock`).
+- **4 vulnérabilités high côté frontend** (`react-router`, `postcss`,
+  `nanoid`) : corrigées par `npm audit fix`.
+- **`_LOGIN_ATTEMPTS`/`_SESSIONS` jamais purgés** : expiration de session
+  par inactivité (`NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES`, défaut 24h) et
+  durée de vie absolue (`NFOGEN_SESSION_MAX_LIFETIME_HOURS`, défaut 7j),
+  balayage périodique des deux dicts. Comparaison du token en temps
+  constant étendue à `POST /login`.
+- **CI backend uniquement** : job `frontend` ajouté (`npm ci`/`lint`/`build`).
+- **Pas de détection automatique des CVE** : `.github/dependabot.yml`
+  (pip, npm, github-actions, hebdomadaire).
 - **Pas de protection contre le volume de requêtes sur `/generate*`** :
-  `NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE` (défaut illimité, comme
-  `NFOGEN_MAX_UPLOAD_MB`) — plafond par adresse IP, fenêtre glissante en
-  mémoire (mêmes limites assumées que le throttle de `/login` : IP
-  potentiellement partagée/spoofable, pas un limiteur distribué). Complète
-  `NFOGEN_MAX_UPLOAD_MB` (taille d'une requête) sur l'axe volume/fréquence.
-  Partagé entre les 3 routes de génération (même clé IP), pour ne pas être
-  contournable en répartissant les requêtes entre elles.
+  `NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE` (défaut illimité), plafond par IP
+  partagé entre les 3 routes de génération.
 
-Priorité 1 de l'audit du 2026-08-11 close. Priorité 2 (fonctionnel, voir
-"Idées / prochaines pistes" en tête de document) : à traiter ensuite.
+Revérifié sans correctif : `accounts.py`, `render.py`, `profile_store.py`,
+`name_proposal.py`, `pip-audit` (aucune CVE backend).
+
+Priorité 1 close. Priorité 2 : voir "Idées / prochaines pistes" ci-dessus.
