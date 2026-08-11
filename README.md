@@ -378,6 +378,26 @@ $NFOGEN_PROFILES_DIR/
 Le profil est chargé au démarrage du processus (`import nfogen` / lancement
 de l'API ou de la CLI).
 
+**Via la CLI** (sans lancer l'API/uvicorn du tout — pratique en script ou
+pour produire le `.zip` d'un profil, y compris C411, à partager/verser dans
+un dépôt git séparé) :
+
+```bash
+export NFOGEN_PROFILES_DIR=/chemin/profils
+
+nfogen --profile-store-list                            # profils utilisateur
+nfogen --profile-store-show c411                        # regles + templates (JSON)
+nfogen --profile-store-write mon_tracker \
+       --rules-file rules.json --templates-dir templates/
+nfogen --profile-store-export c411 -o c411.zip           # partage/sauvegarde
+nfogen --profile-store-import mon_tracker --zip-file mon_tracker.zip
+nfogen --profile-store-delete mon_tracker
+```
+
+`--profile-store-export`/`--profile-store-show` fonctionnent aussi sur un
+profil **livré avec le paquet** (C411) sans qu'il ait été surchargé au
+préalable — même logique que côté API (voir plus bas).
+
 **Via l'API** (création/édition/suppression à chaud, sans redémarrage) :
 
 ```bash

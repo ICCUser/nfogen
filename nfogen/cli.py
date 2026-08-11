@@ -7,6 +7,15 @@ Exemples :
     nfogen -c audio -i /dossier/album -o album.nfo
     nfogen -c game --data jeu.json -o jeu.nfo
     nfogen --propose-name -c video -i "Season 01"  # suggestion de release_name
+
+Gestion de profils utilisateur (equivalent CLI des routes `/profiles/store*`
+de l'API, cf. `nfogen/profile_store.py` -- necessite NFOGEN_PROFILES_DIR) :
+    nfogen --profile-store-list
+    nfogen --profile-store-show c411
+    nfogen --profile-store-write mon_tracker --rules-file rules.json --templates-dir templates/
+    nfogen --profile-store-delete mon_tracker
+    nfogen --profile-store-export c411 -o c411.zip
+    nfogen --profile-store-import mon_tracker --zip-file mon_tracker.zip
 """
 from __future__ import annotations
 
@@ -15,7 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import engine
+from . import engine, profile_store
 
 
 def _load_data(path: str | None) -> dict:
@@ -64,6 +73,70 @@ def _title_hints_for_source(source: str, category: str | None) -> list[str | Non
         except Exception:
             hints.append(None)
     return hints
+
+
+def _load_templates_dir(path: str | None) -> dict[str, str]:
+    """Lit chaque `<categorie>.j2` d'un dossier de templates (meme structure
+    que `NFOGEN_PROFILES_DIR/<profil>/templates/`, ou que l'archive produite
+    par `--profile-store-export`) en `{categorie: contenu}`, pour
+    `--profile-store-write`. `None`/absent -> aucun template (profil regles
+    seules, ou dont on ne modifie pas les templates via cette commande)."""
+    if not path:
+        return {}
+    templates_dir = Path(path)
+    if not templates_dir.is_dir():
+        raise ValueError(f"--templates-dir n'est pas un dossier existant : {path}")
+    return {p.stem: p.read_text(encoding="utf-8") for p in sorted(templates_dir.glob("*.j2"))}
+
+
+def _run_profile_store_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int | None:
+    """Execute l'action `--profile-store-*` demandee, si il y en a une.
+    Renvoie un code de sortie (0 succes, 1 echec) si une action a ete
+    executee, ou `None` si aucun flag `--profile-store-*` n'a ete fourni
+    (l'appelant continue alors vers la generation normale)."""
+    try:
+        if args.profile_store_list:
+            for name in profile_store.list_profiles():
+                print(name)
+            return 0
+
+        if args.profile_store_show:
+            data = profile_store.read_profile(args.profile_store_show)
+            print(json.dumps(data, indent=2, ensure_ascii=False))
+            return 0
+
+        if args.profile_store_write:
+            rules = _load_data(args.rules_file)
+            templates = _load_templates_dir(args.templates_dir)
+            profile_store.write_profile(args.profile_store_write, rules=rules, templates=templates)
+            print(f"Profil ecrit : {args.profile_store_write}", file=sys.stderr)
+            return 0
+
+        if args.profile_store_delete:
+            profile_store.delete_profile(args.profile_store_delete)
+            print(f"Profil supprime : {args.profile_store_delete}", file=sys.stderr)
+            return 0
+
+        if args.profile_store_export:
+            if not args.out:
+                parser.error("--profile-store-export necessite -o/--out (chemin du .zip a ecrire)")
+            content = profile_store.export_profile_zip(args.profile_store_export)
+            Path(args.out).write_bytes(content)
+            print(f"Profil exporte : {args.out}", file=sys.stderr)
+            return 0
+
+        if args.profile_store_import:
+            if not args.zip_file:
+                parser.error("--profile-store-import necessite --zip-file")
+            content = Path(args.zip_file).read_bytes()
+            profile_store.import_profile_zip(args.profile_store_import, content)
+            print(f"Profil importe : {args.profile_store_import}", file=sys.stderr)
+            return 0
+    except Exception as exc:  # message clair en CLI, meme convention que la generation
+        print(f"Erreur : {exc}", file=sys.stderr)
+        return 1
+
+    return None
 
 
 def _resolve_output_path(out_arg: str | None, canonical_name: str | None) -> str | None:
@@ -116,7 +189,38 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Proposer un release_name a partir des noms de fichiers de --in (sans generer le NFO)",
     )
+    store_group = parser.add_argument_group(
+        "Gestion de profils utilisateur",
+        "Equivalent CLI des routes /profiles/store* de l'API (necessite NFOGEN_PROFILES_DIR).",
+    )
+    store_group.add_argument(
+        "--profile-store-list", action="store_true", help="Lister les profils utilisateur"
+    )
+    store_group.add_argument(
+        "--profile-store-show", metavar="NOM", help="Afficher regles + templates d'un profil (JSON)"
+    )
+    store_group.add_argument(
+        "--profile-store-write", metavar="NOM", help="Creer/remplacer un profil utilisateur"
+    )
+    store_group.add_argument(
+        "--rules-file", help="Fichier rules.json (avec --profile-store-write ; defaut : aucune regle)"
+    )
+    store_group.add_argument(
+        "--templates-dir", help="Dossier de templates *.j2 (avec --profile-store-write)"
+    )
+    store_group.add_argument("--profile-store-delete", metavar="NOM", help="Supprimer un profil utilisateur")
+    store_group.add_argument(
+        "--profile-store-export", metavar="NOM", help="Exporter un profil en .zip (avec -o)"
+    )
+    store_group.add_argument(
+        "--profile-store-import", metavar="NOM", help="Creer/remplacer un profil depuis un .zip"
+    )
+    store_group.add_argument("--zip-file", help="Fichier .zip source (avec --profile-store-import)")
     args = parser.parse_args(argv)
+
+    store_exit_code = _run_profile_store_command(args, parser)
+    if store_exit_code is not None:
+        return store_exit_code
 
     if args.list:
         for prof, cats in engine.list_available().items():

@@ -187,3 +187,41 @@ def test_export_builtin_profile_excludes_package_files():
 def test_read_unknown_profile_still_raises():
     with pytest.raises(ps.ProfileStoreError):
         ps.read_profile("ni-gere-ni-livre")
+
+
+def test_concurrent_writes_to_same_profile_never_corrupt_it():
+    """`write_profile` fait `shutil.rmtree()` puis recree le dossier fichier
+    par fichier (rules.json, puis chaque template) : sans verrou (`ps._LOCK`),
+    deux PUT concurrents sur le MEME profil (deux administrateurs, ou un
+    double-clic dans le frontend) pouvaient s'entrelacer -- une ecriture
+    supprimant ce que l'autre venait de creer (FileNotFoundError), ou une
+    lecture tombant sur un dossier partiellement ecrit. Deux threads
+    ecrivent chacun une variante distincte du meme profil en boucle ; le
+    resultat final doit toujours etre l'UNE des deux variantes entiere,
+    jamais un melange, et aucune ecriture ne doit lever d'exception."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    errors: list[Exception] = []
+
+    def write_variant(marker: str) -> None:
+        rules_variant = {
+            "game": {
+                "requires_field": "release_name",
+                "tokens": [{"name": "team", "pattern": r"-[A-Z]+$", "level": "required", "error": "x"}],
+            }
+        }
+        for _ in range(20):
+            try:
+                ps.write_profile("concurrent", rules=rules_variant, templates={"game": f"MARKER-{marker}"})
+            except Exception as exc:  # noqa: BLE001 -- capture large pour le diagnostic du test
+                errors.append(exc)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f1 = pool.submit(write_variant, "A")
+        f2 = pool.submit(write_variant, "B")
+        f1.result()
+        f2.result()
+
+    assert errors == [], f"ecriture(s) concurrente(s) en echec : {errors}"
+    template = ps.read_profile("concurrent")["templates"]["game"]
+    assert template in ("MARKER-A", "MARKER-B")

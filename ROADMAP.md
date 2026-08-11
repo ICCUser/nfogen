@@ -30,22 +30,31 @@ détaillé des changements, voir `git log`.
   ouvertes si le besoin grandit : rôles différenciés, permissions par
   profil, multi-tenant (plusieurs trackers isolés sur une même instance) —
   nécessiterait alors de revisiter le refus de base de données ci-dessus.
-- CLI : pas d'équivalent des routes `/profiles/store*` (gérer un profil
-  utilisateur sans passer par l'API).
-- Pas de verrou sur les écritures concurrentes de `profile_store.py` (deux
-  `PUT` simultanés sur le même profil) — à revisiter si l'usage multi-
-  utilisateurs s'intensifie.
+- CLI pour `/profiles/store*` : fait (`nfogen --profile-store-*`, voir
+  README.md) — gérer un profil utilisateur (lister/afficher/créer-remplacer/
+  supprimer/exporter/importer) sans lancer l'API. `--profile-store-export`
+  produit directement le `.zip` d'un profil (y compris C411, livré avec le
+  paquet) sans dépendance à uvicorn — sert aussi le point suivant.
+- Verrou sur les écritures concurrentes de `profile_store.py` : fait
+  (`_LOCK`, `threading.Lock` unique) — couvre aussi les lectures
+  (`read_profile`/`export_profile_zip`), qui pouvaient sinon tomber sur un
+  dossier partiellement écrit pendant un `write_profile`/`delete_profile`
+  concurrent.
 - Pas de tests automatisés pour le frontend.
 - Extraction côté navigateur (sans upload) limitée à la catégorie vidéo ;
   audio/jeux/ebook/3D passent encore par l'upload classique.
 - `name_proposal.py` : la saison/l'épisode restent déterminés en priorité
   par le nom de fichier (pas le tag `Title` embarqué) — à revoir si un tag
   contenant une numérotation différente est rencontré en pratique.
-- **Profils comme extensions** : à terme, considérer ne plus livrer C411
-  avec le paquet par défaut (zéro ou peu de profils nativement), et le
-  distribuer plutôt comme un `.zip` téléchargeable séparément (le mécanisme
-  d'import existe déjà, `POST /profiles/store/{name}/import`) — pour bien
-  marquer que c'est un exemple/point de départ, pas "le" profil de nfogen.
+- **Profils comme extensions** : décision (2026-08-11) — C411 reste livré
+  par défaut avec le paquet tant qu'aucun autre profil n'est disponible
+  (l'outil doit fonctionner immédiatement après installation) ; à
+  reconsidérer dès qu'un deuxième profil existe. Dans tous les cas, le
+  `.zip` du profil doit rester disponible **en plus** du profil embarqué —
+  déjà le cas via `GET /profiles/store/c411/export` (API) et
+  `nfogen --profile-store-export c411 -o c411.zip` (CLI, sans dépendance à
+  l'API) : les deux fonctionnent sur C411 sans qu'il ait besoin d'être
+  surchargé au préalable (cf. `profile_store._resolve_readable_dir`).
 - **`rules.json` : motifs regex admin-fournis sans timeout** : fait (audit du
   2026-08-11, voir plus bas) — exécution via RE2, plus un risque accepté.
 

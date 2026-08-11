@@ -26,6 +26,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,20 @@ from typing import Any
 from . import rules as rules_engine
 from .declarative_profile import CATEGORIES, register_declarative_profile
 from .registry import unregister_profile
+
+# Serialise TOUT acces disque a un profil (lecture ET ecriture) : sans ca,
+# deux PUT concurrents sur le meme profil (deux administrateurs, ou un
+# double-clic malheureux dans le frontend) pouvaient s'entrelacer --
+# write_profile() fait `shutil.rmtree()` puis recree le dossier fichier par
+# fichier, donc une lecture (read_profile/export_profile_zip) executee
+# PENDANT ce court intervalle pouvait tomber sur un dossier partiellement
+# vide ou a moitie ecrit, et deux ecritures concurrentes sur un rmtree()
+# resultaient parfois en `FileNotFoundError` (l'une supprime ce que l'autre
+# vient de creer). Verrou UNIQUE (pas un verrou par profil) : la gestion de
+# profils est une operation rare (administrateur), la contention est nulle en
+# pratique, une granularite plus fine n'apporterait rien ici. Meme principe
+# que `_ACCOUNTS_BOOTSTRAP_LOCK` dans nfogen/api.py.
+_LOCK = threading.Lock()
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 # Noms de fichier de template, indexes par categorie -- construits une seule
@@ -118,8 +133,9 @@ def read_profile(name: str) -> dict[str, Any]:
     """Contenu d'un profil (utilisateur, ou livre avec le paquet et pas
     encore surcharge -- cf. `_resolve_readable_dir`) : ses regles et le texte
     de chacun de ses templates, indexes par categorie."""
-    path = _resolve_readable_dir(name)
-    return {"name": name, **_read_rules_and_templates(path)}
+    with _LOCK:  # cf. commentaire sur _LOCK : pas de lecture pendant une ecriture concurrente
+        path = _resolve_readable_dir(name)
+        return {"name": name, **_read_rules_and_templates(path)}
 
 
 def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]) -> None:
@@ -141,24 +157,31 @@ def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]
                 f"Categorie de template inconnue : '{category}' (attendu : {', '.join(CATEGORIES)})."
             )
 
-    path = _profile_dir(name, must_exist=False)
-    if path.exists():
-        shutil.rmtree(path)
-    templates_dir = path / "templates"
-    templates_dir.mkdir(parents=True)
-    (path / "rules.json").write_text(json.dumps(rules, indent=2, ensure_ascii=False), encoding="utf-8")
-    for category, content in templates.items():
-        # `category` ne sert qu'a indexer _TEMPLATE_FILENAMES (revalide ici,
-        # pas seulement dans la boucle ci-dessus) : le nom de fichier ecrit
-        # est toujours l'une des valeurs fixes de ce dict, jamais une chaine
-        # construite a partir de `category` lui-meme.
-        try:
-            filename = _TEMPLATE_FILENAMES[category]
-        except KeyError:
-            raise ProfileStoreError(f"Categorie de template inconnue : '{category}'.") from None
-        (templates_dir / filename).write_text(content, encoding="utf-8")
+    # A partir d'ici, ecriture disque + reenregistrement : sous verrou (cf.
+    # commentaire sur _LOCK) pour ne jamais s'entrelacer avec une autre
+    # ecriture ou lecture concurrente du meme profil (ou d'un autre : verrou
+    # unique, pas par profil).
+    with _LOCK:
+        path = _profile_dir(name, must_exist=False)
+        if path.exists():
+            shutil.rmtree(path)
+        templates_dir = path / "templates"
+        templates_dir.mkdir(parents=True)
+        (path / "rules.json").write_text(
+            json.dumps(rules, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        for category, content in templates.items():
+            # `category` ne sert qu'a indexer _TEMPLATE_FILENAMES (revalide ici,
+            # pas seulement dans la boucle ci-dessus) : le nom de fichier ecrit
+            # est toujours l'une des valeurs fixes de ce dict, jamais une chaine
+            # construite a partir de `category` lui-meme.
+            try:
+                filename = _TEMPLATE_FILENAMES[category]
+            except KeyError:
+                raise ProfileStoreError(f"Categorie de template inconnue : '{category}'.") from None
+            (templates_dir / filename).write_text(content, encoding="utf-8")
 
-    _reregister(name, rules)
+        _reregister(name, rules)
 
 
 def delete_profile(name: str) -> None:
@@ -169,16 +192,17 @@ def delete_profile(name: str) -> None:
     du profil livre d'origine -- sinon il resterait inscrit nulle part
     jusqu'au prochain redemarrage du processus (cf. `unregister_profile`
     ci-dessous, qui ne sait pas qu'un profil livre du meme nom existe)."""
-    path = _profile_dir(name, must_exist=True)
-    shutil.rmtree(path)
-    unregister_profile(name)
+    with _LOCK:  # cf. commentaire sur _LOCK
+        path = _profile_dir(name, must_exist=True)
+        shutil.rmtree(path)
+        unregister_profile(name)
 
-    from .profiles import BUILTIN_PROFILE_DIRS
+        from .profiles import BUILTIN_PROFILE_DIRS
 
-    builtin_dir = BUILTIN_PROFILE_DIRS.get(name)
-    if builtin_dir is not None:
-        register_declarative_profile(name, _read_rules_and_templates(builtin_dir)["rules"])
-    _clear_template_cache()
+        builtin_dir = BUILTIN_PROFILE_DIRS.get(name)
+        if builtin_dir is not None:
+            register_declarative_profile(name, _read_rules_and_templates(builtin_dir)["rules"])
+        _clear_template_cache()
 
 
 def export_profile_zip(name: str) -> bytes:
@@ -191,17 +215,18 @@ def export_profile_zip(name: str) -> bytes:
     entier) : un profil livre avec le paquet contient aussi `__init__.py` et
     `__pycache__/`, qui ne doivent jamais finir dans une archive destinee a
     etre partagee."""
-    path = _resolve_readable_dir(name)
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        rules_file = path / "rules.json"
-        if rules_file.is_file():
-            zf.write(rules_file, "rules.json")
-        templates_dir = path / "templates"
-        if templates_dir.is_dir():
-            for f in sorted(templates_dir.glob("*.j2")):
-                zf.write(f, f"templates/{f.name}")
-    return buf.getvalue()
+    with _LOCK:  # cf. commentaire sur _LOCK : pas de lecture pendant une ecriture concurrente
+        path = _resolve_readable_dir(name)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            rules_file = path / "rules.json"
+            if rules_file.is_file():
+                zf.write(rules_file, "rules.json")
+            templates_dir = path / "templates"
+            if templates_dir.is_dir():
+                for f in sorted(templates_dir.glob("*.j2")):
+                    zf.write(f, f"templates/{f.name}")
+        return buf.getvalue()
 
 
 def import_profile_zip(name: str, content: bytes) -> None:
