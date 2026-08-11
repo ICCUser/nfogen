@@ -2,22 +2,13 @@
 
 Un profil utilisateur est un dossier `<NFOGEN_PROFILES_DIR>/<nom>/` contenant
 un `rules.json` (optionnel) et un dossier `templates/` (fichiers
-`<categorie>.j2`) — exactement la structure d'un profil embarque comme
-`nfogen/profiles/c411/`. Ce module ne fait que lire/ecrire ces fichiers et
-(re)enregistrer le profil auprès du coeur via
-`nfogen.declarative_profile.register_declarative_profile` ; il ne connait
-rien de HTTP, pour rester utilisable aussi bien par l'API que par un futur
-usage CLI.
+`<categorie>.j2`) -- meme structure qu'un profil embarque comme
+`nfogen/profiles/c411/`. Ne connait rien de HTTP : utilisable par l'API et la CLI.
 
-Un profil livre avec le paquet (ex. C411, voir
-`nfogen.profiles.BUILTIN_PROFILE_DIRS`) peut etre LU (et exporte) ici meme
-sans avoir ete surcharge -- pour permettre a un administrateur de partir de
-son contenu actuel avant d'enregistrer une modification. L'ECRIRE (`write_
-profile`) cree alors un profil utilisateur du MEME nom dans
-`NFOGEN_PROFILES_DIR`, qui prend le dessus sur le profil livre (cf.
-`nfogen/profiles/__init__.py`) ; le code source du profil livre lui-meme
-n'est jamais modifie. Supprimer cette surcharge (`delete_profile`) restaure
-l'enregistrement du profil livre d'origine.
+Un profil livre avec le paquet (voir `nfogen.profiles.BUILTIN_PROFILE_DIRS`)
+reste lisible/exportable ici meme sans avoir ete surcharge. L'ecrire cree un
+profil utilisateur du meme nom qui prend le dessus ; le supprimer restaure
+l'enregistrement du profil livre.
 """
 from __future__ import annotations
 
@@ -35,27 +26,12 @@ from . import rules as rules_engine
 from .declarative_profile import CATEGORIES, register_declarative_profile
 from .registry import unregister_profile
 
-# Serialise TOUT acces disque a un profil (lecture ET ecriture) : sans ca,
-# deux PUT concurrents sur le meme profil (deux administrateurs, ou un
-# double-clic malheureux dans le frontend) pouvaient s'entrelacer --
-# write_profile() fait `shutil.rmtree()` puis recree le dossier fichier par
-# fichier, donc une lecture (read_profile/export_profile_zip) executee
-# PENDANT ce court intervalle pouvait tomber sur un dossier partiellement
-# vide ou a moitie ecrit, et deux ecritures concurrentes sur un rmtree()
-# resultaient parfois en `FileNotFoundError` (l'une supprime ce que l'autre
-# vient de creer). Verrou UNIQUE (pas un verrou par profil) : la gestion de
-# profils est une operation rare (administrateur), la contention est nulle en
-# pratique, une granularite plus fine n'apporterait rien ici. Meme principe
-# que `_ACCOUNTS_BOOTSTRAP_LOCK` dans nfogen/api.py.
+# Verrou unique sur tout acces disque a un profil (lecture ET ecriture) :
+# evite qu'une lecture tombe sur un dossier partiellement ecrit, ou que deux
+# ecritures concurrentes sur le meme profil se marchent dessus.
 _LOCK = threading.Lock()
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-# Noms de fichier de template, indexes par categorie -- construits une seule
-# fois a partir de la liste fixe CATEGORIES (jamais d'une valeur fournie par
-# l'appelant). Utiliser ce dict comme table de correspondance (au lieu de
-# formater `category` directement dans un nom de fichier) fait que la valeur
-# qui finit dans le chemin ecrit n'est jamais, syntaxiquement, derivee de
-# l'entree utilisateur : `category` ne sert plus qu'a une recherche de cle.
 _TEMPLATE_FILENAMES = {category: f"{category}.j2" for category in CATEGORIES}
 
 
@@ -90,20 +66,12 @@ def _profile_dir(name: str, *, must_exist: bool) -> Path:
 
 
 def list_profiles() -> list[str]:
-    """Noms des profils utilisateur presents dans NFOGEN_PROFILES_DIR (PAS
-    les profils livres avec le paquet non surcharges -- cf. `read_profile`
-    pour lire leur contenu malgre tout)."""
+    """Profils utilisateur presents dans NFOGEN_PROFILES_DIR (pas les profils livres)."""
     return sorted(p.name for p in _root().iterdir() if p.is_dir())
 
 
 def _resolve_readable_dir(name: str) -> Path:
-    """Dossier source d'un profil EXISTANT pour une operation de LECTURE
-    (`read_profile`, `export_profile_zip`) : un profil utilisateur
-    (`NFOGEN_PROFILES_DIR/<name>/`) s'il existe, sinon un profil livre avec
-    le paquet du meme nom (`nfogen.profiles.BUILTIN_PROFILE_DIRS`). Contraire
-    a `_profile_dir(must_exist=True)` : ne suppose pas que NFOGEN_PROFILES_DIR
-    est configuree (un profil livre doit rester lisible sans elle), et ne
-    leve qu'en dernier recours, si aucune des deux sources n'existe."""
+    """Dossier source d'un profil existant : utilisateur, sinon livre avec le paquet."""
     _check_name(name)
     root = os.environ.get("NFOGEN_PROFILES_DIR")
     if root:
@@ -130,24 +98,14 @@ def _read_rules_and_templates(path: Path) -> dict[str, Any]:
 
 
 def read_profile(name: str) -> dict[str, Any]:
-    """Contenu d'un profil (utilisateur, ou livre avec le paquet et pas
-    encore surcharge -- cf. `_resolve_readable_dir`) : ses regles et le texte
-    de chacun de ses templates, indexes par categorie."""
-    with _LOCK:  # cf. commentaire sur _LOCK : pas de lecture pendant une ecriture concurrente
+    with _LOCK:
         path = _resolve_readable_dir(name)
         return {"name": name, **_read_rules_and_templates(path)}
 
 
 def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]) -> None:
-    """Cree ou remplace entierement un profil utilisateur : valide le schema
-    des regles, ecrit les fichiers sur disque, puis (re)enregistre le profil
-    auprès du coeur. La validation a lieu avant toute ecriture : un rules.json
-    invalide ne touche jamais le disque."""
+    """Cree ou remplace un profil : valide avant d'ecrire, rien ne touche le disque en cas d'erreur."""
     try:
-        # Schema + securite des motifs regex (protection ReDoS via RE2) : les
-        # deux sont verifies par ce seul appel (cf. nfogen/rules.py:
-        # validate_rules_document), un profil invalide ne touche jamais le
-        # disque.
         rules_engine.validate_rules_document(rules)
     except ValueError as exc:
         raise ProfileStoreError(str(exc)) from exc
@@ -157,10 +115,6 @@ def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]
                 f"Categorie de template inconnue : '{category}' (attendu : {', '.join(CATEGORIES)})."
             )
 
-    # A partir d'ici, ecriture disque + reenregistrement : sous verrou (cf.
-    # commentaire sur _LOCK) pour ne jamais s'entrelacer avec une autre
-    # ecriture ou lecture concurrente du meme profil (ou d'un autre : verrou
-    # unique, pas par profil).
     with _LOCK:
         path = _profile_dir(name, must_exist=False)
         if path.exists():
@@ -171,10 +125,6 @@ def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]
             json.dumps(rules, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         for category, content in templates.items():
-            # `category` ne sert qu'a indexer _TEMPLATE_FILENAMES (revalide ici,
-            # pas seulement dans la boucle ci-dessus) : le nom de fichier ecrit
-            # est toujours l'une des valeurs fixes de ce dict, jamais une chaine
-            # construite a partir de `category` lui-meme.
             try:
                 filename = _TEMPLATE_FILENAMES[category]
             except KeyError:
@@ -185,14 +135,8 @@ def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]
 
 
 def delete_profile(name: str) -> None:
-    """Supprime un profil utilisateur du disque et du registre.
-
-    Si `name` correspond aussi a un profil livre avec le paquet (ex.
-    "c411") que ce profil utilisateur surchargeait, restaure l'enregistrement
-    du profil livre d'origine -- sinon il resterait inscrit nulle part
-    jusqu'au prochain redemarrage du processus (cf. `unregister_profile`
-    ci-dessous, qui ne sait pas qu'un profil livre du meme nom existe)."""
-    with _LOCK:  # cf. commentaire sur _LOCK
+    """Supprime un profil utilisateur ; restaure le profil livre du meme nom, s'il existe."""
+    with _LOCK:
         path = _profile_dir(name, must_exist=True)
         shutil.rmtree(path)
         unregister_profile(name)
@@ -206,16 +150,8 @@ def delete_profile(name: str) -> None:
 
 
 def export_profile_zip(name: str) -> bytes:
-    """Empaquette `rules.json` + `templates/*.j2` d'un profil (utilisateur,
-    ou livre avec le paquet et pas encore surcharge) en `.zip` (meme
-    structure que sur disque, prete a etre redeposee ailleurs ou versionnee
-    dans un depot git).
-
-    N'inclut QUE ces deux types de fichiers (jamais un `rglob` du dossier
-    entier) : un profil livre avec le paquet contient aussi `__init__.py` et
-    `__pycache__/`, qui ne doivent jamais finir dans une archive destinee a
-    etre partagee."""
-    with _LOCK:  # cf. commentaire sur _LOCK : pas de lecture pendant une ecriture concurrente
+    """Empaquette rules.json + templates/*.j2 en .zip (jamais __init__.py/__pycache__)."""
+    with _LOCK:
         path = _resolve_readable_dir(name)
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -230,8 +166,7 @@ def export_profile_zip(name: str) -> bytes:
 
 
 def import_profile_zip(name: str, content: bytes) -> None:
-    """Cree/remplace un profil utilisateur a partir d'un `.zip` produit par
-    `export_profile_zip` (ou construit a la main avec la meme structure)."""
+    """Cree/remplace un profil a partir d'un .zip produit par `export_profile_zip`."""
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
             names = zf.namelist()
@@ -258,9 +193,7 @@ def _reregister(name: str, rules: dict[str, Any]) -> None:
 
 
 def _clear_template_cache() -> None:
-    """Les templates sont mis en cache par `render.py` (`lru_cache`) : un
-    profil utilisateur cree/modifie/supprime doit etre visible immediatement,
-    sans redemarrer le processus."""
+    """Les templates sont mis en cache (lru_cache) : a vider pour qu'un profil modifie soit visible."""
     from .render import _env
 
     _env.cache_clear()

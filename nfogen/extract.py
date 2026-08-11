@@ -23,37 +23,22 @@ def _video_files(source: Path) -> list[Path]:
 
 
 def extract_video_text(source: Path, *, full: bool = False) -> str:
-    """Renvoie la sortie texte MediaInfo (vue par defaut) d'un fichier video.
-
-    C'est exactement le format attendu par le profil 'Films & Videos' de C411,
-    a une exception deliberee : le champ "Complete name" est reduit au seul
-    nom de fichier (jamais le chemin complet local/temporaire) avant d'etre
-    renvoye. Le chemin sur la machine qui genere le NFO (utilisateur Windows,
-    arborescence de telechargement, dossier temporaire d'upload...) n'a
-    aucune valeur informative pour qui lit le NFO et ne doit pas fuiter dans
-    un fichier destine a etre partage publiquement.
-
-    Necessite libmediainfo (paquet systeme).
-    """
+    """Sortie texte MediaInfo d'un fichier video ; "Complete name" reduit au
+    seul nom de fichier (jamais le chemin local complet). Necessite libmediainfo."""
     from pymediainfo import MediaInfo
 
     source = Path(source)
     if not source.is_file():
         raise FileNotFoundError(f"Fichier introuvable : {source}")
     text = MediaInfo.parse(str(source), output="", full=full)
-    if not isinstance(text, str):  # garde-fou : selon la version
+    if not isinstance(text, str):
         text = str(text)
     text = text.replace("\r\n", "\n").strip("\n") + "\n"
     return _COMPLETE_NAME_RE.sub(lambda m: f"{m.group(1)}{source.name}", text, count=1)
 
 
 def extract_video_dir_text(source: Path, *, full: bool = False) -> str:
-    """Concatene la sortie texte MediaInfo de chaque video d'un dossier.
-
-    Format des packs saison C411 (plusieurs episodes dans un seul NFO) : les
-    blocs General/Video/Audio/Menu de chaque fichier se suivent, tries par
-    nom de fichier, separes par une ligne vide.
-    """
+    """Concatene la sortie MediaInfo de chaque video d'un dossier (pack saison)."""
     source = Path(source)
     files = _video_files(source)
     if not files:
@@ -62,20 +47,8 @@ def extract_video_dir_text(source: Path, *, full: bool = False) -> str:
 
 
 def extract_video_metadata(source: Path) -> dict[str, Any]:
-    """Donnees video structurees (MediaInfo), pas le texte de rendu.
-
-    Sert aux validateurs de profil pour comparer ce qu'annonce un
-    release_name (langue, resolution, codec) a ce que le fichier contient
-    reellement, meme quand le rendu video est un passthrough brut :
-    - `video_height` / `video_format` : piste video (ex. 1080, "AVC").
-    - `audio_languages` / `subtitle_languages` : une entree par piste, code
-      de langue rapporte par MediaInfo ou None si la piste n'a pas ce tag.
-    - `general_title` : tag `Title` du conteneur (piste General), souvent
-      renseigne a la main par l'auteur de la release avec un descriptif
-      complet (resolution, codec, equipe...) -- utile pour la proposition de
-      `release_name` (`nfogen.name_proposal`) quand le nom de fichier seul
-      n'est pas assez precis. None si absent.
-    """
+    """Donnees video structurees (MediaInfo), utilisees par les validateurs
+    de profil (cross-check release_name/fichier) et `name_proposal`."""
     from pymediainfo import MediaInfo
 
     source = Path(source)
@@ -92,10 +65,8 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
 
 
 def extract_video_dir_metadata(source: Path) -> list[dict[str, Any]]:
-    """Comme `extract_video_metadata`, pour chaque fichier video d'un dossier
-    (pack saison). Chaque dict a en plus une cle 'name' (nom du fichier), pour
-    que les avertissements de validation puissent identifier l'episode concerne.
-    """
+    """Comme `extract_video_metadata`, pour chaque fichier d'un pack saison
+    (chaque dict a en plus une cle 'name')."""
     source = Path(source)
     out = []
     for p in _video_files(source):
@@ -146,12 +117,7 @@ def _audio_track_info(path: Path) -> dict[str, Any]:
 
 
 def extract_album(source: Path) -> dict[str, Any]:
-    """Construit le contexte d'un album a partir d'un dossier de fichiers audio.
-
-    Renvoie un dict pret a alimenter le template audio (artiste, album, codec,
-    tracklist, taille et duree totales...). Les champs editoriaux non lisibles
-    dans les tags (genre, annee) peuvent etre completes par l'appelant.
-    """
+    """Contexte d'un album audio (artiste, tracklist, taille/duree totales...)."""
     source = Path(source)
     files = sorted(
         (p for p in source.iterdir() if p.suffix.lower() in AUDIO_EXTS),
@@ -161,10 +127,8 @@ def extract_album(source: Path) -> dict[str, Any]:
         raise ValueError(f"Aucun fichier audio trouve dans : {source}")
 
     tracks_raw = [_audio_track_info(p) for p in files]
-    # On ordonne par numero de piste si disponible, sinon par nom.
     tracks_raw.sort(key=lambda t: (t["track_no"] is None, t["track_no"], t["path"].name))
 
-    # Detail technique du 1er fichier (representatif de l'album) via MediaInfo.
     tech = _audio_tech(files[0])
 
     total_size = sum(t["size"] for t in tracks_raw)
@@ -240,11 +204,7 @@ def _audio_tech(path: Path) -> dict[str, Any]:
 
 
 def scan_files(source: Path) -> dict[str, Any]:
-    """Infos generiques d'un fichier/dossier : nombre, taille totale, formats.
-
-    Utile aux profils Jeux / eBook / Impression 3D pour pre-remplir les champs
-    derivables automatiquement, le reste etant fourni par l'appelant.
-    """
+    """Infos generiques d'un fichier/dossier : nombre, taille totale, formats."""
     source = Path(source)
     if source.is_dir():
         files = [p for p in source.rglob("*") if p.is_file()]

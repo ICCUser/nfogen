@@ -1,21 +1,13 @@
 """Comptes administrateurs nommes (`NFOGEN_ACCOUNTS_FILE`), alternative a
 l'unique `NFOGEN_API_TOKEN` partage.
 
-Un seul role existe ("administrateur") : un compte donne acces exactement
-aux memes routes que le token (`/profiles/store*`, et `/generate*` si
-`NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1`). L'interet de plusieurs comptes
-nommes n'est pas une granularite de droits, mais de pouvoir distinguer/
-revoquer un acces individuel sans toucher au secret des autres.
+Un seul role existe ("administrateur") : un compte nomme donne acces exactement
+aux memes routes que le token. L'interet n'est pas une granularite de droits,
+mais de pouvoir distinguer/revoquer un acces individuel sans toucher au
+secret des autres.
 
 Fichier JSON `{"identifiant": "<hash>", ...}` -- jamais les mots de passe en
-clair. Hash PBKDF2-HMAC-SHA256 (bibliotheque standard `hashlib`, pas de
-dependance supplementaire comme bcrypt/argon2 pour une fonctionnalite
-optionnelle). Relu a chaque authentification (pas de cache) : une
-modification du fichier prend effet immediatement, sans redemarrer le
-processus -- negligeable en cout, les tentatives de connexion sont rares.
-
-Ce module ne connait rien de HTTP (comme `profile_store.py`) : les routes
-`/accounts*` de `nfogen/api.py` traduisent `AccountsError` en 400.
+clair (PBKDF2-HMAC-SHA256). Relu a chaque authentification (pas de cache).
 """
 from __future__ import annotations
 
@@ -57,18 +49,14 @@ def _check_username(username: str) -> None:
 
 
 def hash_password(password: str) -> str:
-    """`pbkdf2_sha256$<iterations>$<sel hex>$<hash hex>` -- sel aleatoire par
-    mot de passe (jamais reutilise), nombre d'iterations stocke avec le hash
-    pour pouvoir l'augmenter plus tard sans casser les hashs existants."""
+    """`pbkdf2_sha256$<iterations>$<sel hex>$<hash hex>` -- sel aleatoire par mot de passe."""
     salt = secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), _ITERATIONS)
     return f"{_ALGO}${_ITERATIONS}${salt}${digest.hex()}"
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    """Comparaison en temps constant (`hmac.compare_digest`) : une
-    comparaison naive (`==`) sur le hash fuiterait, via le temps de reponse,
-    la position du premier octet different."""
+    """Comparaison en temps constant (`hmac.compare_digest`)."""
     try:
         algo, iterations_s, salt, expected_hex = hashed.split("$")
         if algo != _ALGO:
@@ -110,10 +98,7 @@ def create_account(username: str, password: str) -> None:
 
 
 def delete_account(username: str) -> None:
-    """Supprime un compte. Refuse de supprimer le DERNIER compte restant :
-    sans cette garde, un administrateur pourrait se verrouiller lui-meme hors
-    de la gestion des comptes (si `NFOGEN_API_TOKEN` n'est pas configuree en
-    secours)."""
+    """Refuse de supprimer le dernier compte restant (verrouillage hors gestion)."""
     accounts = _load()
     if username not in accounts:
         raise AccountsError(f"Compte inconnu : '{username}'.")

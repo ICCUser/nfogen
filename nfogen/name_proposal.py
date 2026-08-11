@@ -1,21 +1,10 @@
 """Proposition automatique d'un release_name a partir des noms de fichiers
 sources (vise les packs saison/episodes video, ex. C411).
 
-Volontairement base UNIQUEMENT sur les noms de fichiers (et, en complement
-optionnel, le tag `Title` embarque dans le conteneur video par l'auteur de la
-release) : pas besoin de lire le CONTENU des fichiers pour obtenir une
-suggestion a partir du nom seul, ce qui la rend utilisable instantanement
-depuis le navigateur meme pour des fichiers de plusieurs centaines de Go (cf.
-page "Generer" du frontend). Le tag `Title`, quand il est fourni, est traite
-en priorite : c'est une indication ecrite par l'auteur de la release, donc
-plus fiable qu'un nom de fichier parfois generique (ex. packs ou le nom de
-fichier ne contient pas la resolution/le codec, mais le tag embarque oui).
-
-C'est une PROPOSITION a relire avant generation, jamais une valeur appliquee
-a l'aveugle : les champs non determinables (titre, identifiant, equipe...)
-recoivent un placeholder explicite plutot qu'une valeur inventee, et chaque
-ambiguite reelle (saisons ou equipes differentes dans le meme lot) est une
-erreur plutot qu'un choix arbitraire.
+Base uniquement sur les noms de fichiers et, en complement optionnel, le tag
+`Title` embarque dans le conteneur video (pas le contenu du fichier) : utilisable
+instantanement, meme pour des fichiers de plusieurs centaines de Go. C'est
+une PROPOSITION a relire, jamais une valeur appliquee a l'aveugle.
 """
 from __future__ import annotations
 
@@ -31,9 +20,6 @@ _RESOLUTION_RE = re.compile(r"\b(\d{3,4})p\b", re.IGNORECASE)
 _VIDEO_CODEC_RE = re.compile(r"\b([xX]26[45]|HEVC|AVC|MPEG-?2|[Hh]\.?26[45])\b")
 _AUDIO_CODEC_RE = re.compile(r"\b(AC3|EAC3|AAC|DTS(?:-HD)?|FLAC|MP3|OPUS|TRUEHD)\b", re.IGNORECASE)
 _CHANNELS_RE = re.compile(r"\b(\d(?:\.\d))\b")
-# Tag d'equipe en fin de chaine, ex. "...x264-TEAM" ou "...x264 - Team44"
-# (espaces autour du tiret tolerees : frequent dans les tags `Title` embarques,
-# ecrits a la main, par opposition aux noms de fichiers generes automatiquement).
 _TEAM_RE = re.compile(r"-\s*([A-Za-z0-9]+)\s*$")
 _SOURCE_RE = re.compile(
     r"\b(WEB-?DL|WEBRip|BDRip|BDRemux|BluRay|HDTV|DVDRip|DSNP|NF|AMZN)\b", re.IGNORECASE
@@ -47,10 +33,7 @@ _SOURCE_ALIASES = {
 
 @dataclass
 class NameProposal:
-    """Resultat d'une proposition : `name` est None si elle est impossible
-    (ambiguite reelle, pas seulement une donnee manquante) ; `fields` donne
-    la decomposition utilisee (utile pour deboguer/ajuster le template) ;
-    `warnings` signale les champs devines/placeholder a relire avant generation."""
+    """`name` est None si la proposition est impossible (ambiguite reelle)."""
 
     name: str | None
     fields: dict[str, str]
@@ -78,8 +61,7 @@ def _extract_team(text: str) -> str | None:
 
 
 def _find_season(text: str) -> tuple[str | None, str | None]:
-    """Retourne (saison, episode) si trouves dans `text`, episode est None
-    pour un tag de saison seule (pack)."""
+    """(saison, episode) ; episode est None pour un tag de saison seule (pack)."""
     match = _SEASON_EP_RE.search(text)
     if match:
         return match.group(1), match.group(2)
@@ -90,17 +72,11 @@ def _find_season(text: str) -> tuple[str | None, str | None]:
 
 
 def _extract_release_info(text: str, language_aliases: dict[str, str]) -> dict[str, str]:
-    """Recherche resolution/codec video/audio/source/langue n'importe ou dans
-    `text` (pas seulement dans des crochets `[...]`) : couvre aussi bien les
-    noms de fichiers "scene" sans crochets que le tag `Title` embarque dans le
-    conteneur, qui est du texte libre separe par des espaces."""
+    """Cherche resolution/codec video/audio/source/langue n'importe ou dans `text`."""
     info = {"language": "", "resolution": "", "video_codec": "", "audio": "", "source": ""}
     if not text:
         return info
 
-    # Les alias les plus longs sont testes en premier (ex. "FR+JA" avant "FR")
-    # pour qu'un alias plus court ne "gagne" pas juste parce qu'il est aussi
-    # une sous-chaine litterale d'un alias plus specifique present dans le texte.
     for alias, normalized in sorted(language_aliases.items(), key=lambda kv: -len(kv[0])):
         if alias and alias in text:
             info["language"] = normalized
@@ -129,9 +105,7 @@ def _extract_release_info(text: str, language_aliases: dict[str, str]) -> dict[s
 
 
 def _merge_release_info(primary: dict[str, str], fallback: dict[str, str]) -> dict[str, str]:
-    """`primary` (typiquement le tag `Title` embarque) l'emporte sur
-    `fallback` (le nom de fichier) champ par champ, des qu'il a trouve une
-    valeur."""
+    """`primary` (typiquement le tag `Title`) l'emporte sur `fallback` (nom de fichier)."""
     return {key: primary.get(key) or fallback.get(key, "") for key in fallback}
 
 
@@ -140,20 +114,11 @@ def propose_video_release_name(
     config: dict[str, Any],
     title_hints: list[str | None] | None = None,
 ) -> NameProposal:
-    """Construit une proposition de `release_name` pour la categorie video a
-    partir des noms de fichiers (1 fichier = episode/film, plusieurs = pack
-    saison). `config` est le contenu de `rules.json -> video -> name_proposal`
-    (`template`, `language_aliases`) ; sans `template`, aucune proposition
-    n'est possible pour ce profil (retourne un avertissement explicite, pas
-    une erreur bloquante).
-
-    `title_hints`, optionnel, donne pour chaque fichier (meme ordre/longueur
-    que `filenames`) le tag `Title` du conteneur video s'il est connu (ex.
-    extrait via MediaInfo cote navigateur) : quand il est present, il est
-    prioritaire sur le nom de fichier pour la resolution/le codec/la
-    source/l'equipe, car c'est une indication ecrite par l'auteur de la
-    release. `None` ou liste de longueur differente : ignore silencieusement
-    (proposition basee sur les noms de fichiers seuls, comme avant)."""
+    """Construit une proposition de `release_name` (1 fichier = episode/film,
+    plusieurs = pack saison). `config` vient de `rules.json -> video ->
+    name_proposal` (`template`, `language_aliases`). `title_hints`, optionnel
+    (meme ordre/longueur que `filenames`), est prioritaire sur le nom de
+    fichier pour resolution/codec/source/equipe."""
     if not filenames:
         return NameProposal(None, {}, ["Aucun fichier fourni."])
 
@@ -182,10 +147,6 @@ def propose_video_release_name(
     has_single_episode = len(stems) == 1
     episode = None
     for stem, hint in zip(stems, hints):
-        # Le nom de fichier est prioritaire pour la saison/l'episode : c'est
-        # generalement la convention de nommage la plus fiable et la plus
-        # precise (le tag `Title` embarque, texte libre, omet parfois le
-        # numero d'episode meme pour un fichier unique).
         season, ep = _find_season(stem)
         if season is None and hint:
             season, ep = _find_season(hint)

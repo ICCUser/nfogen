@@ -5,9 +5,7 @@ que par les templates Jinja (exposees comme filtres dans render.py).
 """
 from __future__ import annotations
 
-# Unites binaires, comme MediaInfo (KiB / MiB / GiB ...).
 _BIN_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
-# Unites decimales "a la francaise" (o / Ko / Mo / Go ...).
 _DEC_UNITS = ["o", "Ko", "Mo", "Go", "To"]
 
 

@@ -35,10 +35,7 @@ def _load_data(path: str | None) -> dict:
 
 
 def _video_entries_for_source(source: str, category: str | None) -> list[Path]:
-    """Fichiers a considerer pour la proposition de nom (noms ET, pour la
-    video, tags `Title` embarques). Pour un dossier video, ne retient que les
-    extensions video connues (cf. `extract.VIDEO_EXTS`) : un .srt/.nfo egare
-    ne doit pas fausser la detection de saison/equipe."""
+    """Fichiers a considerer pour la proposition de nom (filtre les extensions video)."""
     path = Path(source)
     if not path.is_dir():
         return [path]
@@ -56,12 +53,7 @@ def _filenames_for_source(source: str, category: str | None) -> list[str]:
 
 
 def _title_hints_for_source(source: str, category: str | None) -> list[str | None] | None:
-    """Tag `Title` du conteneur (piste General) de chaque fichier, dans le
-    meme ordre que `_filenames_for_source`, pour affiner la proposition (cf.
-    `nfogen.name_proposal`). Contrairement aux noms de fichiers, ceci lit
-    l'entete du fichier (rapide, MediaInfo ne lit pas le flux video) -- mais
-    seulement pour la categorie video, et de maniere best-effort (un fichier
-    illisible donne simplement None pour cette entree, pas d'erreur)."""
+    """Tag `Title` du conteneur de chaque fichier video (best-effort, cf. `name_proposal`)."""
     if category != "video":
         return None
     from . import extract
@@ -76,11 +68,7 @@ def _title_hints_for_source(source: str, category: str | None) -> list[str | Non
 
 
 def _load_templates_dir(path: str | None) -> dict[str, str]:
-    """Lit chaque `<categorie>.j2` d'un dossier de templates (meme structure
-    que `NFOGEN_PROFILES_DIR/<profil>/templates/`, ou que l'archive produite
-    par `--profile-store-export`) en `{categorie: contenu}`, pour
-    `--profile-store-write`. `None`/absent -> aucun template (profil regles
-    seules, ou dont on ne modifie pas les templates via cette commande)."""
+    """Lit chaque `<categorie>.j2` d'un dossier de templates en `{categorie: contenu}`."""
     if not path:
         return {}
     templates_dir = Path(path)
@@ -90,10 +78,7 @@ def _load_templates_dir(path: str | None) -> dict[str, str]:
 
 
 def _run_profile_store_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int | None:
-    """Execute l'action `--profile-store-*` demandee, si il y en a une.
-    Renvoie un code de sortie (0 succes, 1 echec) si une action a ete
-    executee, ou `None` si aucun flag `--profile-store-*` n'a ete fourni
-    (l'appelant continue alors vers la generation normale)."""
+    """Execute l'action `--profile-store-*` demandee. `None` si aucune n'a ete fournie."""
     try:
         if args.profile_store_list:
             for name in profile_store.list_profiles():
@@ -132,7 +117,7 @@ def _run_profile_store_command(args: argparse.Namespace, parser: argparse.Argume
             profile_store.import_profile_zip(args.profile_store_import, content)
             print(f"Profil importe : {args.profile_store_import}", file=sys.stderr)
             return 0
-    except Exception as exc:  # message clair en CLI, meme convention que la generation
+    except Exception as exc:
         print(f"Erreur : {exc}", file=sys.stderr)
         return 1
 
@@ -140,18 +125,7 @@ def _run_profile_store_command(args: argparse.Namespace, parser: argparse.Argume
 
 
 def _resolve_output_path(out_arg: str | None, canonical_name: str | None) -> str | None:
-    """Determine le chemin de sortie final, en respectant la regle de nommage
-    du profil/categorie quand elle existe (`canonical_name`, ou None si le
-    profil n'en impose pas).
-
-    - Pas de -o : renvoie None (sortie stdout, le nom de fichier ne s'applique
-      pas puisque rien n'est ecrit sur disque).
-    - Pas de regle de nommage pour ce profil/categorie : -o est utilise tel
-      quel (comportement historique, aucune contrainte).
-    - -o pointe vers un dossier existant : on y ecrit sous le nom impose.
-    - -o pointe vers un nom de fichier precis : il doit correspondre exactement
-      au nom impose, sinon on refuse (le nom du NFO doit respecter le profil).
-    """
+    """Chemin de sortie final, en respectant le nom impose par le profil s'il y en a un."""
     if out_arg is None:
         return None
     if canonical_name is None:
@@ -264,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
             filename=filename,
         )
         out_path = _resolve_output_path(args.out, filename[0] if filename else None)
-    except Exception as exc:  # message clair en CLI
+    except Exception as exc:
         print(f"Erreur : {exc}", file=sys.stderr)
         return 1
 

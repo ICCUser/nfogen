@@ -1,24 +1,11 @@
 """Enregistrement generique d'un profil 100% declaratif.
 
 Un profil "declaratif" ne contient aucune ligne de Python qui lui soit
-propre : il fournit seulement un `rules.json` (regles de nommage par
-categorie, voir `nfogen/rules.py`) et des templates `.j2` (voir
-`nfogen/render.py`). Ce module sait construire, pour les 5 categories fixes
-du coeur (`CATEGORIES`), les fonctions de rendu/validation/nommage et les
-enregistrer auprès de `nfogen.registry` — c'est la SEULE fonction que ce
-module expose : `register_declarative_profile(profile, rules)`.
-
-C'est le mecanisme utilise pour :
-- le profil livre avec le paquet (`nfogen/profiles/c411/__init__.py`, qui
-  n'est plus qu'un point d'entree appelant cette fonction) ;
-- les profils utilisateur charges depuis `NFOGEN_PROFILES_DIR`
-  (`nfogen/profiles/__init__.py`) ou geres via l'API (`nfogen/profile_store.py`).
-
-Ajouter un profil ne demande donc jamais de toucher ce fichier : seulement un
-`rules.json` + des `.j2`. La seule logique vraiment "cablee" ici est le choix
-de la source de donnees par categorie (lire un fichier video via MediaInfo,
-un dossier audio via mutagen, ou juste scanner des fichiers) — c'est une
-question de *type de contenu*, pas de *profil*, donc strictement generique.
+propre : il fournit un `rules.json` (voir `nfogen/rules.py`) et des templates
+`.j2` (voir `nfogen/render.py`). Ce module construit, pour les 5 categories
+fixes (`CATEGORIES`), les fonctions de rendu/validation/nommage et les
+enregistre aupres de `nfogen.registry`. Seule fonction exposee :
+`register_declarative_profile(profile, rules)`.
 """
 from __future__ import annotations
 
@@ -94,24 +81,15 @@ def _make_render_scan(profile: str, category: str) -> Callable[[RenderContext], 
 
 def _make_validator(category: str, schema: dict[str, Any]) -> Callable[[RenderContext, str], list[str]]:
     def validate(ctx: RenderContext, _nfo: str) -> list[str]:
-        value = rules_engine.validate_and_get(ctx.data, schema)  # leve si absent/non conforme
+        value = rules_engine.validate_and_get(ctx.data, schema)
         warnings = rules_engine.warnings(value, schema)
         capture_values = rules_engine.captures(value, schema)
 
-        # Le croisement avec les metadonnees reelles du fichier n'existe
-        # aujourd'hui que pour la video (seule extraction structuree
-        # disponible, cf. extract.extract_video_metadata) : pas une
-        # restriction du moteur de regles, juste l'etat actuel de l'extraction.
+        # Le croisement avec les metadonnees reelles n'existe que pour la
+        # video (seule extraction structuree disponible).
         if category != "video":
             return warnings
 
-        # `video_metadata` : metadonnees deja extraites par l'appelant (ex.
-        # extraction MediaInfo cote navigateur via WebAssembly, sans upload
-        # du fichier -- voir frontend/src/lib/clientMediaInfo.ts), a utiliser
-        # de preference a une re-extraction depuis `ctx.source` puisqu'il n'y
-        # a alors aucun fichier reel cote serveur. Meme forme que
-        # `extract.extract_video_metadata`/`extract_video_dir_metadata`
-        # (liste de dicts, ou un seul dict pour un fichier).
         provided = ctx.data.get("video_metadata")
         if provided is not None:
             metas = provided if isinstance(provided, list) else [provided]
@@ -156,13 +134,7 @@ def _make_name_proposal_rule(
 
 
 def register_declarative_profile(profile: str, rules: dict[str, Any]) -> None:
-    """Enregistre un profil entierement pilote par `rules` (contenu d'un
-    `rules.json`) : un renderer par categorie fixe (toujours, pour pouvoir
-    generer un NFO), et un validateur / une regle de nommage uniquement pour
-    les categories qui en declarent un dans `rules` (`requires_field`,
-    `filename_template`). `rules` est valide contre le schema formel avant
-    tout enregistrement (echec rapide sur un rules.json malforme, qu'il
-    s'agisse du profil livre ou d'un profil utilisateur)."""
+    """Enregistre un profil entierement pilote par `rules` (contenu d'un rules.json)."""
     rules_engine.validate_rules_document(rules)
 
     register(profile, "video")(_make_render_video(profile))
@@ -173,7 +145,7 @@ def register_declarative_profile(profile: str, rules: dict[str, Any]) -> None:
 
     for category, schema in rules.items():
         if category not in CATEGORIES:
-            continue  # cle inconnue dans rules.json : ignoree (pas bloquant)
+            continue
         if schema.get("requires_field"):
             register_validator(profile, category)(_make_validator(category, schema))
         if schema.get("filename_template"):
