@@ -33,7 +33,7 @@ Issues = "https://github.com/ICCUser/nfogen/issues"
 
 [project.optional-dependencies]
 api = [
-    "fastapi>=0.110",
+    "fastapi>=0.141.1",
     "uvicorn[standard]>=0.29",
     "python-multipart>=0.0.9",  # upload de fichiers via HTTP
 ]
