@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import io
+import time
 import zipfile
 
 import pytest
@@ -219,7 +220,6 @@ def test_accounts_bootstrap_is_not_a_race(reload_api, tmp_path):
     bootstrap. On elargit deliberement la fenetre de course avec un delai
     artificiel dans `accounts.list_accounts` pour rendre le test deterministe
     plutot que de dependre du hasard de l'ordonnancement des threads."""
-    import time
     from concurrent.futures import ThreadPoolExecutor
 
     mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
@@ -348,6 +348,109 @@ def test_login_requires_some_credential(reload_api):
     client = TestClient(mod.app)
     resp = client.post("/login", json={})
     assert resp.status_code == 400
+
+
+# --------------------------------------------------------------------------- #
+# Expiration des sessions (audit du 2026-08-11) : avant ce correctif, une
+# session ne disparaissait jamais tant que le processus tournait, meme
+# totalement inactive -- un cookie vole restait valable indefiniment. Deux
+# mecanismes independants, testes separement : inactivite (glissante) et duree
+# de vie absolue (non glissante, protege meme un cookie reutilise a intervalles
+# reguliers). `_LOGIN_ATTEMPTS`/`_SESSIONS` sont aussi purges pour eviter une
+# croissance non bornee (attaquant anonyme sur /login avec des identifiants
+# distincts, sessions jamais reutilisees).
+# --------------------------------------------------------------------------- #
+def test_session_default_timeouts_match_documented_defaults(reload_api):
+    """24h d'inactivite, 7 jours de duree de vie absolue -- valeurs par defaut
+    sans NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES/NFOGEN_SESSION_MAX_LIFETIME_HOURS."""
+    mod = reload_api(NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES=None, NFOGEN_SESSION_MAX_LIFETIME_HOURS=None)
+    assert mod._SESSION_IDLE_TIMEOUT_SECONDS == 1440 * 60
+    assert mod._SESSION_MAX_LIFETIME_SECONDS == 168 * 3600
+
+
+def test_session_expires_after_real_idle_timeout(reload_api, tmp_path):
+    """Bout en bout, avec un vrai delai (pas de mock d'horloge) : prouve que
+    NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES est bien branchee jusqu'a l'appel HTTP,
+    pas seulement en isolation sur les fonctions internes ci-dessous."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN="secret123",
+        NFOGEN_PROFILES_DIR=str(tmp_path),
+        NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES="0.002",  # ~0.12s
+    )
+    client = TestClient(mod.app)
+    client.post("/login", json={"token": "secret123"})
+    assert client.get("/profiles/store").status_code == 200
+
+    time.sleep(0.3)
+    assert client.get("/profiles/store").status_code == 401
+
+
+def test_touch_session_expires_on_idle_timeout(reload_api, monkeypatch):
+    """Version deterministe (sans sleep) de la meme garantie, sur la fonction
+    interne : `_touch_session` purge IMMEDIATEMENT une session expiree par
+    inactivite, sans attendre le balayage periodique."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    client = TestClient(mod.app)
+    resp = client.post("/login", json={"token": "secret123"})
+    cookie = resp.cookies.get("nfogen_session")
+    assert cookie in mod._SESSIONS
+
+    monkeypatch.setattr(mod, "_SESSION_IDLE_TIMEOUT_SECONDS", -1.0)  # deja "expiree" par definition
+    assert mod._touch_session(cookie) is False
+    assert cookie not in mod._SESSIONS  # purgee immediatement, pas seulement rejetee
+
+
+def test_touch_session_expires_at_max_lifetime_despite_recent_activity(reload_api, tmp_path, monkeypatch):
+    """La duree de vie ABSOLUE n'est pas glissante : une session tres recemment
+    utilisee (idle timeout large, donc pas expiree par inactivite) doit quand
+    meme expirer si sa duree de vie totale depasse NFOGEN_SESSION_MAX_LIFETIME_HOURS."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_PROFILES_DIR=str(tmp_path))
+    client = TestClient(mod.app)
+    client.post("/login", json={"token": "secret123"})
+    assert client.get("/profiles/store").status_code == 200  # rafraichit last_seen
+
+    monkeypatch.setattr(mod, "_SESSION_MAX_LIFETIME_SECONDS", -1.0)  # deja "trop vieille" par definition
+    resp = client.get("/profiles/store")
+    assert resp.status_code == 401
+
+
+def test_sweep_removes_stale_login_attempts(reload_api, monkeypatch):
+    """`_LOGIN_ATTEMPTS` ne doit pas grossir indefiniment : une entree sans
+    nouvelle tentative depuis NFOGEN_LOGIN_ATTEMPTS_TTL (ici forcee a expirer
+    immediatement) est purgee par `_sweep_stale_entries`."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    mod._record_login_failure("un_identifiant_quelconque")
+    assert "un_identifiant_quelconque" in mod._LOGIN_ATTEMPTS
+
+    monkeypatch.setattr(mod, "_LOGIN_ATTEMPTS_TTL_SECONDS", -1.0)
+    monkeypatch.setattr(mod, "_last_sweep", 0.0)  # contourne le throttle du balayage (300s) pour le test
+    mod._sweep_stale_entries()
+    assert "un_identifiant_quelconque" not in mod._LOGIN_ATTEMPTS
+
+
+def test_sweep_removes_expired_sessions(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    client = TestClient(mod.app)
+    resp = client.post("/login", json={"token": "secret123"})
+    cookie = resp.cookies.get("nfogen_session")
+    assert cookie in mod._SESSIONS
+
+    monkeypatch.setattr(mod, "_SESSION_IDLE_TIMEOUT_SECONDS", -1.0)
+    monkeypatch.setattr(mod, "_last_sweep", 0.0)
+    mod._sweep_stale_entries()
+    assert cookie not in mod._SESSIONS
+
+
+def test_sweep_is_throttled_and_does_not_scan_every_request(reload_api, monkeypatch):
+    """Le balayage ne doit PAS parcourir les dicts a chaque requete (cout O(n)
+    inutile) : tant que NFOGEN... _SWEEP_INTERVAL_SECONDS n'est pas ecoule
+    depuis le dernier balayage, un appel supplementaire est un no-op."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    mod._record_login_failure("un_identifiant_quelconque")
+    monkeypatch.setattr(mod, "_LOGIN_ATTEMPTS_TTL_SECONDS", -1.0)
+    monkeypatch.setattr(mod, "_last_sweep", time.monotonic())  # balayage "tres recent" : throttle actif
+    mod._sweep_stale_entries()
+    assert "un_identifiant_quelconque" in mod._LOGIN_ATTEMPTS  # pas balaye : throttle non ecoule
 
 
 def test_health_never_requires_token(reload_api):

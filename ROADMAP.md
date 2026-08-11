@@ -162,6 +162,20 @@ prioriser la sécurité. Corrigé :
   (bump de `package-lock.json` dans les plages semver déjà déclarées,
   aucun changement de `package.json` nécessaire) ; build (`vite build`) et
   lint (`oxlint`) revérifiés après coup.
+- **`_LOGIN_ATTEMPTS`/`_SESSIONS` (`nfogen/api.py`) jamais purgés** : un
+  attaquant anonyme pouvait faire grossir `_LOGIN_ATTEMPTS` indéfiniment
+  (identifiants distincts sur `/login`, non authentifié par nature) ; une
+  session n'expirait jamais côté serveur hors déconnexion/suppression de
+  compte/redémarrage. Corrigé par deux mécanismes indépendants : expiration
+  de session par inactivité glissante (`NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES`,
+  défaut 24h) et par durée de vie absolue non glissante
+  (`NFOGEN_SESSION_MAX_LIFETIME_HOURS`, défaut 7 jours — protège même un
+  cookie volé réutilisé à intervalles réguliers) ; balayage périodique
+  (`_sweep_stale_entries`, au plus une fois toutes les 5 min) qui purge aussi
+  les tentatives de connexion inactives depuis plus d'1h. Comparaison du
+  token en temps constant étendue à `POST /login` (déjà faite pour
+  `require_token`, `hmac.compare_digest`) au passage. Voir README.md pour les
+  deux nouvelles variables d'environnement.
 
 Revérifié sans correctif nécessaire (relecture complète du backend, dont
 `accounts.py`, `render.py`, `profile_store.py`, `name_proposal.py` — les
@@ -169,17 +183,7 @@ motifs de ce dernier sont fixes/non admin-fournis, donc hors du changement
 RE2 ci-dessus) : les mêmes composants que l'audit du 28/06, plus `pip-audit`
 (aucune CVE connue sur les dépendances backend).
 
-Identifié mais **volontairement non corrigé dans cette passe** (nécessite un
-arbitrage produit, pas juste une correction technique) — voir la synthèse
-d'audit livrée séparément pour le détail et les propositions :
-
-- `_LOGIN_ATTEMPTS` et `_SESSIONS` (`nfogen/api.py`) ne sont jamais purgés :
-  un attaquant anonyme peut faire grossir `_LOGIN_ATTEMPTS` indéfiniment
-  (identifiants distincts sur `/login`, non authentifié par nature) ; une
-  session n'expire jamais côté serveur hors déconnexion/suppression de
-  compte/redémarrage (pas de timeout d'inactivité).
-- La CI (`ci.yml`) ne construit/lint/teste que le backend : un changement
-  cassant le build frontend (`tsc -b && vite build`) ou son lint (`oxlint`)
-  passerait inaperçu jusqu'au déploiement.
-- Pas de `dependabot.yml` (ou équivalent) : les CVE de dépendances (comme
-  les 4 ci-dessus) ne sont détectées qu'à l'occasion d'un audit manuel.
+Reste à traiter dans cette même passe (priorité 1, sécurité/robustesse) :
+CI qui construit/lint/teste aussi le frontend, `dependabot.yml`, et une
+décision sur le rate-limiting de `/generate*`. Voir la suite de cette section
+une fois traités.

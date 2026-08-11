@@ -72,6 +72,18 @@ Configuration (variables d'environnement, toutes optionnelles) :
                            celles de `logging` (DEBUG/INFO/WARNING/ERROR...).
                            Utile pour diagnostiquer un profil utilisateur
                            ignore au demarrage, ou baisser le bruit en prod.
+    NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES
+                           Duree d'inactivite (glissante) avant expiration
+                           d'une session (`POST /login`). Defaut 1440 (24h) :
+                           une session utilisee regulierement ne se
+                           deconnecte jamais, seule l'absence d'activite
+                           compte.
+    NFOGEN_SESSION_MAX_LIFETIME_HOURS
+                           Duree de vie ABSOLUE d'une session, meme en usage
+                           continu (contrairement au delai d'inactivite
+                           ci-dessus, celui-ci ne se reinitialise jamais).
+                           Defaut 168 (7 jours) : limite l'impact d'un cookie
+                           de session vole (XSS, machine partagee...).
 
     POST   /propose-name          suggestion de release_name (noms de fichiers seuls)
 
@@ -109,7 +121,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 from fastapi import Cookie, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -165,12 +177,69 @@ _REQUIRE_AUTH_FOR_GENERATE = os.environ.get("NFOGEN_REQUIRE_AUTH_FOR_GENERATE", 
 #
 # En memoire seulement (pas de Redis/DB) : un redemarrage du processus
 # deconnecte tout le monde (acceptable, comportement standard d'un serveur
-# d'applications simple). Valeur = identifiant du compte nomme ayant ouvert
-# la session, ou None pour une connexion par le token partage (pas de compte
-# associe) -- permet de revoquer immediatement les sessions d'un compte
-# precis quand il est supprime (cf. delete_account_route ci-dessous).
-_SESSIONS: dict[str, Optional[str]] = {}
+# d'applications simple).
+class _Session(NamedTuple):
+    """`identity` : compte nomme ayant ouvert la session, ou None pour une
+    connexion par le token partage (pas de compte associe) -- permet de
+    revoquer immediatement les sessions d'un compte precis quand il est
+    supprime (cf. delete_account_route ci-dessous).
+
+    `created_at`/`last_seen` (`time.monotonic()`) portent la double
+    expiration ci-dessous (audit du 2026-08-11 : avant ca, une session ne
+    disparaissait jamais tant que le processus tournait, meme totalement
+    inactive -- un cookie vole restait valable indefiniment) :
+    - inactivite (`_SESSION_IDLE_TIMEOUT_SECONDS`, glissante) : une session
+      utilisee regulierement ne se deconnecte jamais, seule l'ABSENCE
+      d'activite compte -- comportement standard d'un "je reste connecte
+      tant que je m'en sers".
+    - duree de vie absolue (`_SESSION_MAX_LIFETIME_SECONDS`, non glissante) :
+      meme reguliierement utilisee, une session ne survit jamais indefiniment
+      -- limite l'impact d'un cookie vole (XSS, machine partagee...) qui
+      serait reutilise periodiquement pour eviter l'expiration par
+      inactivite seule."""
+
+    identity: Optional[str]
+    created_at: float
+    last_seen: float
+
+
+_SESSIONS: dict[str, _Session] = {}
 _SESSION_COOKIE_NAME = "nfogen_session"
+_SESSION_IDLE_TIMEOUT_SECONDS = (
+    float(os.environ.get("NFOGEN_SESSION_IDLE_TIMEOUT_MINUTES", "1440")) * 60
+)  # 1440 min = 24h : deconnexion apres une journee entiere d'inactivite, raisonnable pour un
+# outil d'administration a faible frequence d'usage (pas une session bancaire).
+_SESSION_MAX_LIFETIME_SECONDS = (
+    float(os.environ.get("NFOGEN_SESSION_MAX_LIFETIME_HOURS", "168")) * 3600
+)  # 168h = 7 jours : au-dela, reconnexion obligatoire meme en usage continu.
+
+
+def _session_expired(session: _Session, now: float) -> bool:
+    return (
+        now - session.last_seen > _SESSION_IDLE_TIMEOUT_SECONDS
+        or now - session.created_at > _SESSION_MAX_LIFETIME_SECONDS
+    )
+
+
+def _touch_session(session_cookie: Optional[str]) -> bool:
+    """Vrai si `session_cookie` correspond a une session active (existe et
+    n'a expire ni par inactivite ni par duree de vie absolue, cf. `_Session`
+    ci-dessus) ; rafraichit son horodatage de derniere activite au passage
+    (expiration par inactivite GLISSANTE). Purge la session du dict des
+    qu'elle est trouvee expiree, plutot que de la laisser occuper de la
+    memoire jusqu'au prochain balayage (`_sweep_stale_entries`)."""
+    if session_cookie is None:
+        return False
+    session = _SESSIONS.get(session_cookie)
+    if session is None:
+        return False
+    now = time.monotonic()
+    if _session_expired(session, now):
+        del _SESSIONS[session_cookie]
+        return False
+    _SESSIONS[session_cookie] = session._replace(last_seen=now)
+    return True
+
 
 # Protection simple contre le bruteforce sur /login : un identifiant/mot de
 # passe choisi par un humain est plus devinable qu'un long token aleatoire.
@@ -178,9 +247,48 @@ _SESSION_COOKIE_NAME = "nfogen_session"
 # verrouille CETTE cle apres _MAX_LOGIN_ATTEMPTS echecs consecutifs, pas
 # l'IP (potentiellement partagee/spoofable derriere un reverse-proxy) ni
 # l'API entiere (n'impacte pas les autres comptes).
-_LOGIN_ATTEMPTS: dict[str, tuple[int, float]] = {}  # cle -> (echecs, verrouille_jusqu'a)
+class _LoginAttempts(NamedTuple):
+    failures: int
+    locked_until: float
+    last_attempt: float  # sert uniquement au balayage (_sweep_stale_entries), pas au throttle
+
+
+_LOGIN_ATTEMPTS: dict[str, _LoginAttempts] = {}
 _MAX_LOGIN_ATTEMPTS = 5
 _LOGIN_LOCKOUT_SECONDS = 30.0
+# Sans purge, `_LOGIN_ATTEMPTS` grossirait indefiniment : /login n'est PAS
+# authentifie par nature (c'est la connexion), donc un attaquant anonyme peut
+# y essayer autant d'identifiants distincts qu'il veut, chacun creant une
+# entree qui ne serait sinon jamais nettoyee (le verrou lui-meme expire au
+# bout de _LOGIN_LOCKOUT_SECONDS, mais l'ENTREE persistait avant ce correctif).
+# Une entree sans nouvelle tentative depuis cette duree est consideree morte.
+_LOGIN_ATTEMPTS_TTL_SECONDS = 3600.0  # 1h : tres large par rapport au verrou (30s), pas un souci
+
+# Balaie `_SESSIONS`/`_LOGIN_ATTEMPTS` au plus une fois toutes les
+# _SWEEP_INTERVAL_SECONDS (cout O(n) sinon a CHAQUE requete protegee) --
+# declenche opportunistement depuis login()/require_token(), pas par un
+# thread/timer separe (pas de tache de fond supplementaire dans un processus
+# qui se veut simple). `_touch_session` purge deja une session expiree des
+# qu'elle est utilisee ; ce balayage couvre le cas d'une session/tentative
+# JAMAIS reutilisee, qui sinon resterait en memoire indefiniment.
+_SWEEP_INTERVAL_SECONDS = 300.0  # 5 min
+_last_sweep = 0.0
+
+
+def _sweep_stale_entries() -> None:
+    global _last_sweep
+    now = time.monotonic()
+    if now - _last_sweep < _SWEEP_INTERVAL_SECONDS:
+        return
+    _last_sweep = now
+    for session_id, session in list(_SESSIONS.items()):
+        if _session_expired(session, now):
+            del _SESSIONS[session_id]
+    for key, attempt in list(_LOGIN_ATTEMPTS.items()):
+        if now - attempt.last_attempt > _LOGIN_ATTEMPTS_TTL_SECONDS:
+            del _LOGIN_ATTEMPTS[key]
+
+
 # Secure (cookie envoye uniquement en HTTPS) desactive par defaut : l'install
 # native documentee (scripts/install.sh) sert l'API en HTTP brut sur le
 # reseau local par defaut (pas de TLS termine par nfogen lui-meme). A activer
@@ -292,10 +400,11 @@ def require_token(
     une comparaison naive (`==`) fuiterait, via le temps de reponse, la
     position du premier octet different -- meme si le throttle de /login
     (cf. ci-dessous) rend l'exploitation peu realiste, la defense en
-    profondeur ne coute rien ici. Le cookie de session, lui, est un
-    identifiant aleatoire regarde comme une cle dans un dict (aucune
-    information exploitable a en tirer via le timing).
+    profondeur ne coute rien ici. Le cookie de session, lui, est verifie par
+    `_touch_session` (existence ET expiration par inactivite/duree de vie
+    absolue, cf. `_Session`) plutot qu'une simple presence dans `_SESSIONS`.
     """
+    _sweep_stale_entries()
     if not _admin_auth_configured():
         return
     if _API_TOKEN is not None and authorization is not None:
@@ -310,7 +419,7 @@ def require_token(
             # d'une variable d'environnement, toujours une str ASCII).
             if hmac.compare_digest(provided.encode("utf-8"), _API_TOKEN.encode("utf-8")):
                 return
-    if session_cookie is not None and session_cookie in _SESSIONS:
+    if _touch_session(session_cookie):
         return
     raise HTTPException(status_code=401, detail="Authentification invalide ou manquante.")
 
@@ -339,18 +448,19 @@ def _login_throttle_key(username: Optional[str]) -> str:
 
 
 def _check_not_locked(key: str) -> None:
-    count, locked_until = _LOGIN_ATTEMPTS.get(key, (0, 0.0))
-    if locked_until > time.monotonic():
+    attempt = _LOGIN_ATTEMPTS.get(key, _LoginAttempts(0, 0.0, 0.0))
+    if attempt.locked_until > time.monotonic():
         raise HTTPException(
             status_code=429, detail="Trop de tentatives, reessayez plus tard."
         )
 
 
 def _record_login_failure(key: str) -> None:
-    count, _ = _LOGIN_ATTEMPTS.get(key, (0, 0.0))
-    count += 1
-    locked_until = time.monotonic() + _LOGIN_LOCKOUT_SECONDS if count >= _MAX_LOGIN_ATTEMPTS else 0.0
-    _LOGIN_ATTEMPTS[key] = (count, locked_until)
+    attempt = _LOGIN_ATTEMPTS.get(key, _LoginAttempts(0, 0.0, 0.0))
+    count = attempt.failures + 1
+    now = time.monotonic()
+    locked_until = now + _LOGIN_LOCKOUT_SECONDS if count >= _MAX_LOGIN_ATTEMPTS else 0.0
+    _LOGIN_ATTEMPTS[key] = _LoginAttempts(count, locked_until, now)
 
 
 def _record_login_success(key: str) -> None:
@@ -369,7 +479,9 @@ def login(req: LoginRequest, response: Response) -> dict[str, str]:
     (`username` + `password`, cf. `nfogen/accounts.py`), et pose un cookie de
     session : un identifiant OPAQUE genere aleatoirement (`secrets.
     token_urlsafe`), jamais le secret lui-meme -- verifie ensuite cote
-    serveur via `_SESSIONS` a chaque requete protegee."""
+    serveur via `_SESSIONS` a chaque requete protegee (`_touch_session`,
+    expiration par inactivite/duree de vie absolue, cf. `_Session`)."""
+    _sweep_stale_entries()
     identity: Optional[str]
     if req.username:
         key = _login_throttle_key(req.username)
@@ -389,7 +501,9 @@ def login(req: LoginRequest, response: Response) -> dict[str, str]:
             raise HTTPException(
                 status_code=400, detail="Authentification non configuree (NFOGEN_API_TOKEN absente)."
             )
-        if req.token != _API_TOKEN:
+        # Temps constant (cf. require_token) : meme raisonnement, un login par
+        # token doit etre aussi peu bavard sur le timing qu'un appel API direct.
+        if not hmac.compare_digest(req.token.encode("utf-8"), _API_TOKEN.encode("utf-8")):
             _record_login_failure(key)
             raise HTTPException(status_code=401, detail="Token API invalide.")
         identity = None
@@ -398,7 +512,8 @@ def login(req: LoginRequest, response: Response) -> dict[str, str]:
 
     _record_login_success(key)
     session_id = secrets.token_urlsafe(32)
-    _SESSIONS[session_id] = identity
+    now = time.monotonic()
+    _SESSIONS[session_id] = _Session(identity=identity, created_at=now, last_seen=now)
     response.set_cookie(
         _SESSION_COOKIE_NAME,
         session_id,
@@ -432,11 +547,16 @@ def auth_status(
     """Etat d'authentification, sans rien exiger : permet au frontend de
     savoir s'il doit afficher un formulaire de connexion, et lequel (token
     partage et/ou comptes nommes peuvent etre actives independamment). Ne
-    revele jamais de secret, seulement des booleens."""
+    revele jamais de secret, seulement des booleens.
+
+    `_touch_session` rafraichit l'activite de la session au passage : un
+    frontend qui interroge cette route pour savoir s'il est toujours connecte
+    compte lui-meme comme de l'activite legitime (comportement standard d'une
+    expiration par inactivite glissante)."""
     auth_required = _admin_auth_configured()
     return {
         "auth_required": auth_required,
-        "authenticated": not auth_required or (session_cookie is not None and session_cookie in _SESSIONS),
+        "authenticated": not auth_required or _touch_session(session_cookie),
         "token_login_enabled": _API_TOKEN is not None,
         "accounts_login_enabled": accounts.is_configured(),
         "accounts_bootstrap_available": _accounts_bootstrap_available(),
@@ -507,8 +627,8 @@ def delete_account_route(username: str) -> dict[str, str]:
     processus malgre la suppression du compte -- l'interet meme de comptes
     nommes distincts est de pouvoir revoquer un acces precis sans attendre)."""
     _run_accounts(accounts.delete_account, username)
-    for session_id, owner in list(_SESSIONS.items()):
-        if owner == username:
+    for session_id, session in list(_SESSIONS.items()):
+        if session.identity == username:
             del _SESSIONS[session_id]
     return {"status": "ok"}
 
