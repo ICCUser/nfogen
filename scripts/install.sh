@@ -39,6 +39,14 @@ ENV_FILE="${CONFIG_DIR}/nfogen.env"
 SERVICE_USER="nfogen"
 SERVICE_NAME="nfogen"
 NODE_MAJOR="22"
+# nfogen (useradd --no-create-home) n'a pas de /home/nfogen : sans HOME
+# explicite, pip/npm essaient d'y ecrire leur cache et echouent (EACCES).
+# Reutilise DATA_DIR (persistant, jamais touche par une mise a jour).
+NFOGEN_HOME="${DATA_DIR}/home"
+
+run_as_nfogen() {
+    sudo -u "${SERVICE_USER}" env HOME="${NFOGEN_HOME}" "$@"
+}
 
 echo "==> Paquets systeme (Python, libmediainfo, rsync, openssl...)"
 apt-get update
@@ -65,6 +73,10 @@ if ! id "${SERVICE_USER}" >/dev/null 2>&1; then
     useradd --system --shell /usr/sbin/nologin --no-create-home "${SERVICE_USER}"
 fi
 
+echo "==> Donnees persistantes (${DATA_DIR}) -- jamais effacees par une mise a jour"
+mkdir -p "${PROFILES_DIR}" "${NFOGEN_HOME}"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}"
+
 echo "==> Copie du code applicatif vers ${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}"
 rsync -a --delete \
@@ -75,17 +87,13 @@ rsync -a --delete \
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
 echo "==> Environnement Python (venv dedie + nfogen[api])"
-sudo -u "${SERVICE_USER}" python3 -m venv "${INSTALL_DIR}/.venv"
-sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir --upgrade pip
-sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir "${INSTALL_DIR}[api]"
+run_as_nfogen python3 -m venv "${INSTALL_DIR}/.venv"
+run_as_nfogen "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir --upgrade pip
+run_as_nfogen "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir "${INSTALL_DIR}[api]"
 
 echo "==> Build du frontend (npm ci && npm run build)"
-sudo -u "${SERVICE_USER}" npm --prefix "${INSTALL_DIR}/frontend" ci
-sudo -u "${SERVICE_USER}" npm --prefix "${INSTALL_DIR}/frontend" run build
-
-echo "==> Donnees persistantes (${DATA_DIR}) -- jamais effacees par une mise a jour"
-mkdir -p "${PROFILES_DIR}"
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}"
+run_as_nfogen npm --prefix "${INSTALL_DIR}/frontend" ci
+run_as_nfogen npm --prefix "${INSTALL_DIR}/frontend" run build
 
 echo "==> Configuration (${CONFIG_DIR})"
 mkdir -p "${CONFIG_DIR}"

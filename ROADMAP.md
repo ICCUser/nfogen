@@ -87,3 +87,14 @@ Revérifié sans correctif : `accounts.py`, `render.py`, `profile_store.py`,
 `name_proposal.py`, `pip-audit` (aucune CVE backend).
 
 Priorité 1 close. Priorité 2 : voir "Idées / prochaines pistes" ci-dessus.
+
+## Correctif de déploiement (2026-08-11)
+
+- **`scripts/install.sh` échouait sur `npm ci`** (`EACCES: /home/nfogen`) :
+  l'utilisateur système `nfogen` est créé sans home (`useradd
+  --no-create-home`), donc `$HOME` (`/home/nfogen`) n'existe pas et npm ne
+  peut pas y écrire son cache. `pip install --no-cache-dir` évitait déjà le
+  problème ; npm n'a pas d'équivalent. Corrigé : `HOME` pointe explicitement
+  vers `${DATA_DIR}/home` (persistant, créé/chowné avant les étapes
+  Python/npm) pour toutes les commandes lancées en tant que `nfogen`
+  (`run_as_nfogen`, nouveau helper du script).
