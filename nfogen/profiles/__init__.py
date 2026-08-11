@@ -53,6 +53,7 @@ def _load_external_profiles() -> None:
     if not root_path.is_dir():
         logger.warning("NFOGEN_PROFILES_DIR='%s' n'est pas un dossier existant, ignore.", root)
         return
+
     for entry in sorted(root_path.iterdir()):
         if not entry.is_dir():
             continue
@@ -63,6 +64,13 @@ def _load_external_profiles() -> None:
             # du meme nom) : un profil utilisateur prend toujours le dessus,
             # meme apres un redemarrage du processus.
             unregister_profile(entry.name)
+            # Valide schema + securite des motifs regex (protection ReDoS via
+            # RE2) au chargement -- cf. nfogen/rules.py:validate_rules_document,
+            # appelee en interne par register_declarative_profile. Un profil
+            # deja invalide au moment ou l'admin l'a ecrit (via profile_store)
+            # ne peut normalement pas se retrouver ici, mais un dossier depose
+            # a la main sur NFOGEN_PROFILES_DIR n'est jamais passe par cette
+            # validation avant ce point -- elle doit donc s'appliquer ici aussi.
             register_declarative_profile(entry.name, rules)
         except Exception:
             logger.exception("Profil utilisateur '%s' invalide, ignore.", entry.name)

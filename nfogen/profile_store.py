@@ -128,6 +128,10 @@ def write_profile(name: str, *, rules: dict[str, Any], templates: dict[str, str]
     auprès du coeur. La validation a lieu avant toute ecriture : un rules.json
     invalide ne touche jamais le disque."""
     try:
+        # Schema + securite des motifs regex (protection ReDoS via RE2) : les
+        # deux sont verifies par ce seul appel (cf. nfogen/rules.py:
+        # validate_rules_document), un profil invalide ne touche jamais le
+        # disque.
         rules_engine.validate_rules_document(rules)
     except ValueError as exc:
         raise ProfileStoreError(str(exc)) from exc

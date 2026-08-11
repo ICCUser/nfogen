@@ -51,12 +51,107 @@ avec quel message) est de la donnee.
 from __future__ import annotations
 
 import json
-import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import jsonschema
+import re2
+
+# --------------------------------------------------------------------------- #
+# Moteur de correspondance pour les patterns ADMIN (tokens[].pattern d'un
+# rules.json) : RE2 (paquet `google-re2`), jamais le `re` de la bibliotheque
+# standard.
+# --------------------------------------------------------------------------- #
+# `re` (moteur a backtracking) peut exploser en temps EXPONENTIEL sur certains
+# motifs pathologiques (ReDoS, ex. `(a+)+$`) des qu'on lui donne une entree
+# "presque" conforme -- un seul `re.search()` de ce type bloquerait le
+# processus uvicorn (mono-process) pendant des secondes/minutes, pour
+# n'importe quel motif de ce type, meme un motif qui semblait sain lors d'un
+# test superficiel sur quelques exemples.
+#
+# RE2 n'a pas ce probleme PAR CONSTRUCTION : c'est un moteur a automate fini
+# (pas de backtracking), qui garantit un temps lineaire en la taille de
+# l'entree, quel que soit le motif -- verifie empiriquement en audit :
+# `(a+)+$` s'execute en quelques microsecondes sous RE2 contre un blocage
+# total sous `re`. Consequence directe : il n'y a plus besoin de DETECTER un
+# motif dangereux a l'ecriture (approche heuristique par chronometrage,
+# dependante de la vitesse de la machine et d'une entree de sonde choisie a
+# l'avance, donc potentiellement contournable par un motif qui explose
+# seulement sur une AUTRE forme d'entree) -- on rend l'explosion tout
+# simplement IMPOSSIBLE en executant CHAQUE motif admin via RE2, aussi bien a
+# la validation d'un profil qu'a chaque generation.
+#
+# Prix a payer, accepte en connaissance de cause : RE2 ne supporte ni les
+# lookaround (`(?=...)`, `(?<=...)`, `(?!...)`) ni les references arrieres
+# (`\1`) -- des constructions qui permettent JUSTEMENT le backtracking
+# exponentiel, donc precisement ce qu'on veut exclure des motifs admin. Un
+# motif qui en a besoin est rejete a la validation, avec un message explicite
+# (jamais une erreur silencieuse). Verifie : les 6 patterns du profil C411
+# fourni (`nfogen/profiles/c411/rules.json`) n'en utilisent aucun et
+# compilent tels quels sous RE2, sans aucune reecriture.
+_RE2_OPTIONS = re2.Options()
+_RE2_OPTIONS.log_errors = False
+# Sans ceci, la bibliotheque C++ sous-jacente (abseil) ecrit EN PLUS un
+# message brut directement sur stderr a chaque motif rejete -- y compris pour
+# une simple faute de frappe d'un admin en train d'iterer sur son profil. On
+# garde le controle exclusif de la restitution de l'erreur : `re2.error` est
+# deja capturee et traduite en `ValueError` explicite par `validate_regex_
+# patterns` ci-dessous.
+
+
+@lru_cache(maxsize=256)
+def _compile_admin_pattern(pattern: str):
+    """Compile un pattern admin sous RE2 (jamais `re`), avec cache : un
+    profil declare peu de tokens (quelques dizaines au plus), un `rules.json`
+    change rarement, donc le cache reste petit et stable pour la duree de vie
+    du processus. Leve `re2.error` si le motif est syntaxiquement invalide OU
+    utilise une construction non supportee par RE2 (lookaround, back-
+    reference) -- les DEUX cas sont voulus ici, RE2 n'accepte tout simplement
+    pas les constructions qui permettraient un backtracking exponentiel."""
+    return re2.compile(pattern, options=_RE2_OPTIONS)
+
+
+def validate_regex_patterns(document: dict[str, Any]) -> None:
+    """Verifie que TOUS les motifs `pattern` declares dans un `rules.json`
+    (champ `tokens[].pattern` de chaque categorie) compilent sous RE2. Leve
+    une `ValueError` documentee (categorie + nom du token fautif) si l'un
+    d'eux est invalide ou utilise une construction non supportee (lookaround,
+    back-reference).
+
+    Appelee automatiquement par `validate_rules_document` ci-dessous : il n'y
+    a donc qu'UN SEUL point d'entree a couvrir pour qu'un `rules.json` -- livre
+    avec le paquet, ecrit/importe via l'API (`profile_store.write_profile`),
+    ou depose directement dans `NFOGEN_PROFILES_DIR` -- passe par cette
+    verification, quel que soit le chemin d'appel. Reste exportee separement
+    (plutot que privee) pour rester testable independamment de la validation
+    de schema."""
+    for category, schema in document.items():
+        if not isinstance(schema, dict):
+            continue
+        for token in schema.get("tokens", []):
+            pattern = token.get("pattern")
+            if not isinstance(pattern, str):
+                continue
+            try:
+                _compile_admin_pattern(pattern)
+            except re2.error as exc:
+                raise ValueError(
+                    f"Regex invalide ou non supportee dans "
+                    f"'{category}.tokens[{token.get('name', '?')}].pattern' ({pattern!r}) : {exc}. "
+                    "Les motifs admin sont executes via RE2 (temps lineaire garanti, "
+                    "protection ReDoS) : ni lookaround ((?=...), (?<=...), (?!...)) ni "
+                    "back-reference (\\1) ne sont supportes, ce sont justement les "
+                    "constructions qui permettraient un temps d'execution exponentiel."
+                ) from exc
+
+
+def _search(pattern: str, value: str):
+    """Point d'entree UNIQUE pour faire correspondre un pattern admin a une
+    valeur : toujours via RE2 (`_compile_admin_pattern`), jamais `re.search`
+    directement, pour que la garantie de temps lineaire s'applique a chaque
+    generation, pas seulement a la validation d'un profil."""
+    return _compile_admin_pattern(pattern).search(value)
 
 
 def _tokens(schema: dict[str, Any]) -> list[dict[str, Any]]:
@@ -87,7 +182,7 @@ def errors(value: str, schema: dict[str, Any]) -> list[str]:
 
     matched_groups: set[str] = set()
     for token in _tokens(schema):
-        match = re.search(token["pattern"], value)
+        match = _search(token["pattern"], value)
         if match:
             if "group" in token:
                 matched_groups.add(token["group"])
@@ -110,7 +205,7 @@ def warnings(value: str, schema: dict[str, Any]) -> list[str]:
     for token in _tokens(schema):
         if token.get("level") != "recommended":
             continue
-        if not re.search(token["pattern"], value):
+        if not _search(token["pattern"], value):
             found.append(token.get("warning", f"motif recommande absent : {token['name']}"))
     return found
 
@@ -135,7 +230,7 @@ def captures(value: str, schema: dict[str, Any]) -> dict[str, str]:
     {'language': 'VFF', 'resolution': '1080', 'video_codec': 'x264'}."""
     out: dict[str, str] = {}
     for token in _tokens(schema):
-        match = re.search(token["pattern"], value)
+        match = _search(token["pattern"], value)
         if match:
             out.update({k: v for k, v in match.groupdict().items() if v is not None})
     return out
@@ -233,16 +328,23 @@ def _schema() -> dict[str, Any]:
 
 
 def validate_rules_document(document: dict[str, Any]) -> None:
-    """Valide un `rules.json` complet (toutes categories) contre le schema
-    formel (`rules.schema.json`). Leve une `ValueError` documentee si non
-    conforme ; ne renvoie rien sinon.
+    """Valide un `rules.json` complet (toutes categories) : conformite au
+    schema formel (`rules.schema.json`), PUIS securite des motifs regex
+    (`validate_regex_patterns`, protection ReDoS via RE2). Leve une
+    `ValueError` documentee au premier probleme rencontre ; ne renvoie rien
+    sinon.
 
-    Utilise a l'enregistrement de tout profil declaratif (`declarative_profile.
-    register_declarative_profile`, y compris pour C411 lui-meme) ainsi qu'a
-    l'ecriture/import d'un profil utilisateur (`profile_store`), pour detecter
-    une erreur d'edition avant qu'elle n'atteigne le moteur de regles."""
+    Point d'entree UNIQUE pour ces deux verifications : utilise a
+    l'enregistrement de tout profil declaratif
+    (`declarative_profile.register_declarative_profile`, y compris pour C411
+    lui-meme) ainsi qu'a l'ecriture/import d'un profil utilisateur
+    (`profile_store`) -- aucun de ces appelants n'a besoin d'appeler
+    `validate_regex_patterns` separement, ce qui evite qu'un futur chemin
+    d'enregistrement de profil (ex. une commande CLI de gestion de profils)
+    oublie l'un des deux controles."""
     try:
         jsonschema.validate(document, _schema())
     except jsonschema.ValidationError as exc:
         location = "/".join(str(p) for p in exc.absolute_path) or "racine"
         raise ValueError(f"rules.json invalide a '{location}' : {exc.message}") from exc
+    validate_regex_patterns(document)

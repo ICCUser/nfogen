@@ -63,6 +63,19 @@ def test_write_rejects_invalid_rules_schema():
         ps.write_profile("monprofil", rules={"game": {"unknown_key": True}}, templates={})
 
 
+def test_write_rejects_unknown_root_category():
+    """Schema strict (rules.schema.json) : une cle racine qui n'est pas une des
+    5 categories fixes (video/audio/game/ebook/print3d) est REJETEE. Sans cela,
+    une typo ('viedo' au lieu de 'video') serait acceptee silencieusement et la
+    regle ratee decouverte seulement en production."""
+    with pytest.raises(ps.ProfileStoreError):
+        ps.write_profile(
+            "monprofil",
+            rules={"viedo": {"requires_field": "release_name"}},
+            templates={},
+        )
+
+
 def test_write_rejects_invalid_profile_name():
     with pytest.raises(ps.ProfileStoreError):
         ps.write_profile("../escape", rules={}, templates={})

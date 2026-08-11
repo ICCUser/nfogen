@@ -1,9 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "nfogen rules.json",
-  "description": "Schema generique d'un fichier de regles de profil nfogen. Chaque cle de premier niveau est un nom de categorie (video/audio/game/ebook/print3d) ; voir nfogen/rules.py pour la semantique exacte de chaque champ.",
+  "description": "Schema generique d'un fichier de regles de profil nfogen. Chaque cle de premier niveau DOIT etre un nom de categorie connu du coeur (video/audio/game/ebook/print3d, cf. nfogen/declarative_profile.py:CATEGORIES) ; une cle inconnue (typo, futur nom non encore supporte...) est REJETEE ici plutot qu'ignoree silencieusement -- sinon un profil partiellement mal ecrit serait accepte sans bruit, et la regle ratee decouverte seulement plus tard en production.",
   "type": "object",
-  "additionalProperties": { "$ref": "#/$defs/category" },
+  "propertyNames": {
+    "enum": ["video", "audio", "game", "ebook", "print3d"]
+  },
+  "patternProperties": {
+    "^(video|audio|game|ebook|print3d)$": { "$ref": "#/$defs/category" }
+  },
+  "additionalProperties": false,
   "$defs": {
     "category": {
       "type": "object",

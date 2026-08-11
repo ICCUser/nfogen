@@ -46,14 +46,8 @@ détaillé des changements, voir `git log`.
   distribuer plutôt comme un `.zip` téléchargeable séparément (le mécanisme
   d'import existe déjà, `POST /profiles/store/{name}/import`) — pour bien
   marquer que c'est un exemple/point de départ, pas "le" profil de nfogen.
-- **`rules.json` : motifs regex admin-fournis sans timeout** (`nfogen/rules.py`,
-  `re.search(token["pattern"], value)`) — un motif pathologique (ReDoS)
-  bloquerait le processus. Accepté pour l'instant : écrire/modifier un
-  `rules.json` exige déjà une authentification admin (`require_token`,
-  token ou compte nommé), donc pas exploitable sans elle. Plusieurs comptes
-  admin (voir ci-dessus) ne changent pas ce raisonnement (même rôle, même
-  niveau de confiance) ; à revoir si des rôles moins fiables que "admin"
-  sont introduits un jour.
+- **`rules.json` : motifs regex admin-fournis sans timeout** : fait (audit du
+  2026-08-11, voir plus bas) — exécution via RE2, plus un risque accepté.
 
 ## Audit sécurité du 2026-06-28 (suite des alertes CodeQL)
 
@@ -124,3 +118,68 @@ Deux correctifs supplémentaires, après un rescan CodeQL post-push :
   session, génération NFO acceptée après connexion / refusée (401) sans.
   Nouvelles variables d'environnement : `NFOGEN_COOKIE_SECURE`,
   `NFOGEN_COOKIE_SAMESITE` (voir README.md).
+
+## Audit sécurité + fonctionnel du 2026-08-11
+
+Audit complet (backend, frontend, dépendances, CI) à la demande explicite de
+prioriser la sécurité. Corrigé :
+
+- **ReDoS sur les motifs regex admin (`rules.json -> tokens[].pattern`)** :
+  l'item "accepté pour l'instant" ci-dessus est refermé, avec un changement
+  d'approche par rapport à l'idée initialement explorée (détection
+  heuristique par chronométrage à l'écriture, abandonnée : dépendante de la
+  vitesse de la machine et d'une entrée de sonde choisie à l'avance, donc
+  potentiellement contournable par un motif qui n'explose que sur une AUTRE
+  forme d'entrée). Remplacée par l'exécution de tout motif admin via **RE2**
+  (`google-re2`, moteur à automate fini, temps linéaire garanti quel que soit
+  le motif, sans backtracking exponentiel possible par construction) —
+  aussi bien à la validation d'un profil (écriture/import via
+  `profile_store`, ou dépôt direct dans `NFOGEN_PROFILES_DIR`) qu'à
+  **chaque génération** (`nfogen/rules.py: errors/warnings/captures`), pas
+  seulement à l'écriture. Contrepartie assumée : RE2 ne supporte ni
+  lookaround ni back-références (précisément ce qui permettrait un
+  backtracking exponentiel) — vérifié : les 6 patterns du profil C411 fourni
+  compilent tels quels sous RE2, aucune réécriture nécessaire. La validation
+  regex (`validate_regex_patterns`) est désormais appelée depuis un seul
+  point d'entrée (`validate_rules_document`), plutôt que dupliquée dans
+  `profile_store.write_profile` et `profiles/__init__._load_external_profiles`
+  séparément — évite qu'un futur chemin d'enregistrement de profil (ex. une
+  commande CLI de gestion de profils, cf. idée ouverte ci-dessus) oublie ce
+  contrôle.
+- **Amorçage du premier compte admin, course possible (TOCTOU)** :
+  `POST /accounts` exécute "vérifier qu'aucun compte n'existe" puis "en
+  créer un" — FastAPI exécute les routes synchrones dans un threadpool, donc
+  deux requêtes concurrentes pendant la fenêtre de bootstrap pouvaient
+  toutes les deux passer le contrôle avant qu'une écriture n'ait eu lieu, et
+  créer chacune un compte admin sans authentification. Verrouillé
+  (`threading.Lock`, `nfogen/api.py`) ; régression couverte par un test qui
+  élargit artificiellement la fenêtre de course pour la rendre
+  déterministe (`tests/test_api.py::test_accounts_bootstrap_is_not_a_race`).
+- **4 vulnérabilités high côté frontend** (`npm audit`) : `react-router`
+  (CSRF-bypass), `postcss` (divulgation de fichier `.map` par traversée de
+  chemin), `nanoid` — apparues depuis l'audit du 28/06 (dépendances
+  transitives, pas un choix direct du projet). Corrigées par `npm audit fix`
+  (bump de `package-lock.json` dans les plages semver déjà déclarées,
+  aucun changement de `package.json` nécessaire) ; build (`vite build`) et
+  lint (`oxlint`) revérifiés après coup.
+
+Revérifié sans correctif nécessaire (relecture complète du backend, dont
+`accounts.py`, `render.py`, `profile_store.py`, `name_proposal.py` — les
+motifs de ce dernier sont fixes/non admin-fournis, donc hors du changement
+RE2 ci-dessus) : les mêmes composants que l'audit du 28/06, plus `pip-audit`
+(aucune CVE connue sur les dépendances backend).
+
+Identifié mais **volontairement non corrigé dans cette passe** (nécessite un
+arbitrage produit, pas juste une correction technique) — voir la synthèse
+d'audit livrée séparément pour le détail et les propositions :
+
+- `_LOGIN_ATTEMPTS` et `_SESSIONS` (`nfogen/api.py`) ne sont jamais purgés :
+  un attaquant anonyme peut faire grossir `_LOGIN_ATTEMPTS` indéfiniment
+  (identifiants distincts sur `/login`, non authentifié par nature) ; une
+  session n'expire jamais côté serveur hors déconnexion/suppression de
+  compte/redémarrage (pas de timeout d'inactivité).
+- La CI (`ci.yml`) ne construit/lint/teste que le backend : un changement
+  cassant le build frontend (`tsc -b && vite build`) ou son lint (`oxlint`)
+  passerait inaperçu jusqu'au déploiement.
+- Pas de `dependabot.yml` (ou équivalent) : les CVE de dépendances (comme
+  les 4 ci-dessus) ne sont détectées qu'à l'occasion d'un audit manuel.

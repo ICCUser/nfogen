@@ -93,11 +93,14 @@ def test_no_validator_for_category_without_requires_field():
     assert warnings == []
 
 
-def test_unknown_category_key_in_rules_is_ignored():
-    """Une cle qui n'est pas une des 5 categories fixes est ignoree (pas
-    bloquant) plutot que de faire planter l'enregistrement du profil."""
-    register_declarative_profile(PROFILE, {"categorie_inconnue": {"requires_field": "x"}})
-    assert "game" in nfogen.list_available()[PROFILE]
+def test_unknown_category_key_in_rules_is_rejected():
+    """Une cle racine qui n'est pas une des 5 categories fixes est REJETEE
+    (schema strict, cf. rules.schema.json) plutot qu'ignoree silencieusement :
+    sinon une typo ('viedo' au lieu de 'video') serait avalée sans bruit et la
+    regle ratee decouverte seulement en production. La validation passe par le
+    meme `validate_rules_document` que tout autre profil utilisateur."""
+    with pytest.raises(ValueError):
+        register_declarative_profile(PROFILE, {"categorie_inconnue": {"requires_field": "x"}})
 
 
 def test_register_rejects_schema_violating_rules():

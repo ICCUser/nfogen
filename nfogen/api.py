@@ -68,6 +68,10 @@ Configuration (variables d'environnement, toutes optionnelles) :
                            que le token). Voir `nfogen/accounts.py` et les
                            routes `/accounts*` ci-dessous. Sans elle, ces
                            routes renvoient une erreur 400 explicite.
+    NFOGEN_LOG_LEVEL      Niveau de logging (defaut INFO). Valeurs valides :
+                           celles de `logging` (DEBUG/INFO/WARNING/ERROR...).
+                           Utile pour diagnostiquer un profil utilisateur
+                           ignore au demarrage, ou baisser le bruit en prod.
 
     POST   /propose-name          suggestion de release_name (noms de fichiers seuls)
 
@@ -96,11 +100,13 @@ le token API comme `/generate` ; voir `nfogen/profile_store.py`) :
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
 import secrets
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -116,6 +122,23 @@ from .accounts import AccountsError
 from .profile_store import ProfileStoreError
 
 logger = logging.getLogger("nfogen.api")
+
+# Configuration du logging au demarrage : sans cela, le niveau par defaut de la
+# librairie standard (WARNING pour le root logger) s'applique, et les
+# `logger.exception(...)` (niveau ERROR) sortent bien mais aucun message
+# d'avertissement de moindre niveau n'apparait -- or l'operateur en a besoin
+# en production pour diagnostiquer (profil utilisateur ignore au demarrage,
+# etc., cf. nfogen/profiles/__init__.py). Niveau pilotable par
+# NFOGEN_LOG_LEVEL (defaut INFO) ; valeurs valides : celles de `logging`.
+# Force une config minimale UNIQUEMENT si rien n'est deja configure (un
+# deploiement qui plugge son propre handler/logging.config n'est pas ecrase).
+_LOG_LEVEL = os.environ.get("NFOGEN_LOG_LEVEL", "INFO").upper()
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=getattr(logging, _LOG_LEVEL, logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+logging.getLogger("nfogen").setLevel(getattr(logging, _LOG_LEVEL, logging.INFO))
 
 _API_TOKEN = os.environ.get("NFOGEN_API_TOKEN")
 _CORS_ORIGINS = [o.strip() for o in os.environ.get("NFOGEN_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -264,11 +287,29 @@ def require_token(
     valable que la connexion ait ete faite avec le token ou un compte nomme).
     Sans aucun mecanisme configure, l'API reste ouverte : un choix explicite
     de l'operateur, pas un comportement force.
+
+    Le token partage est compare en temps constant (`hmac.compare_digest`) :
+    une comparaison naive (`==`) fuiterait, via le temps de reponse, la
+    position du premier octet different -- meme si le throttle de /login
+    (cf. ci-dessous) rend l'exploitation peu realiste, la defense en
+    profondeur ne coute rien ici. Le cookie de session, lui, est un
+    identifiant aleatoire regarde comme une cle dans un dict (aucune
+    information exploitable a en tirer via le timing).
     """
     if not _admin_auth_configured():
         return
-    if _API_TOKEN is not None and authorization == f"Bearer {_API_TOKEN}":
-        return
+    if _API_TOKEN is not None and authorization is not None:
+        # Extraction explicite du jeton apres "Bearer " : on ne compare QUE le
+        # jeton, pas le prefixe "Bearer " (constant, sans interet) -- et on
+        # accepte un prefixe absent comme un jeton invalide.
+        prefix = "Bearer "
+        if authorization.startswith(prefix):
+            provided = authorization[len(prefix) :]
+            # Les deux operandes doivent etre du meme type pour
+            # compare_digest : on encode en UTF-8 (le token partage provient
+            # d'une variable d'environnement, toujours une str ASCII).
+            if hmac.compare_digest(provided.encode("utf-8"), _API_TOKEN.encode("utf-8")):
+                return
     if session_cookie is not None and session_cookie in _SESSIONS:
         return
     raise HTTPException(status_code=401, detail="Authentification invalide ou manquante.")
@@ -424,6 +465,19 @@ class AccountCreateRequest(BaseModel):
     password: str
 
 
+# Verrouille la sequence "verifier qu'aucun compte n'existe encore" +
+# "en creer un" de create_account_route : FastAPI execute les routes
+# synchrones (comme celle-ci) dans un threadpool, donc deux requetes
+# POST /accounts concurrentes tournent sur des threads OS distincts, pas en
+# sequence. Sans ce verrou, les DEUX pourraient passer le controle "bootstrap
+# disponible" (aucun compte encore visible) avant que la premiere n'ait
+# ecrit le sien, et donc creer chacune un compte administrateur sans jamais
+# s'authentifier -- pas seulement le tout premier compte legitime, mais un ou
+# plusieurs de plus, dans la meme fenetre. Cout negligeable (creation de
+# compte = operation rare, verrou tenu le temps d'une lecture/ecriture JSON).
+_ACCOUNTS_BOOTSTRAP_LOCK = threading.Lock()
+
+
 @app.post("/accounts")
 def create_account_route(
     req: AccountCreateRequest,
@@ -438,10 +492,11 @@ def create_account_route(
     entierement ouvert, pas a la contourner. Des qu'un mecanisme admin est
     actif (token configure OU au moins un compte existant), exige la meme
     authentification que les autres routes de gestion (`require_token`)."""
-    bootstrap = _API_TOKEN is None and not _run_accounts(accounts.list_accounts)
-    if not bootstrap:
-        require_token(authorization=authorization, session_cookie=session_cookie)
-    _run_accounts(accounts.create_account, req.username, req.password)
+    with _ACCOUNTS_BOOTSTRAP_LOCK:
+        bootstrap = _API_TOKEN is None and not _run_accounts(accounts.list_accounts)
+        if not bootstrap:
+            require_token(authorization=authorization, session_cookie=session_cookie)
+        _run_accounts(accounts.create_account, req.username, req.password)
     return {"status": "ok"}
 
 
@@ -732,8 +787,24 @@ def export_managed_profile(name: str) -> Response:
 @app.post("/profiles/store/{name}/import", dependencies=[Depends(require_token)])
 async def import_managed_profile(name: str, file: UploadFile = File(...)) -> dict[str, str]:
     """Cree/remplace un profil a partir d'un `.zip` (produit par l'export
-    ci-dessus, ou construit a la main avec la meme structure)."""
-    content = await file.read()
+    ci-dessus, ou construit a la main avec la meme structure).
+
+    Lecture par blocs bornees par `_MAX_UPLOAD_BYTES` (cf. `generate_upload`) :
+    sans cela, un `.zip` malicieux ferait `await file.read()` d'un seul tenant
+    et saturerait la memoire -- un admin de confiance ne le ferait pas, mais
+    on applique la meme discipline que pour `/generate` (les deux sont des
+    uploads multipart) plutot que de dependre de la confiance seule."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(_UPLOAD_CHUNK_BYTES):
+        total += len(chunk)
+        if _MAX_UPLOAD_BYTES is not None and total > _MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Archive trop volumineuse (max {_MAX_UPLOAD_BYTES // (1024 * 1024)} Mo).",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
     _run_store(profile_store.import_profile_zip, name, content)
     return {"status": "ok", "name": name}
 

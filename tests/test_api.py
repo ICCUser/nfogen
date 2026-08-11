@@ -207,6 +207,51 @@ def test_accounts_bootstrap_blocked_once_an_account_exists(reload_api, tmp_path)
     assert resp.status_code == 401
 
 
+def test_accounts_bootstrap_is_not_a_race(reload_api, tmp_path):
+    """Deux requetes POST /accounts concurrentes, toutes deux lancees pendant
+    la fenetre de bootstrap (aucun compte encore visible), ne doivent PAS
+    pouvoir creer chacune un compte sans authentification : une seule doit
+    reussir, l'autre doit retomber sur `require_token` (401, puisqu'un compte
+    existe desormais). Sans le verrou de `create_account_route`
+    (`_ACCOUNTS_BOOTSTRAP_LOCK`), FastAPI execute les routes synchrones dans
+    un threadpool -- les deux requetes pourraient lire "aucun compte" avant
+    que l'une n'ait ecrit le sien, et donc toutes deux passer le controle de
+    bootstrap. On elargit deliberement la fenetre de course avec un delai
+    artificiel dans `accounts.list_accounts` pour rendre le test deterministe
+    plutot que de dependre du hasard de l'ordonnancement des threads."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
+    client = TestClient(mod.app)
+
+    original_list_accounts = mod.accounts.list_accounts
+
+    def slow_list_accounts():
+        time.sleep(0.05)
+        return original_list_accounts()
+
+    mod.accounts.list_accounts = slow_list_accounts
+
+    def _post(username: str):
+        return client.post("/accounts", json={"username": username, "password": "secret123"})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f1 = pool.submit(_post, "admin1")
+        f2 = pool.submit(_post, "admin2")
+        statuses = sorted([f1.result().status_code, f2.result().status_code])
+
+    assert statuses == [200, 401], (
+        "les deux requetes concurrentes ont reussi sans authentification "
+        f"(statuts obtenus : {statuses}) : la fenetre de bootstrap n'est pas verrouillee."
+    )
+    # Un seul des deux comptes a effectivement ete cree (peu importe lequel a
+    # gagne la course) : la seconde tentative a bien ete traitee comme une
+    # creation NORMALE (authentification requise), pas comme un second
+    # bootstrap.
+    assert len(original_list_accounts()) == 1
+
+
 def test_accounts_create_requires_token_once_protected(reload_api, tmp_path):
     mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_ACCOUNTS_FILE=str(tmp_path / "accounts.json"))
     client = TestClient(mod.app)
