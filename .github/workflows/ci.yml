@@ -33,3 +33,29 @@ jobs:
 
       - name: Tests
         run: pytest -q
+
+  # Sans ce job, un changement qui casse le build ou le lint du frontend
+  # (frontend/) passait inapercu jusqu'au deploiement : le job "test"
+  # ci-dessus ne touche jamais a frontend/ (cf. audit du 2026-08-11).
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dependances (npm ci, reproductible via package-lock.json)
+        run: npm ci
+
+      - name: Lint (oxlint)
+        run: npm run lint
+
+      - name: Build (tsc -b && vite build)
+        run: npm run build

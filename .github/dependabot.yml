@@ -1,0 +1,24 @@
+# Detecte automatiquement les mises a jour de dependances (dont les CVE) par
+# des PR hebdomadaires, plutot que de dependre d'un audit manuel (cf.
+# ROADMAP.md, audit du 2026-08-11 : les 4 CVE npm corrigees ce jour-la
+# n'avaient ete detectees qu'a l'occasion d'une relecture complete).
+version: 2
+updates:
+  # Backend (pyproject.toml)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Frontend (frontend/package.json)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+
+  # Actions utilisees par .github/workflows/ci.yml (actions/checkout,
+  # actions/setup-python, actions/setup-node...)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

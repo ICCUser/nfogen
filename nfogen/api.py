@@ -47,6 +47,13 @@ Configuration (variables d'environnement, toutes optionnelles) :
                            legitimement peser plusieurs centaines de Go.
                            Definir une valeur pour appliquer un plafond
                            (utile si l'API est exposee publiquement).
+    NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE
+                           Plafond de requetes/minute par adresse IP sur
+                           /generate, /generate/json et /propose-name.
+                           Illimite par defaut (variable absente). Utile en
+                           complement de NFOGEN_MAX_UPLOAD_MB (qui borne la
+                           taille d'UNE requete, pas leur nombre) si l'API
+                           est exposee publiquement.
     NFOGEN_PROFILES_DIR   Dossier de profils utilisateur, gerable via les
                            routes `/profiles/store*` (lister/lire/creer/
                            editer/supprimer/exporter/importer). Sans elle,
@@ -162,6 +169,17 @@ _UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 # require_token_for_generate ci-dessous) : a "1" pour reactiver
 # l'authentification sur la generation aussi.
 _REQUIRE_AUTH_FOR_GENERATE = os.environ.get("NFOGEN_REQUIRE_AUTH_FOR_GENERATE", "0") == "1"
+# Plafond de requetes/minute par adresse IP sur /generate, /generate/json et
+# /propose-name (meme perimetre que require_token_for_generate ci-dessus,
+# cf. rate_limit_generate). Illimite par defaut (variable absente), comme
+# NFOGEN_MAX_UPLOAD_MB : ces routes restent ouvertes a tous par choix
+# explicite (cf. ROADMAP.md, "Droits d'acces multi-utilisateurs"), le
+# plafond est une protection supplementaire OPT-IN pour un operateur qui
+# expose l'instance publiquement et craint l'abus (nombreuses generations en
+# rafale plutot qu'un seul gros upload, deja couvert par NFOGEN_MAX_UPLOAD_MB).
+_generate_rate_limit = os.environ.get("NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE")
+_GENERATE_RATE_LIMIT_PER_MINUTE = int(_generate_rate_limit) if _generate_rate_limit else None
+_GENERATE_RATE_WINDOW_SECONDS = 60.0
 
 # Authentification par cookie de session (en plus de l'en-tete Authorization,
 # cf. require_token ci-dessous) : le frontend web se connecte via POST /login
@@ -264,13 +282,20 @@ _LOGIN_LOCKOUT_SECONDS = 30.0
 # Une entree sans nouvelle tentative depuis cette duree est consideree morte.
 _LOGIN_ATTEMPTS_TTL_SECONDS = 3600.0  # 1h : tres large par rapport au verrou (30s), pas un souci
 
-# Balaie `_SESSIONS`/`_LOGIN_ATTEMPTS` au plus une fois toutes les
-# _SWEEP_INTERVAL_SECONDS (cout O(n) sinon a CHAQUE requete protegee) --
-# declenche opportunistement depuis login()/require_token(), pas par un
-# thread/timer separe (pas de tache de fond supplementaire dans un processus
-# qui se veut simple). `_touch_session` purge deja une session expiree des
-# qu'elle est utilisee ; ce balayage couvre le cas d'une session/tentative
-# JAMAIS reutilisee, qui sinon resterait en memoire indefiniment.
+# Horodatages des requetes recentes sur /generate*, par adresse IP cliente --
+# fenetre glissante pour rate_limit_generate ci-dessous (cf.
+# NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE). Vide et inutilise tant que la
+# variable n'est pas definie (comportement par defaut, generation illimitee).
+_GENERATE_REQUEST_LOG: dict[str, list[float]] = {}
+
+# Balaie `_SESSIONS`/`_LOGIN_ATTEMPTS`/`_GENERATE_REQUEST_LOG` au plus une
+# fois toutes les _SWEEP_INTERVAL_SECONDS (cout O(n) sinon a CHAQUE requete
+# protegee) -- declenche opportunistement depuis login()/require_token()/
+# rate_limit_generate(), pas par un thread/timer separe (pas de tache de
+# fond supplementaire dans un processus qui se veut simple). `_touch_session`
+# purge deja une session expiree des qu'elle est utilisee ; ce balayage
+# couvre le cas d'une session/tentative/adresse IP JAMAIS revue, qui sinon
+# resterait en memoire indefiniment.
 _SWEEP_INTERVAL_SECONDS = 300.0  # 5 min
 _last_sweep = 0.0
 
@@ -287,6 +312,12 @@ def _sweep_stale_entries() -> None:
     for key, attempt in list(_LOGIN_ATTEMPTS.items()):
         if now - attempt.last_attempt > _LOGIN_ATTEMPTS_TTL_SECONDS:
             del _LOGIN_ATTEMPTS[key]
+    for ip, timestamps in list(_GENERATE_REQUEST_LOG.items()):
+        fresh = [t for t in timestamps if now - t <= _GENERATE_RATE_WINDOW_SECONDS]
+        if fresh:
+            _GENERATE_REQUEST_LOG[ip] = fresh
+        else:
+            del _GENERATE_REQUEST_LOG[ip]
 
 
 # Secure (cookie envoye uniquement en HTTPS) desactive par defaut : l'install
@@ -441,6 +472,44 @@ def require_token_for_generate(
     if not _REQUIRE_AUTH_FOR_GENERATE:
         return
     require_token(authorization=authorization, session_cookie=session_cookie)
+
+
+def rate_limit_generate(request: Request) -> None:
+    """Plafonne le nombre de requetes/minute par adresse IP sur `/generate`,
+    `/generate/json` et `/propose-name` -- inactif par defaut (variable
+    absente, generation illimitee comme aujourd'hui). Complementaire de
+    `NFOGEN_MAX_UPLOAD_MB` (taille d'UNE requete) et de
+    `require_token_for_generate` (identite) : un troisieme axe, le VOLUME de
+    requetes, utile quand la generation reste ouverte a tous
+    (`NFOGEN_REQUIRE_AUTH_FOR_GENERATE=0`, defaut) sur une instance exposee
+    publiquement.
+
+    Fenetre glissante simple (liste d'horodatages par IP, cf.
+    `_GENERATE_REQUEST_LOG`) : pas un limiteur distribue (memoire process
+    uniquement, comme `_SESSIONS`/`_LOGIN_ATTEMPTS`), et la cle est l'adresse
+    IP telle que vue par uvicorn -- potentiellement partagee (plusieurs
+    utilisateurs derriere un meme NAT/proxy) ou spoofable selon la
+    configuration reseau, meme limite deja assumee pour le throttle de
+    `/login`. Repli sur "unknown" si `request.client` est absent (rare,
+    certains clients de test) plutot que de planter."""
+    if _GENERATE_RATE_LIMIT_PER_MINUTE is None:
+        return
+    _sweep_stale_entries()
+    client_ip = request.client.host if request.client is not None else "unknown"
+    now = time.monotonic()
+    timestamps = _GENERATE_REQUEST_LOG.setdefault(client_ip, [])
+    cutoff = now - _GENERATE_RATE_WINDOW_SECONDS
+    while timestamps and timestamps[0] < cutoff:
+        timestamps.pop(0)
+    if len(timestamps) >= _GENERATE_RATE_LIMIT_PER_MINUTE:
+        retry_after = max(1, int(_GENERATE_RATE_WINDOW_SECONDS - (now - timestamps[0])) + 1)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Trop de requetes de generation depuis cette adresse (max "
+            f"{_GENERATE_RATE_LIMIT_PER_MINUTE}/min).",
+            headers={"Retry-After": str(retry_after)},
+        )
+    timestamps.append(now)
 
 
 def _login_throttle_key(username: Optional[str]) -> str:
@@ -724,7 +793,7 @@ def _filename(category: str, data: dict, declared_by_profile: str | None) -> str
     return _header_safe(name)
 
 
-@app.post("/generate/json", dependencies=[Depends(require_token_for_generate)])
+@app.post("/generate/json", dependencies=[Depends(require_token_for_generate), Depends(rate_limit_generate)])
 def generate_json(req: JsonRequest, download: bool = Query(False)) -> Any:
     """Genere un NFO a partir de metadonnees JSON (sans fichier)."""
     warnings: list[str] = []
@@ -753,7 +822,7 @@ class NameProposalRequest(BaseModel):
     title_hints: Optional[list[Optional[str]]] = None
 
 
-@app.post("/propose-name", dependencies=[Depends(require_token_for_generate)])
+@app.post("/propose-name", dependencies=[Depends(require_token_for_generate), Depends(rate_limit_generate)])
 def propose_name(req: NameProposalRequest) -> dict[str, Any]:
     """Suggere un release_name a partir des NOMS de fichiers (jamais leur
     contenu : aucun upload necessaire) et, optionnellement, du tag `Title`
@@ -769,7 +838,7 @@ def propose_name(req: NameProposalRequest) -> dict[str, Any]:
     return {"name": proposal.name, "fields": proposal.fields, "warnings": proposal.warnings}
 
 
-@app.post("/generate", dependencies=[Depends(require_token_for_generate)])
+@app.post("/generate", dependencies=[Depends(require_token_for_generate), Depends(rate_limit_generate)])
 async def generate_upload(
     category: Optional[str] = Form(None),
     profile: str = Form("c411"),

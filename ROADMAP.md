@@ -183,7 +183,22 @@ motifs de ce dernier sont fixes/non admin-fournis, donc hors du changement
 RE2 ci-dessus) : les mêmes composants que l'audit du 28/06, plus `pip-audit`
 (aucune CVE connue sur les dépendances backend).
 
-Reste à traiter dans cette même passe (priorité 1, sécurité/robustesse) :
-CI qui construit/lint/teste aussi le frontend, `dependabot.yml`, et une
-décision sur le rate-limiting de `/generate*`. Voir la suite de cette section
-une fois traités.
+- **CI backend uniquement** : un job `frontend` ajouté à `ci.yml` (`npm ci`,
+  `npm run lint` (oxlint), `npm run build` (`tsc -b && vite build`)) — un
+  changement cassant le build ou le lint du frontend ne passe plus inaperçu
+  jusqu'au déploiement.
+- **Pas de détection automatique des CVE de dépendances** : `.github/
+  dependabot.yml` ajouté (pip, npm, github-actions — mises à jour
+  hebdomadaires par PR), pour ne plus dépendre d'un audit manuel comme celui
+  qui a trouvé les 4 CVE npm ci-dessus.
+- **Pas de protection contre le volume de requêtes sur `/generate*`** :
+  `NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE` (défaut illimité, comme
+  `NFOGEN_MAX_UPLOAD_MB`) — plafond par adresse IP, fenêtre glissante en
+  mémoire (mêmes limites assumées que le throttle de `/login` : IP
+  potentiellement partagée/spoofable, pas un limiteur distribué). Complète
+  `NFOGEN_MAX_UPLOAD_MB` (taille d'une requête) sur l'axe volume/fréquence.
+  Partagé entre les 3 routes de génération (même clé IP), pour ne pas être
+  contournable en répartissant les requêtes entre elles.
+
+Priorité 1 de l'audit du 2026-08-11 close. Priorité 2 (fonctionnel, voir
+"Idées / prochaines pistes" en tête de document) : à traiter ensuite.

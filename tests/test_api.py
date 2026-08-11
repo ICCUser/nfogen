@@ -91,6 +91,78 @@ def test_generate_lockable_via_require_auth_for_generate(reload_api):
     assert resp.status_code == 200
 
 
+# --------------------------------------------------------------------------- #
+# Rate-limiting de /generate* (NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE, audit du
+# 2026-08-11) : complementaire de NFOGEN_MAX_UPLOAD_MB (borne la taille d'UNE
+# requete, pas leur NOMBRE). Inactif par defaut (variable absente).
+# --------------------------------------------------------------------------- #
+def test_generate_rate_limit_disabled_by_default(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE=None)
+    client = TestClient(mod.app)
+    for _ in range(10):
+        assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+
+
+def test_generate_rate_limit_blocks_after_threshold(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE="2")
+    client = TestClient(mod.app)
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+
+    resp = client.post("/generate/json", json=GAME_PAYLOAD)
+    assert resp.status_code == 429
+    assert "Retry-After" in resp.headers
+
+
+def test_generate_rate_limit_applies_to_propose_name_and_upload_too(reload_api):
+    """Les 3 routes de generation partagent le meme plafond (meme cle IP) --
+    pas un compteur independant par route, sinon le plafond global serait
+    contournable en repartissant les requetes entre les 3."""
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE="2")
+    client = TestClient(mod.app)
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+    assert client.post("/propose-name", json={"category": "video", "filenames": []}).status_code in (
+        200,
+        400,
+    )  # 400 = pas de name_proposal configure pour ce profil/categorie ; peu importe ici, pas 429/401
+    resp = client.post("/generate", data={"category": "game", "data": "{}"})
+    assert resp.status_code == 429
+
+
+def test_generate_rate_limit_is_per_client_ip(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE="1")
+    client_a = TestClient(mod.app, client=("1.2.3.4", 12345))
+    client_b = TestClient(mod.app, client=("5.6.7.8", 12345))
+
+    assert client_a.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+    assert client_a.post("/generate/json", json=GAME_PAYLOAD).status_code == 429
+    # client_b n'a pas encore consomme SON quota, independant de client_a.
+    assert client_b.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+
+
+def test_generate_rate_limit_window_resets_after_real_delay(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE="1")
+    monkeypatch.setattr(mod, "_GENERATE_RATE_WINDOW_SECONDS", 0.15)
+    client = TestClient(mod.app)
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 429
+
+    time.sleep(0.3)
+    assert client.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
+
+
+def test_sweep_removes_stale_generate_rate_limit_entries(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE="5")
+    client = TestClient(mod.app)
+    client.post("/generate/json", json=GAME_PAYLOAD)
+    assert mod._GENERATE_REQUEST_LOG  # au moins une IP enregistree
+
+    monkeypatch.setattr(mod, "_GENERATE_RATE_WINDOW_SECONDS", -1.0)  # toute entree est "hors fenetre"
+    monkeypatch.setattr(mod, "_last_sweep", 0.0)
+    mod._sweep_stale_entries()
+    assert mod._GENERATE_REQUEST_LOG == {}
+
+
 def test_auth_status_open_when_no_token_configured(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN=None)
     client = TestClient(mod.app)
