@@ -23,7 +23,13 @@ const BASE_URL_KEY = "nfogen.apiBaseUrl";
 const DEFAULT_BASE_URL = import.meta.env.DEV ? "/api" : "";
 
 export function getBaseUrl(): string {
-  return localStorage.getItem(BASE_URL_KEY) || DEFAULT_BASE_URL;
+  // `??` (pas `||`) : une chaine vide explicitement enregistree (meme
+  // origine, sans prefixe -- exactement la valeur qu'il faut pouvoir
+  // restaurer manuellement depuis Reglages si un ancien "/api" est reste
+  // enregistre) ne doit pas etre reinterpretee comme "rien n'est enregistre".
+  // `localStorage.getItem` renvoie `null` (jamais `""`) quand la cle est
+  // absente, donc `??` distingue bien les deux cas.
+  return localStorage.getItem(BASE_URL_KEY) ?? DEFAULT_BASE_URL;
 }
 
 export function setBaseUrl(value: string): void {

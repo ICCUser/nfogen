@@ -148,7 +148,7 @@ export default function SettingsPage() {
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={baseUrl}
             onChange={(e) => setBaseUrlState(e.target.value)}
-            placeholder="/api"
+            placeholder="(même origine, vide par défaut)"
           />
         </label>
         <button

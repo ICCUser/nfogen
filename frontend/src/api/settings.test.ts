@@ -20,6 +20,19 @@ describe("getBaseUrl / setBaseUrl", () => {
     setBaseUrl("https://example.test/api");
     expect(getBaseUrl()).toBe("https://example.test/api");
   });
+
+  it("an explicitly saved empty string is honored, not silently replaced by the default", () => {
+    // Cas reel : un utilisateur qui avait "/api" enregistre de longue date
+    // (ancien defaut) doit pouvoir revenir manuellement a "meme origine" en
+    // vidant le champ dans Reglages -- une chaine vide n'est PAS "rien
+    // n'est enregistre" (`||` aurait retabli DEFAULT_BASE_URL a tort ; `??`
+    // ne se declenche que sur `null`, ce que retourne getItem quand la cle
+    // est vraiment absente).
+    setBaseUrl("/api");
+    expect(getBaseUrl()).toBe("/api");
+    setBaseUrl("");
+    expect(getBaseUrl()).toBe("");
+  });
 });
 
 describe("DEFAULT_BASE_URL in a production build", () => {

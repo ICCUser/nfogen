@@ -122,3 +122,15 @@ Priorité 1 close. Priorité 2 : voir "Idées / prochaines pistes" ci-dessus.
   déterministe quelle que soit la machine. Trouvé via le log CI complet
   fourni par l'utilisateur (accès aux logs bruts impossible via l'API
   GitHub sans droits admin sur le dépôt).
+- **`getBaseUrl()` : une URL vide explicitement enregistrée était ignorée** :
+  `localStorage.getItem(...) || DEFAULT_BASE_URL` traitait `""` comme "rien
+  n'est enregistré" (JS, chaîne vide falsy) et retombait sur le défaut —
+  empêchait un utilisateur ayant encore `/api` enregistré (ancien défaut, cf.
+  point précédent) de revenir manuellement à "même origine" depuis Réglages.
+  Corrigé (`??` au lieu de `||`, `getItem` renvoie `null` — jamais `""` —
+  quand la clé est réellement absente). Un ancien `/api` déjà enregistré
+  dans le navigateur d'un utilisateur reste prioritaire sur le nouveau
+  défaut tant qu'il n'est pas explicitement vidé dans Réglages ; c'est
+  attendu (la valeur enregistrée est toujours prioritaire), mais ça peut
+  surprendre juste après ce correctif si le navigateur avait déjà visité
+  l'instance.
