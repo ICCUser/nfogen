@@ -111,3 +111,14 @@ Priorité 1 close. Priorité 2 : voir "Idées / prochaines pistes" ci-dessus.
   d'un `ErrorBoundary` (`src/components/ErrorBoundary.tsx`, remonté à chaque
   changement de route) : un futur bug de rendu affichera un message au lieu
   d'une page blanche silencieuse.
+- **CI cassée depuis le premier push de cette session (3 tests sur
+  `_sweep_stale_entries`)** : `time.monotonic()` n'a pas de valeur absolue
+  garantie (référence de départ arbitraire, ex. démarrage du conteneur) —
+  les tests posaient `_last_sweep = 0.0` en supposant `now` "assez grand"
+  pour dépasser `_SWEEP_INTERVAL_SECONDS` (300s), vrai sur une machine de dev
+  avec de l'uptime, faux sur un runner CI fraîchement démarré (`now` ~118s).
+  Corrigé : les tests neutralisent directement `_SWEEP_INTERVAL_SECONDS`
+  plutôt que de deviner une valeur de `_last_sweep` "assez ancienne" —
+  déterministe quelle que soit la machine. Trouvé via le log CI complet
+  fourni par l'utilisateur (accès aux logs bruts impossible via l'API
+  GitHub sans droits admin sur le dépôt).

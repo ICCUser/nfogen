@@ -158,6 +158,14 @@ def test_sweep_removes_stale_generate_rate_limit_entries(reload_api, monkeypatch
     assert mod._GENERATE_REQUEST_LOG  # au moins une IP enregistree
 
     monkeypatch.setattr(mod, "_GENERATE_RATE_WINDOW_SECONDS", -1.0)  # toute entree est "hors fenetre"
+    # _last_sweep=0.0 ne suffit pas a lui seul : time.monotonic() n'est PAS
+    # garanti d'etre "grand" (sa reference de depart est arbitraire, ex.
+    # demarrage du conteneur -- observe en CI : now ~118s, largement sous les
+    # 300s de _SWEEP_INTERVAL_SECONDS, le balayage etait donc ignore alors
+    # qu'il l'etait toujours sur une machine avec plus d'uptime). On neutralise
+    # directement l'intervalle plutot que de deviner une valeur de _last_sweep
+    # "assez ancienne".
+    monkeypatch.setattr(mod, "_SWEEP_INTERVAL_SECONDS", -1.0)
     monkeypatch.setattr(mod, "_last_sweep", 0.0)
     mod._sweep_stale_entries()
     assert mod._GENERATE_REQUEST_LOG == {}
@@ -495,6 +503,9 @@ def test_sweep_removes_stale_login_attempts(reload_api, monkeypatch):
     assert "un_identifiant_quelconque" in mod._LOGIN_ATTEMPTS
 
     monkeypatch.setattr(mod, "_LOGIN_ATTEMPTS_TTL_SECONDS", -1.0)
+    # cf. test_sweep_removes_stale_generate_rate_limit_entries : neutralise
+    # l'intervalle plutot que de supposer que time.monotonic() est "grand".
+    monkeypatch.setattr(mod, "_SWEEP_INTERVAL_SECONDS", -1.0)
     monkeypatch.setattr(mod, "_last_sweep", 0.0)  # contourne le throttle du balayage (300s) pour le test
     mod._sweep_stale_entries()
     assert "un_identifiant_quelconque" not in mod._LOGIN_ATTEMPTS
@@ -508,6 +519,7 @@ def test_sweep_removes_expired_sessions(reload_api, monkeypatch):
     assert cookie in mod._SESSIONS
 
     monkeypatch.setattr(mod, "_SESSION_IDLE_TIMEOUT_SECONDS", -1.0)
+    monkeypatch.setattr(mod, "_SWEEP_INTERVAL_SECONDS", -1.0)  # idem : cf. test ci-dessus
     monkeypatch.setattr(mod, "_last_sweep", 0.0)
     mod._sweep_stale_entries()
     assert cookie not in mod._SESSIONS
