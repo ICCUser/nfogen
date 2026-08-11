@@ -26,7 +26,10 @@ C411. Historique détaillé des changements : `git log`.
   README.md).
 - **Verrou sur les écritures concurrentes de `profile_store.py`** : fait
   (`_LOCK`, couvre aussi les lectures).
-- Pas de tests automatisés pour le frontend.
+- **Tests automatisés pour le frontend** : fait (Vitest + Testing Library,
+  `frontend/README.md`). Démarrage ciblé sur la logique pure et testable
+  sans risque (`src/api/*`, composants réutilisables génériques) plutôt
+  qu'une couverture exhaustive des pages ; à étendre au fil de l'eau.
 - Extraction côté navigateur (sans upload) limitée à la vidéo ; audio/jeux/
   ebook/3D passent encore par l'upload classique.
 - `name_proposal.py` : saison/épisode déterminés en priorité par le nom de

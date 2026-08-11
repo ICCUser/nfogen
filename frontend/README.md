@@ -47,6 +47,16 @@ npm run preview      # sert le build localement
 En production, configurez l'URL de l'API dans l'écran Réglages, ou servez
 `dist/` derrière un reverse-proxy qui mappe `/api` vers l'API.
 
+## Tests
+
+```bash
+npm run test          # vitest, execute aussi en CI
+```
+
+Vitest + Testing Library (jsdom). Pas de mock du DOM local storage natif
+(peu fiable selon la version de Node) : `src/setupTests.ts` fournit un
+polyfill deterministe.
+
 ## Structure
 
 - `src/api/` — client HTTP (`client.ts`), types miroir de `rules.schema.json`
