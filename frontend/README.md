@@ -30,7 +30,7 @@ démarrez l'API séparément.
 # Dans nfo-tool/ (pas frontend/)
 export NFOGEN_API_TOKEN=change-moi
 export NFOGEN_PROFILES_DIR=/chemin/profils
-uvicorn nfogen.api:app --port 8000
+nfogen serve --port 8000
 ```
 
 Connectez-vous avec ce token dans l'écran **Réglages** : `POST /login` pose

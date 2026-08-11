@@ -1,5 +1,10 @@
 """Interface en ligne de commande de nfogen.
 
+Demarrer l'API + l'interface web (equivalent de `uvicorn nfogen.api:app`,
+necessite `pip install -e ".[api]"`) :
+    nfogen serve                             # http://localhost:8000
+    nfogen serve --host 127.0.0.1 --port 9000
+
 Exemples :
     nfogen --list
     nfogen -i film.mkv                       # categorie auto-detectee
@@ -25,6 +30,33 @@ import sys
 from pathlib import Path
 
 from . import engine, profile_store
+
+
+def _serve(argv: list[str]) -> int:
+    """`nfogen serve` : demarre l'API + l'interface web (uvicorn). Necessite
+    les dependances optionnelles `pip install -e ".[api]"`."""
+    parser = argparse.ArgumentParser(
+        prog="nfogen serve",
+        description="Demarre l'API nfogen (et l'interface web si NFOGEN_FRONTEND_DIST est definie).",
+    )
+    parser.add_argument("--host", default="0.0.0.0", help="Adresse d'ecoute (defaut 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=8000, help="Port d'ecoute (defaut 8000)")
+    args = parser.parse_args(argv)
+
+    try:
+        import uvicorn
+    except ImportError:
+        print(
+            "Erreur : 'nfogen serve' necessite les dependances API : "
+            "pip install -e \".[api]\"",
+            file=sys.stderr,
+        )
+        return 1
+
+    from .api import app
+
+    uvicorn.run(app, host=args.host, port=args.port)
+    return 0
 
 
 def _load_data(path: str | None) -> dict:
@@ -143,6 +175,10 @@ def _resolve_output_path(out_arg: str | None, canonical_name: str | None) -> str
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = sys.argv[1:] if argv is None else argv
+    if raw_argv[:1] == ["serve"]:
+        return _serve(raw_argv[1:])
+
     parser = argparse.ArgumentParser(
         prog="nfogen", description="Generateur de fichiers NFO base sur des profils."
     )

@@ -22,12 +22,14 @@ surchargé ou supprimé comme n'importe quel profil (voir [Gérer des profils
 utilisateur](#gérer-des-profils-utilisateur-sans-toucher-au-code)). Un profil
 se partage en `.zip` (export/import intégrés).
 
-## Installation
+## Installation et démarrage
+
+Trois façons d'installer nfogen ; chacune démarre (et redémarre) différemment.
 
 ### Sur un serveur (Debian/Ubuntu, recommandé)
 
-Installe tout (Python, Node.js, libmediainfo), build le frontend, lance
-l'API + l'interface comme service `systemd` :
+Installe tout (Python, Node.js, libmediainfo), build le frontend, et
+**démarre automatiquement** l'API + l'interface comme service `systemd` :
 
 ```bash
 git clone https://github.com/ICCUser/nfogen.git
@@ -35,21 +37,33 @@ cd nfogen
 sudo ./scripts/install.sh
 ```
 
-Affiche l'URL et le token API généré à la fin. Mise à jour :
+Affiche l'URL et le token API généré à la fin — rien d'autre à lancer.
+Ensuite, le service se gère avec les commandes `systemctl` standard :
+
+```bash
+sudo systemctl status nfogen    # est-ce lancé ?
+sudo systemctl restart nfogen   # apres avoir modifié /etc/nfogen/nfogen.env
+sudo systemctl stop nfogen
+journalctl -u nfogen -f         # logs en direct
+```
+
+Mise à jour (remplace le code, garde le token API et les profils utilisateur) :
 
 ```bash
 sudo ./scripts/update.sh
 ```
 
-Le code applicatif est remplacé ; token API et profils utilisateur ne sont
-jamais perdus (`/etc/nfogen`, `/var/lib/nfogen`).
-
 ### Avec Docker (autres distributions)
 
 ```bash
 docker build -t nfogen .
-docker run -p 8000:8000 -e NFOGEN_API_TOKEN=change-moi nfogen
+docker run -d --name nfogen -p 8000:8000 -e NFOGEN_API_TOKEN=change-moi nfogen
 # Interface + API sur http://localhost:8000
+```
+
+```bash
+docker stop nfogen && docker start nfogen   # arreter / redemarrer
+docker logs -f nfogen                       # logs en direct
 ```
 
 ### En développement (manuel)
@@ -58,9 +72,14 @@ docker run -p 8000:8000 -e NFOGEN_API_TOKEN=change-moi nfogen
 apt-get install libmediainfo0v5 mediainfo   # Debian/Ubuntu
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[api]"
+nfogen serve
+# API (+ interface si NFOGEN_FRONTEND_DIST est definie) sur http://localhost:8000
 ```
 
-Frontend (rechargement à chaud) : [frontend/README.md](frontend/README.md).
+`nfogen serve` (équivalent de `uvicorn nfogen.api:app`, voir [Service
+HTTP](#service-http-automatisation)) accepte `--host`/`--port` (par défaut
+`0.0.0.0:8000`) ; `Ctrl+C` pour arrêter. Frontend en rechargement à chaud
+(hors `NFOGEN_FRONTEND_DIST`) : [frontend/README.md](frontend/README.md).
 
 ## Utilisation en ligne de commande
 
@@ -186,6 +205,7 @@ nfo = nfogen.generate(category="game", data={
 ## Service HTTP (automatisation)
 
 ```bash
+nfogen serve                                          # ou directement :
 uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 ```
 

@@ -1,6 +1,6 @@
 """Service HTTP (FastAPI) pour la generation automatisee de NFO.
 
-Lancer : uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
+Lancer : nfogen serve (ou directement : uvicorn nfogen.api:app --host 0.0.0.0 --port 8000)
 
 Variables d'environnement (toutes optionnelles ; details dans README.md) :
     NFOGEN_API_TOKEN                      token admin partage
