@@ -121,6 +121,26 @@ def test_client_wraps_http_errors():
         client.search_movie(query="x")
 
 
+def test_error_message_never_contains_the_api_key():
+    """httpx inclut l'URL complete (avec ?apikey=...) dans le message
+    d'une erreur HTTP (ex. HTTPStatusError.__str__) : sans redaction, une
+    cle API reelle finit affichee telle quelle dans l'UI (GET
+    /gapscan/status) -- reproduit un vrai incident (cle exposee en clair
+    dans une reponse 520 de C411)."""
+    secret_key = "25a31a6e545d4f8bf244ce44f717aac2064bfa26895297df1e5e430bf9b1c203"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(520, text="")
+
+    client = C411Client(
+        api_key=secret_key, http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    with pytest.raises(C411Error) as excinfo:
+        client.search_movie(imdb_id="tt10548174", tmdb_id="1100988")
+
+    assert secret_key not in str(excinfo.value)
+
+
 # --------------------------------------------------------------------------- #
 # Limitation de debit (GAPSCAN.md, section "Execution" : un scan complet
 # peut interroger des centaines de titres -- respectueux de l'API C411).

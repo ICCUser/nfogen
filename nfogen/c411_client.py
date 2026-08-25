@@ -168,7 +168,12 @@ class C411Client:
             response = self._client.get(self._base_url, params=query)
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            raise C411Error(f"Appel a l'API C411 echoue ({params.get('t')}) : {exc}") from exc
+            # httpx inclut l'URL complete (donc ?apikey=...) dans le message
+            # de certaines erreurs (HTTPStatusError.__str__ notamment) --
+            # sans cette redaction, la cle finit affichee en clair cote
+            # utilisateur (GET /gapscan/status) a chaque erreur reseau.
+            detail = str(exc).replace(self._api_key, "<cle redigee>")
+            raise C411Error(f"Appel a l'API C411 echoue ({params.get('t')}) : {detail}") from exc
         return parse_torznab_response(response.text)
 
     def search_movie(
