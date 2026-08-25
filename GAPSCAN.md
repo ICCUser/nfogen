@@ -150,16 +150,22 @@ nfogen/
 | `GET /gapscan/status` | oui | État (`idle`/`running`/`done`/`error`) + progression (`processed`/`total`) du dernier scan |
 | `GET /gapscan/results` | oui | Derniers résultats (JSON), filtrable par statut (`?status=absent`) |
 | `GET /gapscan/results/export.csv` | oui | Export CSV, mêmes filtres |
-| `GET /gapscan/config` | oui | Quels services sont configurés (booléens uniquement, jamais les clés) |
+| `GET /gapscan/config` | oui | Configuration effective : booléens `*_configured` + URLs (jamais les clés) |
+| `PUT /gapscan/config` | oui | Enregistre URLs/clés Sonarr/Radarr/C411 — mise à jour partielle, un champ omis reste inchangé |
 
-**Écart avec la version initiale de cette section** : pas de `PUT /gapscan/config`.
-Contrairement à ce qui était envisagé, la config reste **exclusivement par
-variables d'environnement** (`NFOGEN_C411_API_KEY`, `NFOGEN_SONARR_URL`/
-`_API_KEY`, `NFOGEN_RADARR_URL`/`_API_KEY` — voir `.env.example`), comme
-tous les autres secrets de nfogen (`NFOGEN_API_TOKEN` n'a pas non plus de
-`PUT`). Éviterait d'introduire un second mécanisme de stockage de secrets
-rien que pour GapScan. Redémarrage du service requis après modification,
-comme pour les autres variables.
+**Retour sur la décision "pas de PUT" prise plus haut dans ce fichier** :
+ajouté le 2026-08-25, après un premier test manuel de l'app — éditer
+`.env` à la main et redémarrer le service à chaque changement de clé
+Sonarr/Radarr était trop de friction pour un usage réel. Contrairement à
+`NFOGEN_API_TOKEN` (qui protège nfogen lui-même, jamais de `PUT`), les
+clés Sonarr/Radarr/C411 sont des identifiants **sortants** vers des
+services tiers : rien ne justifiait de bloquer leur modification à chaud.
+`nfogen/gapscan_config_store.py` : fichier JSON optionnel
+(`NFOGEN_GAPSCAN_CONFIG_FILE`, jamais commit), relu à chaque appel (pas de
+cache, comme `accounts.py`), toujours prioritaire sur les variables
+d'environnement historiques quand les deux sont présentes — celles-ci
+restent utilisables seules (lecture seule, pas de `PUT`) pour un
+déploiement non interactif (docker-compose, `.env` sans UI).
 
 **Exécution** : implémenté (2026-08-25) — `POST /gapscan/run` lance un scan
 en tâche de fond (`nfogen/gapscan_runner.py`, `threading.Thread`), un seul

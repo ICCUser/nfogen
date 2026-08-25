@@ -998,11 +998,56 @@ def test_gapscan_config_reports_which_services_are_configured(reload_api):
     assert resp.status_code == 200
     assert resp.json() == {
         "c411_configured": True,
+        "c411_base_url": "https://c411.org",
         "sonarr_configured": False,
+        "sonarr_url": None,
         "radarr_configured": True,
+        "radarr_url": "http://radarr.local",
     }
     # jamais la cle elle-meme dans la reponse, meme par accident.
     assert "x" not in resp.text and "y" not in resp.text
+
+
+def test_gapscan_config_write_then_read_back(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+
+    put = client.put(
+        "/gapscan/config",
+        json={"c411_api_key": "secret", "sonarr_url": "http://sonarr.local", "sonarr_api_key": "sk"},
+    )
+    assert put.status_code == 200
+    assert "secret" not in put.text and "sk" not in put.text  # jamais la cle en retour
+
+    status = client.get("/gapscan/config").json()
+    assert status["c411_configured"] is True
+    assert status["sonarr_configured"] is True
+    assert status["sonarr_url"] == "http://sonarr.local"
+
+
+def test_gapscan_config_write_without_config_file_env_var_returns_400(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=None)
+    client = TestClient(mod.app)
+    resp = client.put("/gapscan/config", json={"c411_api_key": "x"})
+    assert resp.status_code == 400
+
+
+def test_gapscan_config_partial_write_preserves_other_fields(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+
+    client.put("/gapscan/config", json={"c411_api_key": "secret"})
+    client.put("/gapscan/config", json={"sonarr_url": "http://sonarr.local", "sonarr_api_key": "sk"})
+
+    status = client.get("/gapscan/config").json()
+    assert status["c411_configured"] is True  # pas efface par le 2e PUT
+    assert status["sonarr_configured"] is True
 
 
 def test_gapscan_run_rejects_when_c411_not_configured(reload_api):

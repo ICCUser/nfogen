@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { downloadBlob, gapscanConfig, gapscanExportCsv, gapscanResults, gapscanRun, gapscanStatus } from "../api/client";
+import {
+  downloadBlob,
+  gapscanConfig,
+  gapscanConfigWrite,
+  gapscanExportCsv,
+  gapscanResults,
+  gapscanRun,
+  gapscanStatus,
+} from "../api/client";
 import { ApiError } from "../api/types";
 import type { GapResult, GapscanConfig, GapscanStatus, GapStatus } from "../api/types";
 
@@ -48,8 +56,33 @@ export default function GapScanPage() {
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<number | null>(null);
 
+  // Formulaire de configuration (Sonarr/Radarr/C411) : replie par defaut,
+  // deplie automatiquement une fois qu'on sait qu'il manque quelque chose
+  // (voir l'effet plus bas, une fois `config` charge).
+  const [showConfigForm, setShowConfigForm] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [sonarrUrl, setSonarrUrl] = useState("");
+  const [sonarrApiKey, setSonarrApiKey] = useState("");
+  const [radarrUrl, setRadarrUrl] = useState("");
+  const [radarrApiKey, setRadarrApiKey] = useState("");
+  const [c411ApiKey, setC411ApiKey] = useState("");
+  const [c411BaseUrl, setC411BaseUrl] = useState("");
+
   useEffect(() => {
-    gapscanConfig().catch(() => null).then((c) => c && setConfig(c));
+    gapscanConfig()
+      .catch(() => null)
+      .then((c) => {
+        if (!c) return;
+        setConfig(c);
+        setSonarrUrl(c.sonarr_url ?? "");
+        setRadarrUrl(c.radarr_url ?? "");
+        setC411BaseUrl(c.c411_base_url ?? "");
+        if (!c.c411_configured || (!c.sonarr_configured && !c.radarr_configured)) {
+          setShowConfigForm(true);
+        }
+      });
     refreshStatus();
     return () => stopPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,6 +152,36 @@ export default function GapScanPage() {
     }
   }
 
+  async function handleSaveConfig() {
+    setConfigSaving(true);
+    setConfigError(null);
+    setConfigSaved(false);
+    try {
+      // Seuls les champs non vides sont envoyes : un champ cle laisse vide
+      // ne doit pas effacer une valeur deja enregistree (PUT partiel cote
+      // serveur, voir gapscan_config_store.write()).
+      const fields: Record<string, string> = {};
+      if (sonarrUrl.trim()) fields.sonarr_url = sonarrUrl.trim();
+      if (sonarrApiKey.trim()) fields.sonarr_api_key = sonarrApiKey.trim();
+      if (radarrUrl.trim()) fields.radarr_url = radarrUrl.trim();
+      if (radarrApiKey.trim()) fields.radarr_api_key = radarrApiKey.trim();
+      if (c411ApiKey.trim()) fields.c411_api_key = c411ApiKey.trim();
+      if (c411BaseUrl.trim()) fields.c411_base_url = c411BaseUrl.trim();
+
+      const updated = await gapscanConfigWrite(fields);
+      setConfig(updated);
+      setSonarrApiKey("");
+      setRadarrApiKey("");
+      setC411ApiKey("");
+      setConfigSaved(true);
+      setTimeout(() => setConfigSaved(false), 2000);
+    } catch (e) {
+      setConfigError(e instanceof ApiError ? e.message : "Enregistrement impossible.");
+    } finally {
+      setConfigSaving(false);
+    }
+  }
+
   async function handleExportCsv() {
     try {
       const blob = await gapscanExportCsv(filter || undefined);
@@ -164,17 +227,108 @@ export default function GapScanPage() {
 
       {notConfigured && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Clé API C411 non configurée côté serveur (<code className="rounded bg-amber-100 px-1">NFOGEN_C411_API_KEY</code>) —
-          voir GAPSCAN.md.
+          Clé API C411 non configurée — renseigne-la ci-dessous.
         </div>
       )}
       {!notConfigured && noLibrary && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Aucune instance Sonarr ni Radarr configurée côté serveur (
-          <code className="rounded bg-amber-100 px-1">NFOGEN_SONARR_URL</code>/
-          <code className="rounded bg-amber-100 px-1">NFOGEN_RADARR_URL</code>) — voir GAPSCAN.md.
+          Aucune instance Sonarr ni Radarr configurée — renseigne au moins l'une des deux ci-dessous.
         </div>
       )}
+
+      <div className="rounded-md border border-slate-200 bg-white">
+        <button
+          type="button"
+          onClick={() => setShowConfigForm((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-slate-900"
+        >
+          Configuration (Sonarr, Radarr, C411)
+          <span className="text-slate-400">{showConfigForm ? "▲" : "▼"}</span>
+        </button>
+        {showConfigForm && (
+          <div className="space-y-3 border-t border-slate-200 p-4">
+            <p className="text-xs text-slate-500">
+              Enregistré côté serveur ({" "}
+              <code className="rounded bg-slate-100 px-1">NFOGEN_GAPSCAN_CONFIG_FILE</code>{" "}
+              requis). Un champ « clé » laissé vide ne modifie pas la clé déjà enregistrée.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm font-medium text-slate-700">
+                URL Sonarr
+                <input
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="http://sonarr.local:8989"
+                  value={sonarrUrl}
+                  onChange={(e) => setSonarrUrl(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Clé API Sonarr
+                <input
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  type="password"
+                  placeholder={config?.sonarr_configured ? "•••• (enregistrée)" : ""}
+                  value={sonarrApiKey}
+                  onChange={(e) => setSonarrApiKey(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                URL Radarr
+                <input
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="http://radarr.local:7878"
+                  value={radarrUrl}
+                  onChange={(e) => setRadarrUrl(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Clé API Radarr
+                <input
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  type="password"
+                  placeholder={config?.radarr_configured ? "•••• (enregistrée)" : ""}
+                  value={radarrApiKey}
+                  onChange={(e) => setRadarrApiKey(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                URL de base C411
+                <input
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="https://c411.org"
+                  value={c411BaseUrl}
+                  onChange={(e) => setC411BaseUrl(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Clé API C411
+                <input
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  type="password"
+                  placeholder={config?.c411_configured ? "•••• (enregistrée)" : ""}
+                  value={c411ApiKey}
+                  onChange={(e) => setC411ApiKey(e.target.value)}
+                />
+              </label>
+            </div>
+
+            {configError && <p className="text-sm text-red-600">{configError}</p>}
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSaveConfig}
+                disabled={configSaving}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+              >
+                {configSaving ? "Enregistrement…" : "Enregistrer"}
+              </button>
+              {configSaved && <span className="text-sm text-emerald-600">Enregistré.</span>}
+            </div>
+          </div>
+        )}
+      </div>
 
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

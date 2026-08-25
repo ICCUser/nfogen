@@ -8,6 +8,7 @@ import GapScanPage from "./GapScanPage";
 vi.mock("../api/client", () => ({
   downloadBlob: vi.fn(),
   gapscanConfig: vi.fn(),
+  gapscanConfigWrite: vi.fn(),
   gapscanExportCsv: vi.fn(),
   gapscanResults: vi.fn(),
   gapscanRun: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("../api/client", () => ({
 
 import {
   gapscanConfig,
+  gapscanConfigWrite,
   gapscanResults,
   gapscanRun,
   gapscanStatus,
@@ -24,8 +26,11 @@ import type { GapResult, GapscanConfig, GapscanStatus } from "../api/types";
 
 const CONFIGURED: GapscanConfig = {
   c411_configured: true,
+  c411_base_url: "https://c411.org",
   sonarr_configured: false,
+  sonarr_url: null,
   radarr_configured: true,
+  radarr_url: "http://radarr.local:7878",
 };
 
 const IDLE_STATUS: GapscanStatus = {
@@ -118,13 +123,43 @@ describe("GapScanPage", () => {
   it("service non configure : bouton desactive avec message explicite", async () => {
     vi.mocked(gapscanConfig).mockResolvedValue({
       c411_configured: false,
+      c411_base_url: null,
       sonarr_configured: false,
+      sonarr_url: null,
       radarr_configured: false,
+      radarr_url: null,
     });
 
     renderPage();
 
-    expect(await screen.findByText(/NFOGEN_C411_API_KEY/)).toBeInTheDocument();
+    expect(await screen.findByText(/Clé API C411 non configurée/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Lancer un scan" })).toBeDisabled();
+    // Rien n'est configure : le formulaire doit s'ouvrir automatiquement.
+    expect(screen.getByLabelText("URL Sonarr")).toBeInTheDocument();
+  });
+
+  it("enregistre Sonarr/Radarr via le formulaire de configuration", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanConfigWrite).mockResolvedValue({
+      ...CONFIGURED,
+      sonarr_configured: true,
+      sonarr_url: "http://sonarr.local:8989",
+    });
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Configuration/ }));
+
+    await user.type(screen.getByLabelText("URL Sonarr"), "http://sonarr.local:8989");
+    await user.type(screen.getByLabelText("Clé API Sonarr"), "sk-123");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(gapscanConfigWrite).toHaveBeenCalledWith({
+      sonarr_url: "http://sonarr.local:8989",
+      sonarr_api_key: "sk-123",
+      // deja remplis depuis CONFIGURED (URL/base non sensibles), renvoyes tels quels
+      radarr_url: "http://radarr.local:7878",
+      c411_base_url: "https://c411.org",
+    });
+    expect(await screen.findByText("Enregistré.")).toBeInTheDocument();
   });
 });

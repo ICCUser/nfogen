@@ -148,6 +148,19 @@ export interface GapscanStatus {
 
 export interface GapscanConfig {
   c411_configured: boolean;
+  c411_base_url: string | null;
   sonarr_configured: boolean;
+  sonarr_url: string | null;
   radarr_configured: boolean;
+  radarr_url: string | null;
+}
+
+/** PUT /gapscan/config : chaque champ omis reste inchange cote serveur. */
+export interface GapscanConfigWrite {
+  c411_api_key?: string;
+  c411_base_url?: string;
+  sonarr_url?: string;
+  sonarr_api_key?: string;
+  radarr_url?: string;
+  radarr_api_key?: string;
 }

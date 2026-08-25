@@ -2,6 +2,7 @@ import { getBaseUrl } from "./settings";
 import type {
   GapResult,
   GapscanConfig,
+  GapscanConfigWrite,
   GapscanStatus,
   GenerateResult,
   ManagedProfile,
@@ -282,6 +283,13 @@ export function downloadBlob(blob: Blob, filename: string): void {
 // --------------------------------------------------------------------------- //
 export function gapscanConfig(): Promise<GapscanConfig> {
   return request<GapscanConfig>("/gapscan/config");
+}
+
+/** Enregistre cote serveur (fichier NFOGEN_GAPSCAN_CONFIG_FILE) : seuls les
+ * champs fournis changent, les autres restent inchanges. Les cles ne sont
+ * jamais renvoyees, meme dans la reponse de cet appel. */
+export function gapscanConfigWrite(fields: GapscanConfigWrite): Promise<GapscanConfig> {
+  return request<GapscanConfig>("/gapscan/config", { method: "PUT", body: JSON.stringify(fields) });
 }
 
 export function gapscanRun(): Promise<{ status: string }> {

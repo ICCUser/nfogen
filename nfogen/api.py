@@ -54,7 +54,7 @@ from .profile_store import ProfileStoreError
 # dependance dure de l'API -- une install nfogen[api] seule (sans httpx)
 # doit continuer a demarrer normalement, /gapscan/* renvoie alors 501.
 try:
-    from . import gapscan_runner
+    from . import gapscan_config_store, gapscan_runner
     from .c411_client import C411Client, C411Error
     from .radarr_client import RadarrClient, RadarrError
     from .sonarr_client import SonarrClient, SonarrError
@@ -636,13 +636,15 @@ async def import_managed_profile(name: str, file: UploadFile = File(...)) -> dic
 # --------------------------------------------------------------------------- #
 # GapScan (voir GAPSCAN.md) : compare la bibliotheque locale (Sonarr/Radarr)
 # au catalogue C411 pour identifier des candidats a l'upload. Protege comme
-# /profiles/store* (meme modele -- require_token). Configuration par
-# variables d'environnement uniquement (NFOGEN_C411_API_KEY,
-# NFOGEN_SONARR_URL/_API_KEY, NFOGEN_RADARR_URL/_API_KEY), jamais via l'API :
-# ce sont des secrets, coherent avec le reste de nfogen (aucun endpoint
-# n'ecrit NFOGEN_API_TOKEN non plus). Un seul scan a la fois
-# (gapscan_runner.py), execute en tache de fond (peut prendre plusieurs
-# minutes sur une grosse bibliotheque).
+# /profiles/store* (meme modele -- require_token). Configuration
+# (URLs + cles Sonarr/Radarr/C411) geree par gapscan_config_store.py :
+# fichier optionnel (NFOGEN_GAPSCAN_CONFIG_FILE, modifiable a chaud via
+# PUT /gapscan/config), repli sur les variables d'environnement historiques
+# sinon. Contrairement a NFOGEN_API_TOKEN (jamais de PUT, boot-time
+# uniquement), ce sont des identifiants SORTANTS vers des services tiers :
+# l'admin doit pouvoir les changer sans redemarrer nfogen. Un seul scan a
+# la fois (gapscan_runner.py), execute en tache de fond (peut prendre
+# plusieurs minutes sur une grosse bibliotheque).
 # --------------------------------------------------------------------------- #
 def _require_gapscan_available() -> None:
     if not _GAPSCAN_AVAILABLE:
@@ -653,46 +655,65 @@ def _require_gapscan_available() -> None:
 
 
 @app.get("/gapscan/config", dependencies=[Depends(require_token)])
-def gapscan_config() -> dict[str, bool]:
+def gapscan_config() -> dict[str, Any]:
     """Jamais les cles elles-memes, seulement si chaque service est
-    configure -- meme principe que /auth/status pour NFOGEN_API_TOKEN."""
-    return {
-        "c411_configured": bool(os.environ.get("NFOGEN_C411_API_KEY")),
-        "sonarr_configured": bool(
-            os.environ.get("NFOGEN_SONARR_URL") and os.environ.get("NFOGEN_SONARR_API_KEY")
-        ),
-        "radarr_configured": bool(
-            os.environ.get("NFOGEN_RADARR_URL") and os.environ.get("NFOGEN_RADARR_API_KEY")
-        ),
-    }
+    configure (+ son URL, non sensible) -- meme principe que /auth/status
+    pour NFOGEN_API_TOKEN."""
+    _require_gapscan_available()
+    return gapscan_config_store.status()
+
+
+class GapscanConfigWriteRequest(BaseModel):
+    c411_api_key: Optional[str] = None
+    c411_base_url: Optional[str] = None
+    sonarr_url: Optional[str] = None
+    sonarr_api_key: Optional[str] = None
+    radarr_url: Optional[str] = None
+    radarr_api_key: Optional[str] = None
+
+
+@app.put("/gapscan/config", dependencies=[Depends(require_token)])
+def gapscan_config_write(req: GapscanConfigWriteRequest) -> dict[str, Any]:
+    """Met a jour uniquement les champs fournis (les autres restent
+    inchanges) -- voir gapscan_config_store.write()."""
+    _require_gapscan_available()
+    try:
+        gapscan_config_store.write(**req.model_dump())
+    except gapscan_config_store.GapscanConfigStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return gapscan_config_store.status()
 
 
 def _build_gapscan_clients() -> tuple[Any, Any, Any]:
-    """Construit les clients GapScan depuis l'environnement. Leve
-    ValueError (-> 400) si la configuration necessaire manque."""
-    c411_key = os.environ.get("NFOGEN_C411_API_KEY")
-    if not c411_key:
-        raise ValueError("NFOGEN_C411_API_KEY non configuree : voir GAPSCAN.md.")
-    c411_base_url = os.environ.get("NFOGEN_C411_BASE_URL", "https://c411.org").rstrip("/") + "/api"
+    """Construit les clients GapScan depuis gapscan_config_store (fichier ou
+    environnement). Leve ValueError (-> 400) si la configuration
+    necessaire manque."""
+    c411_config = gapscan_config_store.effective_c411()
+    if c411_config is None:
+        raise ValueError(
+            "Cle API C411 non configuree (NFOGEN_C411_API_KEY, ou PUT /gapscan/config) : "
+            "voir GAPSCAN.md."
+        )
+    c411_key, c411_base_url = c411_config
     # Limites exactes de l'API C411 non documentees publiquement (cf.
     # GAPSCAN.md) : 0.5s par defaut, prudent plutot qu'illimite pour un scan
     # qui peut interroger des centaines de titres. Ajustable si besoin.
     min_interval = float(os.environ.get("NFOGEN_C411_MIN_INTERVAL_SECONDS", "0.5"))
-    c411 = C411Client(c411_key, base_url=c411_base_url, min_interval_seconds=min_interval)
+    c411 = C411Client(
+        c411_key, base_url=c411_base_url.rstrip("/") + "/api", min_interval_seconds=min_interval
+    )
 
-    sonarr_url = os.environ.get("NFOGEN_SONARR_URL")
-    sonarr_key = os.environ.get("NFOGEN_SONARR_API_KEY")
-    sonarr = SonarrClient(sonarr_url, sonarr_key) if sonarr_url and sonarr_key else None
+    sonarr_config = gapscan_config_store.effective_sonarr()
+    sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
 
-    radarr_url = os.environ.get("NFOGEN_RADARR_URL")
-    radarr_key = os.environ.get("NFOGEN_RADARR_API_KEY")
-    radarr = RadarrClient(radarr_url, radarr_key) if radarr_url and radarr_key else None
+    radarr_config = gapscan_config_store.effective_radarr()
+    radarr = RadarrClient(*radarr_config) if radarr_config else None
 
     if sonarr is None and radarr is None:
         c411.close()
         raise ValueError(
             "Aucune instance Sonarr ni Radarr configuree "
-            "(NFOGEN_SONARR_URL/_API_KEY et/ou NFOGEN_RADARR_URL/_API_KEY)."
+            "(NFOGEN_SONARR_URL/_API_KEY et/ou NFOGEN_RADARR_URL/_API_KEY, ou PUT /gapscan/config)."
         )
     return c411, sonarr, radarr
 
