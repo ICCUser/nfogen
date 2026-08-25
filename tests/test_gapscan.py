@@ -154,6 +154,26 @@ def test_run_gapscan_with_only_radarr():
     assert results[0].media_type == "movie"
 
 
+def test_run_gapscan_reports_progress():
+    """`on_progress` (optionnel) : necessaire a /gapscan/status pour
+    afficher une progression sans devoir re-derouler la boucle ailleurs."""
+    c411 = FakeC411(movie_results=[], tv_results=[])
+    calls: list[tuple[int, int]] = []
+
+    run_gapscan(
+        c411, radarr=_FakeRadarr(), sonarr=_FakeSonarr(),
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+
+    assert calls == [(1, 2), (2, 2)]
+
+
+def test_run_gapscan_without_progress_callback_still_works():
+    c411 = FakeC411(movie_results=[])
+    results = run_gapscan(c411, radarr=_FakeRadarr())
+    assert len(results) == 1
+
+
 def test_sort_by_priority_orders_gaps_before_covered():
     c411 = FakeC411()
     absent = scan_movie(_movie(title="Z Absent"), c411)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 from .c411_client import C411Client, C411Release
 from .quality import ReleaseQuality, build_quality, is_language_gap, is_quality_upgrade
@@ -111,16 +111,27 @@ def run_gapscan(
     c411: C411Client,
     radarr: Optional[RadarrClient] = None,
     sonarr: Optional[SonarrClient] = None,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> list[GapResult]:
     """Lance un scan complet. `radarr`/`sonarr` optionnels (l'un ou l'autre,
-    ou les deux)."""
-    results: list[GapResult] = []
+    ou les deux). `on_progress(traites, total)`, appele apres chaque item --
+    utilise par `gapscan_runner.py` pour exposer une progression via
+    `GET /gapscan/status` sans dupliquer cette boucle ailleurs."""
+    items: list[tuple[str, object]] = []
     if radarr is not None:
-        for movie in radarr.list_movie_files():
-            results.append(scan_movie(movie, c411))
+        items.extend(("movie", movie) for movie in radarr.list_movie_files())
     if sonarr is not None:
-        for season in sonarr.list_season_files():
-            results.append(scan_series_season(season, c411))
+        items.extend(("series", season) for season in sonarr.list_season_files())
+
+    total = len(items)
+    results: list[GapResult] = []
+    for index, (kind, item) in enumerate(items, start=1):
+        if kind == "movie":
+            results.append(scan_movie(item, c411))  # type: ignore[arg-type]
+        else:
+            results.append(scan_series_season(item, c411))  # type: ignore[arg-type]
+        if on_progress is not None:
+            on_progress(index, total)
     return results
 
 
