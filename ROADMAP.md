@@ -39,17 +39,22 @@ C411. Historique détaillé des changements : `git log`.
   dès qu'un deuxième existe. Le `.zip` du profil reste disponible en plus
   (API et CLI, sans surcharge préalable).
 - **`rules.json` : motifs regex admin sans timeout** : fait, exécution via RE2.
-- **TLS non documenté sur le déploiement natif recommandé** (audit du
-  2026-08-25) : `scripts/install.sh` expose `uvicorn` en HTTP nu sur le port
-  8000, sans étape reverse proxy. Identifiants et cookie de session
-  transitent en clair tant qu'aucun TLS n'est ajouté manuellement. À faire
-  avant d'exposer une instance publiquement : documenter/outiller un reverse
-  proxy TLS (Caddy ou nginx+certbot) dans `install.sh`/README, au même
-  endroit que la recommandation existante sur les comptes admin.
-- **`rate_limit_generate` ignore les reverse proxy** (audit du 2026-08-25) :
-  lit `request.client.host` directement ; une fois un reverse proxy TLS en
-  place (point précédent), toutes les requêtes partagent la même IP côté
-  serveur. Prévoir un en-tête de confiance optionnel, désactivé par défaut.
+- **TLS non documenté sur le déploiement natif recommandé** : fait
+  (2026-08-25). `NFOGEN_DOMAIN=...` (Caddy + Let's Encrypt, domaine public)
+  ou `NFOGEN_LOCAL_TLS=1` (Caddy + certificat auto-signé, serveur local/LAN
+  sans domaine ni Internet) ajoutés à `scripts/install.sh`, mutuellement
+  exclusifs, persistés dans `nfogen.env`. `uvicorn` bascule sur `127.0.0.1`
+  dans les deux cas (Caddy devient le seul point d'entrée réseau),
+  `NFOGEN_COOKIE_SECURE=1` automatique. Voir README.md.
+- **`rate_limit_generate` ignore les reverse proxy** : impact désormais réel,
+  pas seulement hypothétique, depuis l'ajout de `NFOGEN_DOMAIN`/
+  `NFOGEN_LOCAL_TLS` ci-dessus — `request.client.host` vaut systématiquement
+  `127.0.0.1` (Caddy) une fois un de ces modes actif, donc
+  `NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE` devient un plafond global partagé
+  par tous les utilisateurs au lieu d'un plafond par IP, si les deux
+  fonctionnalités sont combinées. Caddy transmet déjà `X-Forwarded-For` par
+  defaut ; il manque juste un en-tête de confiance optionnel côté
+  `nfogen/api.py` (désactivé par défaut) pour le lire.
 - **Pages frontend du parcours principal sans test d'intégration** (audit du
   2026-08-25) : `GeneratePage.tsx`/`SettingsPage.tsx` n'ont aucun test,
   contrairement à la logique pure déjà couverte (cf. point ci-dessus sur les
@@ -184,3 +189,46 @@ traités dans la foulée.
 Revérifié sans correctif nécessaire à ce stade : `profile_store.py`,
 `rules.py`, `render.py`, dépendances (0 CVE `pip-audit`/`npm audit`), lint
 (`ruff`/`oxlint`) et build frontend.
+
+## TLS sur le déploiement natif (2026-08-25) — priorité 2
+
+Suite de la revue technique ci-dessus : `scripts/install.sh` exposait
+`uvicorn` en HTTP nu sur le port 8000, sans reverse proxy, y compris pour le
+chemin d'installation "recommandé" du README. Deux modes optionnels,
+mutuellement exclusifs, ajoutés (aucun des deux : comportement inchangé,
+HTTP nu comme avant) :
+
+- **`NFOGEN_DOMAIN=mon-domaine.example`** : installe [Caddy](https://caddyserver.com/)
+  (dépôt officiel, même logique que NodeSource déjà utilisée pour Node.js) en
+  reverse proxy devant l'API, certificat Let's Encrypt obtenu et renouvelé
+  automatiquement. Nécessite un domaine public déjà résolu vers le serveur et
+  les ports 80/443 joignables depuis Internet — non vérifié par le script, une
+  erreur ACME de Caddy (visible via `journalctl -u caddy`) le signalera sinon.
+- **`NFOGEN_LOCAL_TLS=1`** : même reverse proxy Caddy, mais certificat
+  auto-signé (`tls internal`, CA locale à Caddy) — aucun domaine public ni
+  accès Internet requis, pensé pour un serveur local/LAN qui veut chiffrer le
+  trafic sans dépendre de Let's Encrypt. Avertissement navigateur attendu tant
+  que le certificat n'est pas importé manuellement côté client.
+
+Dans les deux modes : `uvicorn` bascule de `0.0.0.0` à `127.0.0.1` (Caddy
+devient le seul point d'entrée réseau), `NFOGEN_COOKIE_SECURE=1` écrit
+automatiquement dans `nfogen.env`. Le choix est persisté dans ce même fichier
+(jamais régénéré en entier, seules les clés `NFOGEN_DOMAIN`/
+`NFOGEN_LOCAL_TLS`/`NFOGEN_COOKIE_SECURE` sont ajoutées/mises à jour) : `sudo
+./scripts/update.sh`, qui ne repasse aucune variable, retrouve le mode déjà
+configuré sans action de l'admin. `install.sh` gère `/etc/caddy/Caddyfile` en
+entier (écrasé à chaque exécution) — non adapté à une machine où Caddy sert
+déjà d'autres sites.
+
+Effet de bord identifié et documenté ci-dessus ("Idées / prochaines
+pistes") : une fois un de ces modes actif, `rate_limit_generate` (qui lit
+`request.client.host`) voit systématiquement l'IP de Caddy plutôt que celle
+du client réel — pas corrigé dans ce lot, volontairement laissé pour la
+priorité 3 avec les tests d'intégration frontend.
+
+Aucun test automatisé possible pour `install.sh` (script de provisioning
+root, aucun test existant ne le couvre) : logique de résolution/persistance
+TLS extraite et rejouée sur 7 scénarios (défaut, activation, relecture sans
+variable comme le fait `update.sh`, bascule de mode, conflit des deux
+variables, retour explicite au HTTP) dans un harnais isolé, sur le code réel
+du script plutôt qu'une réécriture. `bash -n` propre.

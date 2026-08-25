@@ -48,6 +48,60 @@ run_as_nfogen() {
     sudo -u "${SERVICE_USER}" env HOME="${NFOGEN_HOME}" "$@"
 }
 
+# Valeur de la cle $1 dans le fichier $2 ("" si absente ou fichier absent) --
+# sert a relire un choix TLS deja persiste par une execution precedente.
+_get_env_var() {
+    [[ -f "$2" ]] && sed -n "s/^$1=//p" "$2" | tail -n1
+    return 0
+}
+
+# Ecrit/modifie/retire (valeur vide) la cle $1 dans le fichier $2, sans
+# toucher au reste -- l'admin peut avoir ajoute d'autres variables a la main
+# (NFOGEN_ACCOUNTS_FILE, NFOGEN_CORS_ORIGINS...), ce fichier n'est jamais
+# regenere en entier.
+_set_env_var() {
+    local key="$1" value="$2" file="$3"
+    if [[ -z "${value}" ]]; then
+        [[ -f "${file}" ]] && sed -i "/^${key}=/d" "${file}"
+        return 0
+    fi
+    if [[ -f "${file}" ]] && grep -q "^${key}=" "${file}"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "${file}"
+    else
+        echo "${key}=${value}" >> "${file}"
+    fi
+}
+
+# TLS optionnel, deux modes exclusifs (aucun des deux : HTTP nu, comme avant
+# -- comportement par defaut inchange) :
+#   NFOGEN_DOMAIN=mon-domaine.example   -> Caddy + Let's Encrypt automatique
+#                                          (domaine public requis, DNS + port
+#                                          80/443 joignables depuis Internet)
+#   NFOGEN_LOCAL_TLS=1                  -> Caddy + certificat auto-signe
+#                                          (aucun domaine/Internet requis,
+#                                          adapte a un serveur local/LAN)
+# Passe explicitement sur la ligne de commande cette execution : remplace le
+# mode precedent. Sinon (cas typique de update.sh, qui ne repasse rien) : on
+# reprend le mode deja persiste dans ${ENV_FILE} par une execution passee.
+_CLI_DOMAIN="${NFOGEN_DOMAIN:-}"
+_CLI_LOCAL_TLS="${NFOGEN_LOCAL_TLS:-}"
+if [[ -n "${_CLI_DOMAIN}" || -n "${_CLI_LOCAL_TLS}" ]]; then
+    NFOGEN_DOMAIN="${_CLI_DOMAIN}"
+    NFOGEN_LOCAL_TLS="${_CLI_LOCAL_TLS}"
+else
+    NFOGEN_DOMAIN="$(_get_env_var NFOGEN_DOMAIN "${ENV_FILE}")"
+    NFOGEN_LOCAL_TLS="$(_get_env_var NFOGEN_LOCAL_TLS "${ENV_FILE}")"
+fi
+if [[ -n "${NFOGEN_DOMAIN}" && -n "${NFOGEN_LOCAL_TLS}" ]]; then
+    echo "NFOGEN_DOMAIN et NFOGEN_LOCAL_TLS sont mutuellement exclusifs (un seul mode TLS a la fois)." >&2
+    exit 1
+fi
+if [[ -n "${NFOGEN_DOMAIN}" || -n "${NFOGEN_LOCAL_TLS}" ]]; then
+    UVICORN_HOST="127.0.0.1"  # seul Caddy ecoute publiquement, cf. section TLS plus bas
+else
+    UVICORN_HOST="0.0.0.0"
+fi
+
 echo "==> Paquets systeme (Python, libmediainfo, rsync, openssl...)"
 apt-get update
 apt-get install -y --no-install-recommends \
@@ -112,8 +166,57 @@ EOF
 else
     echo "    ${ENV_FILE} existe deja : conserve tel quel (token non regenere)"
 fi
+_set_env_var NFOGEN_DOMAIN "${NFOGEN_DOMAIN}" "${ENV_FILE}"
+_set_env_var NFOGEN_LOCAL_TLS "${NFOGEN_LOCAL_TLS}" "${ENV_FILE}"
+if [[ -n "${NFOGEN_DOMAIN}" || -n "${NFOGEN_LOCAL_TLS}" ]]; then
+    _set_env_var NFOGEN_COOKIE_SECURE "1" "${ENV_FILE}"
+fi
 chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
+
+if [[ -n "${NFOGEN_DOMAIN}" || -n "${NFOGEN_LOCAL_TLS}" ]]; then
+    echo "==> Reverse proxy TLS (Caddy)"
+    if ! command -v caddy >/dev/null 2>&1; then
+        echo "    Caddy absent : ajout du depot officiel (caddyserver.com/docs/install), puis installation"
+        apt-get install -y --no-install-recommends debian-keyring debian-archive-keyring apt-transport-https
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+            | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+            > /etc/apt/sources.list.d/caddy-stable.list
+        apt-get update
+        apt-get install -y caddy
+    fi
+
+    # Ce script gere /etc/caddy/Caddyfile en entier (ecrase a chaque
+    # execution, comme le service systemd de nfogen) : si Caddy sert deja
+    # d'autres sites sur cette machine, ne pas utiliser NFOGEN_DOMAIN/
+    # NFOGEN_LOCAL_TLS -- configurer le reverse proxy vers nfogen a la main.
+    if [[ -n "${NFOGEN_DOMAIN}" ]]; then
+        cat > /etc/caddy/Caddyfile <<EOF
+# Genere par scripts/install.sh -- voir le commentaire dans le script avant
+# d'editer a la main.
+${NFOGEN_DOMAIN} {
+    reverse_proxy 127.0.0.1:8000
+}
+EOF
+        echo "    Domaine : ${NFOGEN_DOMAIN} -- certificat Let's Encrypt automatique"
+        echo "    (necessite un enregistrement DNS deja en place et les ports 80/443 joignables depuis Internet)."
+    else
+        cat > /etc/caddy/Caddyfile <<EOF
+# Genere par scripts/install.sh -- voir le commentaire dans le script avant
+# d'editer a la main.
+:443 {
+    tls internal
+    reverse_proxy 127.0.0.1:8000
+}
+EOF
+        echo "    NFOGEN_LOCAL_TLS=1 -- certificat auto-signe (CA locale Caddy, aucune dependance a Internet)."
+        echo "    A accepter/importer manuellement dans chaque navigateur client (avertissement attendu)."
+    fi
+
+    systemctl enable --now caddy
+    systemctl reload caddy 2>/dev/null || systemctl restart caddy
+fi
 
 echo "==> Service systemd (${SERVICE_NAME})"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
@@ -127,7 +230,7 @@ User=${SERVICE_USER}
 Group=${SERVICE_USER}
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=${ENV_FILE}
-ExecStart=${INSTALL_DIR}/.venv/bin/uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
+ExecStart=${INSTALL_DIR}/.venv/bin/uvicorn nfogen.api:app --host ${UVICORN_HOST} --port 8000
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=true
@@ -148,12 +251,25 @@ systemctl enable --now "${SERVICE_NAME}"
 systemctl restart "${SERVICE_NAME}"
 
 IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
+if [[ -n "${NFOGEN_DOMAIN}" ]]; then
+    URL="https://${NFOGEN_DOMAIN}"
+elif [[ -n "${NFOGEN_LOCAL_TLS}" ]]; then
+    URL="https://${IP_ADDR:-<ip-serveur>} (certificat auto-signe, a accepter manuellement)"
+else
+    URL="http://${IP_ADDR:-<ip-serveur>}:8000"
+fi
 echo
 echo "==> Installation/mise a jour terminee."
 echo "    Statut  : systemctl status ${SERVICE_NAME}"
 echo "    Logs    : journalctl -u ${SERVICE_NAME} -f"
-echo "    URL     : http://${IP_ADDR:-<ip-serveur>}:8000"
+echo "    URL     : ${URL}"
 echo "    Config  : ${ENV_FILE} (token API...)"
 echo "    Profils : ${PROFILES_DIR} (persistant, jamais touche par une mise a jour)"
 echo "    Pour appliquer un changement de ${ENV_FILE} : systemctl restart ${SERVICE_NAME}"
 echo "    Pour mettre a jour plus tard : sudo ./scripts/update.sh (depuis ${REPO_DIR})"
+if [[ -z "${NFOGEN_DOMAIN}" && -z "${NFOGEN_LOCAL_TLS}" ]]; then
+    echo "    TLS     : desactive -- trafic HTTP en clair, identifiants/cookie de session non chiffres."
+    echo "              Pour l'activer, relancer avec :"
+    echo "                sudo NFOGEN_DOMAIN=mon-domaine.example ./scripts/install.sh   (Let's Encrypt, domaine public)"
+    echo "                sudo NFOGEN_LOCAL_TLS=1 ./scripts/install.sh                  (auto-signe, serveur local/LAN)"
+fi
