@@ -46,20 +46,23 @@ C411. Historique détaillé des changements : `git log`.
   exclusifs, persistés dans `nfogen.env`. `uvicorn` bascule sur `127.0.0.1`
   dans les deux cas (Caddy devient le seul point d'entrée réseau),
   `NFOGEN_COOKIE_SECURE=1` automatique. Voir README.md.
-- **`rate_limit_generate` ignore les reverse proxy** : impact désormais réel,
-  pas seulement hypothétique, depuis l'ajout de `NFOGEN_DOMAIN`/
-  `NFOGEN_LOCAL_TLS` ci-dessus — `request.client.host` vaut systématiquement
-  `127.0.0.1` (Caddy) une fois un de ces modes actif, donc
-  `NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE` devient un plafond global partagé
-  par tous les utilisateurs au lieu d'un plafond par IP, si les deux
-  fonctionnalités sont combinées. Caddy transmet déjà `X-Forwarded-For` par
-  defaut ; il manque juste un en-tête de confiance optionnel côté
-  `nfogen/api.py` (désactivé par défaut) pour le lire.
-- **Pages frontend du parcours principal sans test d'intégration** (audit du
-  2026-08-25) : `GeneratePage.tsx`/`SettingsPage.tsx` n'ont aucun test,
-  contrairement à la logique pure déjà couverte (cf. point ci-dessus sur les
-  tests frontend). Au moins un test par page (chemin heureux + un cas
-  d'échec) serait à ajouter au fil de l'eau.
+- **`rate_limit_generate` ignore les reverse proxy** : fait (2026-08-25).
+  `NFOGEN_TRUST_PROXY_HEADERS=1` (désactivé par défaut) fait lire
+  `_client_ip()` la valeur la plus a droite de `X-Forwarded-For` (celle
+  ajoutee par le reverse proxy immediat, jamais falsifiable par le client
+  qui peut pre-remplir l'en-tete lui-meme) au lieu de `request.client.host` —
+  couvre a la fois `rate_limit_generate` et le verrou anti-bruteforce du
+  login par token (meme fonction partagee). A n'activer que derriere un
+  reverse proxy de confiance (Caddy ajoute par `NFOGEN_DOMAIN`/
+  `NFOGEN_LOCAL_TLS`) : sans lui, n'importe quel client pourrait usurper
+  l'IP de son choix via cet en-tete.
+- **Pages frontend du parcours principal sans test d'intégration** : fait
+  (2026-08-25). Un test chemin heureux + un test d'echec par page
+  (`GeneratePage.test.tsx`, `SettingsPage.test.tsx`) : extraction WASM
+  reussie vs repli sur upload classique ; connexion par token reussie vs
+  token invalide. Verifies utiles (pas vacuous) par mutation manuelle du
+  code avant de les committer : cassage delibere de chaque chemin, test
+  correspondant bien mis en echec, puis code restaure.
 
 ## Audit sécurité du 2026-06-28 (suite des alertes CodeQL)
 
@@ -232,3 +235,31 @@ TLS extraite et rejouée sur 7 scénarios (défaut, activation, relecture sans
 variable comme le fait `update.sh`, bascule de mode, conflit des deux
 variables, retour explicite au HTTP) dans un harnais isolé, sur le code réel
 du script plutôt qu'une réécriture. `bash -n` propre.
+
+## Priorité 3 : en-tête de proxy de confiance + tests frontend (2026-08-25)
+
+Clôture des deux derniers constats de la revue technique.
+
+- **`NFOGEN_TRUST_PROXY_HEADERS=1`** (désactivé par défaut) : `_client_ip()`
+  (`nfogen/api.py`, partagée par `rate_limit_generate` et le verrou du login
+  par token) lit désormais la valeur la plus à droite de `X-Forwarded-For`
+  quand activé, au lieu de toujours utiliser `request.client.host` —
+  redevenu nécessaire depuis Caddy (priorité 2), qui voit `127.0.0.1` pour
+  tous les clients réels une fois `NFOGEN_DOMAIN`/`NFOGEN_LOCAL_TLS` actif.
+  Seule la valeur la plus à droite compte (celle ajoutée par le reverse
+  proxy immédiat), jamais un préfixe que le client pourrait fournir
+  lui-même en pré-remplissant l'en-tête — testé explicitement (un préfixe
+  différent ne doit pas créer un quota séparé). À n'activer que derrière un
+  reverse proxy de confiance : sans lui, l'en-tête devient une usurpation
+  d'IP triviale pour n'importe quel client direct.
+- **Tests d'intégration `GeneratePage`/`SettingsPage`** :
+  `GeneratePage.test.tsx` (extraction vidéo locale réussie → pas d'upload,
+  vs échec de l'extraction → repli sur upload avec avertissement affiché) et
+  `SettingsPage.test.tsx` (connexion par token réussie → "Connecté."
+  affiché, vs token invalide → message d'erreur, formulaire toujours
+  visible). Les deux fichiers passaient du premier coup (comportement
+  existant déjà correct) : vérifiés non complaisants par mutation manuelle
+  avant commit — cassage délibéré de chaque chemin testé (repli sur upload
+  forcé sans condition ; erreur de connexion avalée silencieusement), test
+  correspondant bien mis en échec dans les deux cas, code ensuite restauré
+  à l'identique (`git diff` vide sur les deux fichiers de page).

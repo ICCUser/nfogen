@@ -66,6 +66,7 @@ _REQUIRE_AUTH_FOR_GENERATE = os.environ.get("NFOGEN_REQUIRE_AUTH_FOR_GENERATE", 
 _generate_rate_limit = os.environ.get("NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE")
 _GENERATE_RATE_LIMIT_PER_MINUTE = int(_generate_rate_limit) if _generate_rate_limit else None
 _GENERATE_RATE_WINDOW_SECONDS = 60.0
+_TRUST_PROXY_HEADERS = os.environ.get("NFOGEN_TRUST_PROXY_HEADERS", "0") == "1"
 
 
 class _Session(NamedTuple):
@@ -230,7 +231,25 @@ def require_token_for_generate(
 
 
 def _client_ip(request: Request) -> str:
-    return request.client.host if request.client is not None else "unknown"
+    """IP consideree comme celle du client, pour le rate-limit et le verrou
+    anti-bruteforce du login. Par defaut, l'IP TCP directe -- suffisant tant
+    que nfogen encaisse les connexions directement. Derriere un reverse
+    proxy (Caddy ajoute par scripts/install.sh via NFOGEN_DOMAIN/
+    NFOGEN_LOCAL_TLS), cette IP directe est TOUJOURS celle du proxy : sans
+    NFOGEN_TRUST_PROXY_HEADERS=1, tous les clients partageraient un seul
+    quota. Active, on lit X-Forwarded-For et on ne retient QUE la valeur la
+    plus a droite -- celle ajoutee par notre reverse proxy immediat, jamais
+    falsifiable par le client (qui peut pre-remplir l'en-tete lui-meme avant
+    que le proxy n'y ajoute sa propre valeur). Ne PAS activer sans reverse
+    proxy devant l'API : n'importe quel client pourrait alors usurper l'IP
+    de son choix via cet en-tete."""
+    direct_ip = request.client.host if request.client is not None else "unknown"
+    if not _TRUST_PROXY_HEADERS:
+        return direct_ip
+    forwarded = request.headers.get("x-forwarded-for")
+    if not forwarded:
+        return direct_ip
+    return forwarded.rsplit(",", 1)[-1].strip() or direct_ip
 
 
 def rate_limit_generate(request: Request) -> None:
