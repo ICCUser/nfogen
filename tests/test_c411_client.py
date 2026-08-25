@@ -119,3 +119,42 @@ def test_client_wraps_http_errors():
     client = C411Client(api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
     with pytest.raises(C411Error, match="echoue"):
         client.search_movie(query="x")
+
+
+# --------------------------------------------------------------------------- #
+# Limitation de debit (GAPSCAN.md, section "Execution" : un scan complet
+# peut interroger des centaines de titres -- respectueux de l'API C411).
+# --------------------------------------------------------------------------- #
+def test_min_interval_disabled_by_default():
+    """Par defaut (min_interval_seconds=0), aucune pause -- ne ralentit pas
+    les usages existants (ex. un simple appel manuel) sans configuration
+    explicite."""
+    sleeps: list[float] = []
+    client = _client_with_fixture("c411_movie_search.xml")
+    client._sleep = sleeps.append  # type: ignore[attr-defined]
+
+    client.search_movie(query="x")
+    client.search_movie(query="x")
+
+    assert sleeps == []
+
+
+def test_min_interval_sleeps_between_consecutive_calls():
+    sleeps: list[float] = []
+    times = iter([100.0, 100.1])  # 1er appel a t=100.0, 2e a t=100.1 (0.1s ecoule)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=_read("c411_movie_search.xml"))
+
+    client = C411Client(
+        api_key="test-key",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        min_interval_seconds=0.5,
+    )
+    client._sleep = sleeps.append  # type: ignore[attr-defined]
+    client._time = lambda: next(times)  # type: ignore[attr-defined]
+
+    client.search_movie(query="x")  # pas de pause : premier appel
+    client.search_movie(query="x")  # 0.1s ecoule depuis, il en manque 0.4
+
+    assert sleeps == [pytest.approx(0.4)]

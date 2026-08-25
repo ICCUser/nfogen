@@ -142,21 +142,31 @@ nfogen/
    lien direct vers `POST /generate` (le profil C411 existant) pour
    préparer le NFO d'upload.
 
-## Endpoints API prévus (à confirmer une fois le client C411 posé)
+## Endpoints API (implémentés le 2026-08-25)
 
 | Endpoint | Auth | Usage |
 |---|---|---|
-| `POST /gapscan/run` | oui (même modèle que `/profiles/store*`) | Lance un scan complet (peut être long — voir "Exécution" ci-dessous) |
-| `GET /gapscan/status` | oui | Progression du scan en cours |
-| `GET /gapscan/results` | oui | Derniers résultats (JSON, filtrable par statut) |
-| `GET /gapscan/results/export.csv` | oui | Export CSV |
-| `GET/PUT /gapscan/config` | oui | URLs + clés Sonarr/Radarr/C411 (jamais renvoyées en clair après écriture, comme un secret) |
+| `POST /gapscan/run` | oui (même modèle que `/profiles/store*`) | Lance un scan complet (tâche de fond — voir "Exécution" ci-dessous). `400` si mal configuré, `409` si un scan tourne déjà |
+| `GET /gapscan/status` | oui | État (`idle`/`running`/`done`/`error`) + progression (`processed`/`total`) du dernier scan |
+| `GET /gapscan/results` | oui | Derniers résultats (JSON), filtrable par statut (`?status=absent`) |
+| `GET /gapscan/results/export.csv` | oui | Export CSV, mêmes filtres |
+| `GET /gapscan/config` | oui | Quels services sont configurés (booléens uniquement, jamais les clés) |
 
-**Exécution** : un scan complet interroge potentiellement des centaines de
-titres sur l'API C411 — à faire en tâche de fond (pas de requête HTTP
-bloquante), avec limitation de débit respectueuse des limites de l'API
-C411 (à préciser une fois les détails d'API connus) et mise en cache des
-résultats (pas de re-scan complet à chaque chargement de page).
+**Écart avec la version initiale de cette section** : pas de `PUT /gapscan/config`.
+Contrairement à ce qui était envisagé, la config reste **exclusivement par
+variables d'environnement** (`NFOGEN_C411_API_KEY`, `NFOGEN_SONARR_URL`/
+`_API_KEY`, `NFOGEN_RADARR_URL`/`_API_KEY` — voir `.env.example`), comme
+tous les autres secrets de nfogen (`NFOGEN_API_TOKEN` n'a pas non plus de
+`PUT`). Éviterait d'introduire un second mécanisme de stockage de secrets
+rien que pour GapScan. Redémarrage du service requis après modification,
+comme pour les autres variables.
+
+**Exécution** : implémenté (2026-08-25) — `POST /gapscan/run` lance un scan
+en tâche de fond (`nfogen/gapscan_runner.py`, `threading.Thread`), un seul
+scan à la fois (409 sinon), résultats gardés en mémoire jusqu'au prochain
+scan (pas de re-scan à chaque chargement de page). Limitation de débit vers
+C411 : `NFOGEN_C411_MIN_INTERVAL_SECONDS` (0.5s par défaut, ajustable) —
+valeur prudente faute de limites documentées publiquement.
 
 ## Frontend prévu
 

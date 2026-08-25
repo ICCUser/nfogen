@@ -12,6 +12,7 @@ pour comparaison avec la bibliotheque locale (voir `gapscan.py`).
 """
 from __future__ import annotations
 
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Optional
@@ -119,13 +120,35 @@ class C411Client:
         base_url: str = "https://c411.org/api",
         http_client: Optional[httpx.Client] = None,
         timeout: float = 20.0,
+        min_interval_seconds: float = 0.0,
     ) -> None:
+        """`min_interval_seconds` : pause minimale entre deux requetes
+        (defaut 0 = desactive) -- un scan GapScan complet peut interroger
+        des centaines de titres, cf. GAPSCAN.md section "Execution". Les
+        limites exactes de l'API C411 n'etant pas documentees publiquement,
+        `gapscan_runner.py` passe une valeur par defaut prudente plutot que
+        de ne pas limiter du tout."""
         if not api_key:
             raise C411Error("Cle API C411 manquante.")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._client = http_client or httpx.Client(timeout=timeout)
         self._owns_client = http_client is None
+        self._min_interval = min_interval_seconds
+        self._last_request_at: Optional[float] = None
+        # Surchargeables dans les tests (evite un vrai time.sleep).
+        self._sleep = time.sleep
+        self._time = time.monotonic
+
+    def _throttle(self) -> None:
+        if self._min_interval <= 0:
+            return
+        now = self._time()
+        if self._last_request_at is not None:
+            remaining = self._min_interval - (now - self._last_request_at)
+            if remaining > 0:
+                self._sleep(remaining)
+        self._last_request_at = now
 
     def close(self) -> None:
         if self._owns_client:
@@ -138,6 +161,7 @@ class C411Client:
         self.close()
 
     def _search(self, params: dict[str, str]) -> list[C411Release]:
+        self._throttle()
         query = {k: v for k, v in params.items() if v is not None}
         query["apikey"] = self._api_key
         try:
