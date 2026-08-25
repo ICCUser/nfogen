@@ -5,8 +5,11 @@ détecter les films/séries que tu possèdes mais dont **ta version précise**
 n'est pas (ou pas encore) disponible sur C411 — candidats naturels à
 uploader avec `nfogen` (génération NFO déjà existante).
 
-> Statut : spécification en cours de cadrage. Rien n'est codé tant que les
-> points "À fournir" ci-dessous ne sont pas réglés.
+> Statut (2026-08-25) : clients Sonarr/Radarr/C411, extraction/comparaison
+> qualité-langue et orchestration codés et testés (236 tests, dont 25 dédiés
+> à `quality.py`) — voir "Encore à fournir #2" pour ce qui manque encore
+> avant un test en conditions réelles. Pas encore d'endpoints `/gapscan/*`
+> ni de page frontend.
 
 ## Décisions déjà prises (2026-08-25)
 
@@ -79,20 +82,29 @@ hors scope automatisable pour l'instant.
 
 ## Encore à fournir par toi
 
-1. **Politique anti-doublon C411** (page qualité/vidéo, capture reçue
-   illisible à la compression) : à partir de quel écart de qualité/langue
-   un deuxième upload du même titre est-il toléré (vs rejeté comme
-   simple doublon) ? Un extrait de texte collé (juste cette section)
-   suffit — pas besoin de la page entière.
-2. **Confirmation Sonarr/Radarr** : URL + clé API de chaque instance (à
-   passer en variables d'env au moment du déploiement, pas besoin
-   maintenant) — juste confirmer que ce sont des instances Sonarr v3 /
-   Radarr v3 standard (API REST `/api/v3/...`).
-
-En l'absence du point 1, la V1 utilisera une hiérarchie par défaut
-standard (source : `REMUX > BluRay > WEB-DL > WEBRip > HDTV`, résolution :
-`2160p > 1080p > 720p > SD`, langue : `VFF/VFQ ≈ équivalents, VOSTFR
-distinct`), modifiable une fois la vraie règle C411 connue.
+1. ~~**Politique anti-doublon C411**~~ : **fourni et intégré (2026-08-25)**
+   — texte complet collé en bas de ce fichier ("Régle Copié directement du
+   site c411" + "Copie des règles de la page cat-video"). Réconcilié dans
+   `nfogen/quality.py` : chaîne de priorité réelle (résolution > source >
+   type audio > codec vidéo > canaux audio > HDR, langue gérée à part),
+   coexistences VFF/VFQ (ne se remplacent plus l'une l'autre — c'était un
+   bug de la heuristique par défaut initiale, corrigé), HDR+DV combiné vs
+   séparé. Deux limites assumées faute de la page "Guide des slots"
+   (référencée par la politique mais jamais fournie, contient les valeurs
+   de repli exactes par slot) : l'ordre source/codec vidéo/HDR utilisé est
+   un ordre GÉNÉRAL raisonnable, pas un ordre contextuel par slot ; la
+   règle de poids spécifique aux WEBRip (accepté seulement si plus léger
+   que l'existant, sauf meilleure langue) n'est pas modélisée — demanderait
+   de faire remonter la taille des fichiers depuis Sonarr/Radarr, absente
+   aujourd'hui de `SonarrSeasonFile`/`RadarrMovieFile`. Détail dans les
+   docstrings de `quality.py`.
+2. **Confirmation Sonarr/Radarr** : toujours en attente — `.env` ne
+   contient pour l'instant que `NFOGEN_C411_API_KEY` (vérifiée en direct,
+   `search_movie` répond). `NFOGEN_SONARR_URL`/`NFOGEN_SONARR_API_KEY`/
+   `NFOGEN_RADARR_URL`/`NFOGEN_RADARR_API_KEY` restent vides — à remplir
+   pour tester `sonarr_client.py`/`radarr_client.py` en conditions réelles
+   (juste confirmer que ce sont des instances v3 standard, API REST
+   `/api/v3/...`).
 
 ## Architecture prévue
 
