@@ -423,6 +423,27 @@ def test_login_lockout_is_per_account_not_global(reload_api, tmp_path):
     assert resp.status_code == 200
 
 
+def test_login_lockout_on_token_is_per_ip_not_global(reload_api):
+    """Le login par token n'a qu'un seul "compte" partage : le verrou
+    anti-bruteforce doit se faire par IP source, pas globalement -- sinon un
+    tiers anonyme peut bloquer le login par token pour tout le monde en
+    enchainant des echecs (cf. audit)."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    attacker = TestClient(mod.app, client=("1.2.3.4", 12345))
+    victim = TestClient(mod.app, client=("5.6.7.8", 12345))
+
+    for _ in range(5):
+        resp = attacker.post("/login", json={"token": "mauvais"})
+        assert resp.status_code == 401
+
+    locked = attacker.post("/login", json={"token": "secret123"})
+    assert locked.status_code == 429
+
+    # victim, depuis une autre IP, n'est pas affecte par le verrou de attacker
+    resp = victim.post("/login", json={"token": "secret123"})
+    assert resp.status_code == 200
+
+
 def test_login_requires_some_credential(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN=None)
     client = TestClient(mod.app)
