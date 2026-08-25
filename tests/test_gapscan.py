@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from nfogen.c411_client import C411Release
+from nfogen.c411_client import C411Error, C411Release
 from nfogen.gapscan import (
     GapStatus,
     run_gapscan,
@@ -33,13 +33,18 @@ class FakeC411:
     movie_results: list[C411Release] = field(default_factory=list)
     tv_results: list[C411Release] = field(default_factory=list)
     calls: list[tuple] = field(default_factory=list)
+    raises: Optional[Exception] = None
 
     def search_movie(self, query=None, imdb_id=None, tmdb_id=None):
         self.calls.append(("movie", query, imdb_id, tmdb_id))
+        if self.raises is not None:
+            raise self.raises
         return self.movie_results
 
     def search_tv(self, query=None, imdb_id=None, tmdb_id=None, season=None, ep=None):
         self.calls.append(("tv", query, imdb_id, season))
+        if self.raises is not None:
+            raise self.raises
         return self.tv_results
 
 
@@ -92,6 +97,28 @@ def test_scan_movie_flags_freeleech_alternative():
     c411 = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.1080p.WEBRip.x264-TEAM", dvf=0.0)])
     result = scan_movie(_movie(), c411)
     assert result.has_freeleech_alternative is True
+
+
+def test_scan_movie_returns_error_status_when_c411_lookup_fails():
+    """Incident reel (2026-08-25, 429/520 C411) : une erreur cote C411 pour
+    UN titre ne doit pas empecher de savoir au moins ce qu'on sait deja
+    localement (qualite/langue), et surtout pas planter tout le scan --
+    voir test_run_gapscan_continues_after_a_single_item_failure."""
+    c411 = FakeC411(raises=C411Error("Appel a l'API C411 echoue (movie) : 429 Too Many Requests"))
+    result = scan_movie(_movie(), c411)
+    assert result.status == GapStatus.ERROR
+    assert "429" in result.error
+    assert result.title == "Matrix"
+    assert result.local_quality.resolution == 2160  # connu localement, sans avoir contacte C411
+    assert result.c411_matches == []
+
+
+def test_scan_series_season_returns_error_status_when_c411_lookup_fails():
+    c411 = FakeC411(raises=C411Error("boom"))
+    result = scan_series_season(_season(), c411)
+    assert result.status == GapStatus.ERROR
+    assert result.error == "boom"
+    assert result.season_number == 1
 
 
 def test_scan_movie_flags_double_upload_window():
@@ -172,6 +199,48 @@ def test_run_gapscan_without_progress_callback_still_works():
     c411 = FakeC411(movie_results=[])
     results = run_gapscan(c411, radarr=_FakeRadarr())
     assert len(results) == 1
+
+
+class _FakeRadarrTwoMovies:
+    def list_movie_files(self):
+        return [_movie(title="A"), _movie(title="B")]
+
+
+def test_run_gapscan_continues_after_a_single_item_failure():
+    """Le coeur du correctif de resilience : UNE erreur C411 sur un titre
+    (429, 520, timeout...) ne doit PAS interrompre le scan des titres
+    suivants -- avant ce correctif, toute la progression deja faite sur
+    une grosse bibliotheque etait perdue au premier accroc reseau."""
+
+    class FlakyC411:
+        def __init__(self):
+            self.calls = 0
+
+        def search_movie(self, query=None, imdb_id=None, tmdb_id=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise C411Error("520 (transitoire)")
+            return []
+
+    c411 = FlakyC411()
+    results = run_gapscan(c411, radarr=_FakeRadarrTwoMovies())
+
+    assert len(results) == 2  # les DEUX titres ont un resultat, pas d'exception propagee
+    assert results[0].status == GapStatus.ERROR
+    assert results[1].status == GapStatus.ABSENT  # le 2e titre a bien ete traite normalement
+
+
+def test_run_gapscan_still_reports_progress_after_an_item_failure():
+    class FlakyC411:
+        def search_movie(self, query=None, imdb_id=None, tmdb_id=None):
+            raise C411Error("boom")
+
+    calls: list[tuple[int, int]] = []
+    run_gapscan(
+        FlakyC411(), radarr=_FakeRadarrTwoMovies(),
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+    assert calls == [(1, 2), (2, 2)]
 
 
 def test_sort_by_priority_orders_gaps_before_covered():

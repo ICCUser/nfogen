@@ -17,6 +17,7 @@ const STATUS_LABEL: Record<GapStatus, string> = {
   quality_gap: "Qualité supérieure disponible",
   language_gap: "Langue manquante sur C411",
   covered: "Déjà couvert",
+  error: "Non vérifié (erreur C411)",
 };
 
 const STATUS_BADGE_CLASS: Record<GapStatus, string> = {
@@ -24,6 +25,7 @@ const STATUS_BADGE_CLASS: Record<GapStatus, string> = {
   quality_gap: "bg-amber-100 text-amber-800",
   language_gap: "bg-amber-100 text-amber-800",
   covered: "bg-slate-100 text-slate-500",
+  error: "bg-red-100 text-red-700",
 };
 
 const FILTERS: { value: GapStatus | ""; label: string }[] = [
@@ -32,6 +34,7 @@ const FILTERS: { value: GapStatus | ""; label: string }[] = [
   { value: "quality_gap", label: STATUS_LABEL.quality_gap },
   { value: "language_gap", label: STATUS_LABEL.language_gap },
   { value: "covered", label: STATUS_LABEL.covered },
+  { value: "error", label: STATUS_LABEL.error },
 ];
 
 function qualitySummary(q: GapResult["local_quality"]): string {
@@ -404,7 +407,10 @@ export default function GapScanPage() {
                   {r.media_type === "movie" ? "Film" : `Série S${String(r.season_number).padStart(2, "0")}`}
                 </td>
                 <td className="px-4 py-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE_CLASS[r.status]}`}>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE_CLASS[r.status]}`}
+                    title={r.status === "error" ? r.error ?? undefined : undefined}
+                  >
                     {STATUS_LABEL[r.status]}
                   </span>
                   {r.has_freeleech_alternative && (

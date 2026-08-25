@@ -90,7 +90,7 @@ export class ApiError extends Error {
 // locale (Sonarr/Radarr) <-> catalogue C411. Types miroir des dataclasses
 // Python (dataclasses.asdict cote serveur, memes noms de champs).
 // --------------------------------------------------------------------------- //
-export type GapStatus = "absent" | "quality_gap" | "language_gap" | "covered";
+export type GapStatus = "absent" | "quality_gap" | "language_gap" | "covered" | "error";
 
 export interface ReleaseQuality {
   raw: string;
@@ -133,6 +133,8 @@ export interface GapResult {
   c411_matches: C411Match[];
   has_freeleech_alternative: boolean;
   has_double_upload_window: boolean;
+  /** Detail si status === "error" (C411 injoignable pour ce titre), sinon null. */
+  error: string | null;
 }
 
 export type GapscanState = "idle" | "running" | "done" | "error";

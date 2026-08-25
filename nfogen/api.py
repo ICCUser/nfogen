@@ -696,9 +696,9 @@ def _build_gapscan_clients() -> tuple[Any, Any, Any]:
         )
     c411_key, c411_base_url = c411_config
     # Limites exactes de l'API C411 non documentees publiquement (cf.
-    # GAPSCAN.md) : 0.5s par defaut, prudent plutot qu'illimite pour un scan
-    # qui peut interroger des centaines de titres. Ajustable si besoin.
-    min_interval = float(os.environ.get("NFOGEN_C411_MIN_INTERVAL_SECONDS", "0.5"))
+    # GAPSCAN.md). 0.5s a declenche un 429 en test manuel (2026-08-25) :
+    # 2s par defaut desormais, plus prudent. Ajustable si besoin.
+    min_interval = float(os.environ.get("NFOGEN_C411_MIN_INTERVAL_SECONDS", "2.0"))
     c411 = C411Client(
         c411_key, base_url=c411_base_url.rstrip("/") + "/api", min_interval_seconds=min_interval
     )
@@ -753,7 +753,7 @@ _CSV_COLUMNS = [
     "media_type", "title", "year", "season_number", "status",
     "imdb_id", "tmdb_id", "tvdb_id",
     "local_resolution", "local_source", "local_languages",
-    "has_freeleech_alternative", "has_double_upload_window",
+    "has_freeleech_alternative", "has_double_upload_window", "error",
 ]
 
 
@@ -770,7 +770,7 @@ def gapscan_results_export_csv(status: Optional[str] = Query(None)) -> Response:
                 r.imdb_id, r.tmdb_id, r.tvdb_id,
                 r.local_quality.resolution, r.local_quality.source,
                 "+".join(r.local_quality.languages),
-                r.has_freeleech_alternative, r.has_double_upload_window,
+                r.has_freeleech_alternative, r.has_double_upload_window, r.error or "",
             ]
         )
     return Response(

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Iterable, Optional
 
-from .c411_client import C411Client, C411Release
+from .c411_client import C411Client, C411Error, C411Release
 from .quality import ReleaseQuality, build_quality, is_language_gap, is_quality_upgrade
 from .radarr_client import RadarrClient, RadarrMovieFile
 from .sonarr_client import SonarrClient, SonarrSeasonFile
@@ -23,6 +23,7 @@ class GapStatus(str, Enum):
     QUALITY_GAP = "quality_gap"    # ta version est meilleure que tout ce qui existe sur C411
     LANGUAGE_GAP = "language_gap"  # une version de qualite comparable existe, mais pas ta langue
     COVERED = "covered"            # une release equivalente (qualite + langue) existe deja
+    ERROR = "error"                 # C411 injoignable/en erreur pour ce titre (429, 520...) -- pas verifie
 
 
 @dataclass
@@ -41,6 +42,7 @@ class GapResult:
     c411_matches: list[C411Release] = field(default_factory=list)
     has_freeleech_alternative: bool = False
     has_double_upload_window: bool = False
+    error: Optional[str] = None  # detail si status == ERROR, sinon None
 
 
 def _classify(local_quality: ReleaseQuality, matches: list[C411Release]) -> GapStatus:
@@ -58,24 +60,28 @@ def _classify(local_quality: ReleaseQuality, matches: list[C411Release]) -> GapS
 
 def scan_movie(movie: RadarrMovieFile, c411: C411Client) -> GapResult:
     tmdb_id = str(movie.tmdb_id) if movie.tmdb_id else None
-    matches = c411.search_movie(imdb_id=movie.imdb_id, tmdb_id=tmdb_id)
-    if not matches and not (movie.imdb_id or tmdb_id):
-        matches = c411.search_movie(query=movie.title)
     local_quality = build_quality(
         movie.scene_name or movie.title,
         fallback_resolution=movie.best_resolution,
         fallback_language_names=movie.language_names,
     )
+    base = dict(
+        media_type="movie", title=movie.title, year=movie.year, season_number=None,
+        imdb_id=movie.imdb_id, tmdb_id=tmdb_id, tvdb_id=None, local_quality=local_quality,
+    )
+    # Une erreur C411 (429, 520, timeout...) sur CE titre ne doit pas
+    # empecher de savoir ce qu'on connait deja localement, ni interrompre
+    # le reste du scan (voir run_gapscan, qui continue sur les titres
+    # suivants) -- incident reel du 2026-08-25.
+    try:
+        matches = c411.search_movie(imdb_id=movie.imdb_id, tmdb_id=tmdb_id)
+        if not matches and not (movie.imdb_id or tmdb_id):
+            matches = c411.search_movie(query=movie.title)
+    except C411Error as exc:
+        return GapResult(**base, status=GapStatus.ERROR, error=str(exc))
     return GapResult(
-        media_type="movie",
-        title=movie.title,
-        year=movie.year,
-        season_number=None,
-        imdb_id=movie.imdb_id,
-        tmdb_id=tmdb_id,
-        tvdb_id=None,
+        **base,
         status=_classify(local_quality, matches),
-        local_quality=local_quality,
         c411_matches=matches,
         has_freeleech_alternative=any(m.is_freeleech or m.is_half_leech for m in matches),
         has_double_upload_window=any(m.is_double_upload for m in matches),
@@ -83,24 +89,25 @@ def scan_movie(movie: RadarrMovieFile, c411: C411Client) -> GapResult:
 
 
 def scan_series_season(season: SonarrSeasonFile, c411: C411Client) -> GapResult:
-    matches = c411.search_tv(imdb_id=season.imdb_id, season=season.season_number)
-    if not matches:
-        matches = c411.search_tv(query=season.title, season=season.season_number)
     local_quality = build_quality(
         season.scene_name or season.title,
         fallback_resolution=season.best_resolution,
         fallback_language_names=season.language_names,
     )
+    base = dict(
+        media_type="series", title=season.title, year=season.year,
+        season_number=season.season_number, imdb_id=season.imdb_id, tmdb_id=None,
+        tvdb_id=season.tvdb_id, local_quality=local_quality,
+    )
+    try:
+        matches = c411.search_tv(imdb_id=season.imdb_id, season=season.season_number)
+        if not matches:
+            matches = c411.search_tv(query=season.title, season=season.season_number)
+    except C411Error as exc:
+        return GapResult(**base, status=GapStatus.ERROR, error=str(exc))
     return GapResult(
-        media_type="series",
-        title=season.title,
-        year=season.year,
-        season_number=season.season_number,
-        imdb_id=season.imdb_id,
-        tmdb_id=None,
-        tvdb_id=season.tvdb_id,
+        **base,
         status=_classify(local_quality, matches),
-        local_quality=local_quality,
         c411_matches=matches,
         has_freeleech_alternative=any(m.is_freeleech or m.is_half_leech for m in matches),
         has_double_upload_window=any(m.is_double_upload for m in matches),
@@ -139,7 +146,8 @@ _STATUS_ORDER = {
     GapStatus.ABSENT: 0,
     GapStatus.QUALITY_GAP: 1,
     GapStatus.LANGUAGE_GAP: 2,
-    GapStatus.COVERED: 3,
+    GapStatus.ERROR: 3,  # a verifier manuellement, mais moins actionnable qu'un gap confirme
+    GapStatus.COVERED: 4,
 }
 
 

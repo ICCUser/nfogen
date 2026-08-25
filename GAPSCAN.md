@@ -138,6 +138,11 @@ nfogen/
      VOSTFR).
    - **Couvert** — une release équivalente ou meilleure existe déjà :
      exclu des résultats par défaut (affichable en option "voir tout").
+   - **Non vérifié (erreur)** — ajouté le 2026-08-25, suite à un incident
+     réel (voir "Résilience et rate-limiting" ci-dessous) : la recherche
+     C411 pour CE titre a échoué (429, 520, timeout...). N'interrompt plus
+     le scan des titres suivants ; qualité/langue locale connue quand
+     même affichée, aucune release C411 comparée.
 4. Résultat exposé via l'API et la page frontend, avec pour chaque gap un
    lien direct vers `POST /generate` (le profil C411 existant) pour
    préparer le NFO d'upload.
@@ -196,6 +201,37 @@ Nouvelle page (ex. "Scan C411") dans `frontend/` :
   API) pour t'aider à identifier quoi uploader toi-même.
 - Respect des conditions d'utilisation de l'API C411 (rate limiting côté
   client, pas de contournement d'authentification).
+
+### Incident réel (2026-08-25) : clé API C411 exposée en clair
+
+Premier test manuel de l'app : une réponse `520` de C411 a fait apparaître
+la clé API en clair dans le message d'erreur affiché par
+`GET /gapscan/status` — `httpx` inclut l'URL complète (donc `?apikey=...`)
+dans `HTTPStatusError.__str__` et d'autres erreurs `httpx.HTTPError`, non
+anticipé à l'écriture initiale de `c411_client.py`. Clé exposée
+immédiatement régénérée par l'utilisateur. Corrigé : `C411Client._search()`
+rédige systématiquement la clé de tout message d'erreur avant de le
+propager, quelle que soit l'erreur rencontrée (testé explicitement, avec
+la clé et les paramètres de la requête réelle qui a échoué). `Sonarr`/
+`RadarrClient` non concernés : leur clé passe par un en-tête
+(`X-Api-Key`), jamais dans l'URL.
+
+### Résilience et rate-limiting
+
+Suite du même test manuel : `NFOGEN_C411_MIN_INTERVAL_SECONDS=0.5`
+(défaut initial) a déclenché un `429 Too Many Requests` — confirme un vrai
+rate-limit côté C411, non documenté publiquement (page
+`/user/integrations/guide` inaccessible sans session navigateur, 403).
+Deux correctifs :
+
+- **Défaut relevé à 2.0s**, et `C411Client` réessaie automatiquement une
+  fois après un `429` (respecte l'en-tête `Retry-After` s'il est présent,
+  sinon 5s par défaut) avant d'abandonner ce titre.
+- **Un titre en échec n'interrompt plus tout le scan** : `scan_movie`/
+  `scan_series_season` renvoient un `GapResult` de statut `error` (nouveau,
+  voir "Flux" ci-dessus) au lieu de laisser l'exception remonter — avant ce
+  correctif, la progression déjà faite sur une grosse bibliothèque était
+  perdue au premier accroc réseau, transitoire ou non.
 
 ## Plan de tests (calqué sur l'existant, `tests/test_c411.py` etc.)
 

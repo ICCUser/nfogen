@@ -55,6 +55,7 @@ const MATRIX_GAP: GapResult = {
   c411_matches: [],
   has_freeleech_alternative: false,
   has_double_upload_window: false,
+  error: null,
 };
 
 function renderPage() {

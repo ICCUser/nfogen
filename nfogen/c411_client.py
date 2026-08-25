@@ -160,21 +160,51 @@ class C411Client:
     def __exit__(self, *exc_info: object) -> None:
         self.close()
 
+    _DEFAULT_RETRY_AFTER_SECONDS = 5.0
+
+    def _parse_retry_after(self, response: httpx.Response) -> float:
+        raw = response.headers.get("retry-after")
+        if raw is not None:
+            try:
+                return float(raw)
+            except ValueError:
+                pass  # ex. une date HTTP plutot qu'un nombre de secondes -- non geree, repli prudent
+        return self._DEFAULT_RETRY_AFTER_SECONDS
+
     def _search(self, params: dict[str, str]) -> list[C411Release]:
-        self._throttle()
-        query = {k: v for k, v in params.items() if v is not None}
-        query["apikey"] = self._api_key
-        try:
-            response = self._client.get(self._base_url, params=query)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            # httpx inclut l'URL complete (donc ?apikey=...) dans le message
-            # de certaines erreurs (HTTPStatusError.__str__ notamment) --
-            # sans cette redaction, la cle finit affichee en clair cote
-            # utilisateur (GET /gapscan/status) a chaque erreur reseau.
-            detail = str(exc).replace(self._api_key, "<cle redigee>")
-            raise C411Error(f"Appel a l'API C411 echoue ({params.get('t')}) : {detail}") from exc
-        return parse_torznab_response(response.text)
+        # Incident reel (2026-08-25) : un intervalle trop agressif entre
+        # requetes a declenche un 429. Un seul reessai apres Retry-After
+        # (ou une valeur prudente par defaut) plutot que d'abandonner ce
+        # titre immediatement -- gapscan.py continue de toute facon le
+        # scan sur les titres suivants si ce reessai echoue aussi.
+        for attempt in range(2):
+            self._throttle()
+            query = {k: v for k, v in params.items() if v is not None}
+            query["apikey"] = self._api_key
+            try:
+                response = self._client.get(self._base_url, params=query)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 429 and attempt == 0:
+                    self._sleep(self._parse_retry_after(exc.response))
+                    continue
+                raise C411Error(
+                    f"Appel a l'API C411 echoue ({params.get('t')}) : {self._redact(exc)}"
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise C411Error(
+                    f"Appel a l'API C411 echoue ({params.get('t')}) : {self._redact(exc)}"
+                ) from exc
+            return parse_torznab_response(response.text)
+        raise AssertionError("unreachable")  # la boucle retourne ou leve dans tous les cas
+
+    def _redact(self, exc: Exception) -> str:
+        # httpx inclut l'URL complete (donc ?apikey=...) dans le message de
+        # certaines erreurs (HTTPStatusError.__str__ notamment) -- sans
+        # cette redaction, la cle finit affichee en clair cote utilisateur
+        # (GET /gapscan/status) a chaque erreur reseau (incident reel,
+        # 2026-08-25).
+        return str(exc).replace(self._api_key, "<cle redigee>")
 
     def search_movie(
         self,

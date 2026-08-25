@@ -142,6 +142,62 @@ def test_error_message_never_contains_the_api_key():
 
 
 # --------------------------------------------------------------------------- #
+# 429 Too Many Requests : incident reel en test manuel (l'intervalle par
+# defaut etait trop agressif) -- un seul reessai apres Retry-After plutot
+# que d'abandonner immediatement.
+# --------------------------------------------------------------------------- #
+def test_retries_once_after_429_then_succeeds():
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"Retry-After": "3"})
+        return httpx.Response(200, text=_read("c411_movie_search.xml"))
+
+    client = C411Client(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    sleeps: list[float] = []
+    client._sleep = sleeps.append  # type: ignore[attr-defined]
+
+    releases = client.search_movie(query="x")
+
+    assert len(releases) == 3
+    assert len(calls) == 2  # 1 echec + 1 reessai
+    assert sleeps == [3.0]  # respecte Retry-After
+
+
+def test_gives_up_after_a_second_429():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"Retry-After": "1"})
+
+    client = C411Client(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    client._sleep = lambda _seconds: None  # type: ignore[attr-defined]
+
+    with pytest.raises(C411Error, match="echoue"):
+        client.search_movie(query="x")
+
+
+def test_retry_after_defaults_when_header_absent_or_invalid():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429)  # pas d'en-tete Retry-After
+
+    client = C411Client(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    sleeps: list[float] = []
+    client._sleep = sleeps.append  # type: ignore[attr-defined]
+
+    with pytest.raises(C411Error):
+        client.search_movie(query="x")
+
+    assert sleeps == [5.0]  # valeur par defaut prudente
+
+
+# --------------------------------------------------------------------------- #
 # Limitation de debit (GAPSCAN.md, section "Execution" : un scan complet
 # peut interroger des centaines de titres -- respectueux de l'API C411).
 # --------------------------------------------------------------------------- #
