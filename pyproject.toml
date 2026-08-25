@@ -37,6 +37,9 @@ api = [
     "uvicorn[standard]>=0.29",
     "python-multipart>=0.0.9",  # upload de fichiers via HTTP
 ]
+gapscan = [
+    "httpx>=0.27",  # c411_client.py / sonarr_client.py / radarr_client.py (voir GAPSCAN.md)
+]
 dev = ["pytest>=8.0", "ruff>=0.4", "httpx2"]  # httpx2 : requis par starlette.testclient (versions recentes)
 
 [project.scripts]

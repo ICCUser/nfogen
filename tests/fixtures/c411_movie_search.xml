@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:torznab="http://torznab.com/schemas/2015/feed">
+  <channel>
+    <title>Torrent C411</title>
+    <description>Private Torrent Tracker - RSS Feed</description>
+    <link>https://c411.org</link>
+    <language>fr-fr</language>
+    <lastBuildDate>Tue, 25 Aug 2026 15:35:57 GMT</lastBuildDate>
+  <item>
+    <title>Matrix.COLLECTION.(1999-2021).MULTI.VFF.2160p.BluRay.4KLight.DV.HDR10.TRUEHD.ATMOS.7.1.x265-QTZ</title>
+    <guid>8b4482c8ce699fe1ab02b3da31d58d725c067cf0</guid>
+    <link>https://c411.org/torrents/8b4482c8ce699fe1ab02b3da31d58d725c067cf0</link>
+    <comments>https://c411.org/torrents/8b4482c8ce699fe1ab02b3da31d58d725c067cf0</comments>
+    <pubDate>Sun, 25 Jan 2026 14:35:50 +0000</pubDate>
+    <size>41994227422</size>
+    <description></description>
+    <enclosure url="https://c411.org/api?t=get&amp;id=8b4482c8ce699fe1ab02b3da31d58d725c067cf0&amp;apikey=FAKE_KEY" length="41994227422" type="application/x-bittorrent" />
+    <torznab:attr name="category" value="2030" />
+    <torznab:attr name="size" value="41994227422" />
+    <torznab:attr name="seeders" value="147" />
+    <torznab:attr name="peers" value="154" />
+    <torznab:attr name="grabs" value="6" />
+    <torznab:attr name="infohash" value="8b4482c8ce699fe1ab02b3da31d58d725c067cf0" />
+    <torznab:attr name="downloadvolumefactor" value="1" />
+    <torznab:attr name="uploadvolumefactor" value="1" />
+  </item>
+<item>
+    <title>Matrix.Resurrections.2021.MULTI.VFF.1080p.WEBRip.AAC.5.1.x265-FERVEX</title>
+    <guid>c9fc9e3b8f3f376d556822ab6b7c6b4d0211323b</guid>
+    <link>https://c411.org/torrents/c9fc9e3b8f3f376d556822ab6b7c6b4d0211323b</link>
+    <comments>https://c411.org/torrents/c9fc9e3b8f3f376d556822ab6b7c6b4d0211323b</comments>
+    <pubDate>Tue, 17 Feb 2026 22:07:13 +0000</pubDate>
+    <size>2659049789</size>
+    <description></description>
+    <enclosure url="https://c411.org/api?t=get&amp;id=c9fc9e3b8f3f376d556822ab6b7c6b4d0211323b&amp;apikey=FAKE_KEY" length="2659049789" type="application/x-bittorrent" />
+    <torznab:attr name="category" value="2030" />
+    <torznab:attr name="size" value="2659049789" />
+    <torznab:attr name="seeders" value="108" />
+    <torznab:attr name="peers" value="108" />
+    <torznab:attr name="grabs" value="1" />
+    <torznab:attr name="infohash" value="c9fc9e3b8f3f376d556822ab6b7c6b4d0211323b" />
+    <torznab:attr name="imdbid" value="tt10838180" />
+    <torznab:attr name="tmdbid" value="624860" />
+    <torznab:attr name="downloadvolumefactor" value="1" />
+    <torznab:attr name="uploadvolumefactor" value="1" />
+  </item>
+<item>
+    <title>Matrix.1999.MULTI.VFF.2160p.BluRay.4KLight.HDR.DTS.5.1.x265-QTZ</title>
+    <guid>764d261b3887355b2d024b87aff32f5435ffe4cf</guid>
+    <link>https://c411.org/torrents/764d261b3887355b2d024b87aff32f5435ffe4cf</link>
+    <comments>https://c411.org/torrents/764d261b3887355b2d024b87aff32f5435ffe4cf</comments>
+    <pubDate>Thu, 26 Feb 2026 08:25:46 +0000</pubDate>
+    <size>6005059066</size>
+    <description></description>
+    <enclosure url="https://c411.org/api?t=get&amp;id=764d261b3887355b2d024b87aff32f5435ffe4cf&amp;apikey=FAKE_KEY" length="6005059066" type="application/x-bittorrent" />
+    <torznab:attr name="category" value="2030" />
+    <torznab:attr name="size" value="6005059066" />
+    <torznab:attr name="seeders" value="34" />
+    <torznab:attr name="peers" value="34" />
+    <torznab:attr name="grabs" value="1" />
+    <torznab:attr name="infohash" value="764d261b3887355b2d024b87aff32f5435ffe4cf" />
+    <torznab:attr name="imdbid" value="tt0133093" />
+    <torznab:attr name="tmdbid" value="603" />
+    <torznab:attr name="downloadvolumefactor" value="1" />
+    <torznab:attr name="uploadvolumefactor" value="1" />
+  </item>
+</channel>
+</rss>
