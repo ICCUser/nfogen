@@ -229,12 +229,16 @@ def require_token_for_generate(
     require_token(authorization=authorization, session_cookie=session_cookie)
 
 
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client is not None else "unknown"
+
+
 def rate_limit_generate(request: Request) -> None:
     """Plafonne les requetes/minute par IP sur /generate*, si active."""
     if _GENERATE_RATE_LIMIT_PER_MINUTE is None:
         return
     _sweep_stale_entries()
-    client_ip = request.client.host if request.client is not None else "unknown"
+    client_ip = _client_ip(request)
     now = time.monotonic()
     timestamps = _GENERATE_REQUEST_LOG.setdefault(client_ip, [])
     cutoff = now - _GENERATE_RATE_WINDOW_SECONDS
@@ -251,8 +255,12 @@ def rate_limit_generate(request: Request) -> None:
     timestamps.append(now)
 
 
-def _login_throttle_key(username: Optional[str]) -> str:
-    return f"user:{username}" if username else "token"
+def _login_throttle_key(username: Optional[str], client_ip: str) -> str:
+    """Compte nomme : verrou par identifiant (protege un compte cible, quelle
+    que soit l'IP d'origine). Token partage (`username` absent) : un seul
+    "compte" existe pour tout le monde, donc verrou par IP -- sinon un tiers
+    anonyme pourrait bloquer le login par token pour tous les utilisateurs."""
+    return f"user:{username}" if username else f"token:{client_ip}"
 
 
 def _check_not_locked(key: str) -> None:
@@ -280,12 +288,13 @@ class LoginRequest(BaseModel):
 
 
 @app.post("/login")
-def login(req: LoginRequest, response: Response) -> dict[str, str]:
+def login(req: LoginRequest, request: Request, response: Response) -> dict[str, str]:
     """Verifie le token ou un compte nomme, pose un cookie de session httpOnly."""
     _sweep_stale_entries()
+    client_ip = _client_ip(request)
     identity: Optional[str]
     if req.username:
-        key = _login_throttle_key(req.username)
+        key = _login_throttle_key(req.username, client_ip)
         _check_not_locked(key)
         if not accounts.is_configured():
             raise HTTPException(
@@ -296,7 +305,7 @@ def login(req: LoginRequest, response: Response) -> dict[str, str]:
             raise HTTPException(status_code=401, detail="Identifiant ou mot de passe invalide.")
         identity = req.username
     elif req.token is not None:
-        key = _login_throttle_key(None)
+        key = _login_throttle_key(None, client_ip)
         _check_not_locked(key)
         if _API_TOKEN is None:
             raise HTTPException(

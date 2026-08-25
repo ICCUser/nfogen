@@ -22,6 +22,12 @@ from pathlib import Path
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _ALGO = "pbkdf2_sha256"
 _ITERATIONS = 260_000
+_MIN_PASSWORD_LENGTH = 8
+
+# Hash syntaxiquement valide mais qui ne correspond a aucun mot de passe reel :
+# utilise par authenticate() pour un identifiant inconnu, afin de toujours
+# executer un calcul PBKDF2 complet (cout constant, cf. authenticate()).
+_DUMMY_HASH = f"{_ALGO}${_ITERATIONS}${'a' * 32}${'0' * 64}"
 
 
 class AccountsError(ValueError):
@@ -88,8 +94,10 @@ def list_accounts() -> list[str]:
 
 def create_account(username: str, password: str) -> None:
     _check_username(username)
-    if not password:
-        raise AccountsError("Le mot de passe ne peut pas etre vide.")
+    if len(password) < _MIN_PASSWORD_LENGTH:
+        raise AccountsError(
+            f"Le mot de passe doit contenir au moins {_MIN_PASSWORD_LENGTH} caracteres."
+        )
     accounts = _load()
     if username in accounts:
         raise AccountsError(f"Le compte '{username}' existe deja.")
@@ -111,13 +119,15 @@ def delete_account(username: str) -> None:
 
 
 def authenticate(username: str, password: str) -> bool:
+    """Compare toujours contre un hash (reel ou factice) meme si `username`
+    n'existe pas : un retour anticipe sur compte inconnu creerait un ecart de
+    temps de reponse mesurable, qui permettrait d'enumerer les comptes
+    existants (cf. `_DUMMY_HASH`)."""
     if not is_configured():
         return False
     try:
         accounts = _load()
     except (json.JSONDecodeError, OSError):
         return False
-    hashed = accounts.get(username)
-    if hashed is None:
-        return False
+    hashed = accounts.get(username, _DUMMY_HASH)
     return verify_password(password, hashed)

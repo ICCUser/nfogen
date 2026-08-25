@@ -39,6 +39,22 @@ C411. Historique détaillé des changements : `git log`.
   dès qu'un deuxième existe. Le `.zip` du profil reste disponible en plus
   (API et CLI, sans surcharge préalable).
 - **`rules.json` : motifs regex admin sans timeout** : fait, exécution via RE2.
+- **TLS non documenté sur le déploiement natif recommandé** (audit du
+  2026-08-25) : `scripts/install.sh` expose `uvicorn` en HTTP nu sur le port
+  8000, sans étape reverse proxy. Identifiants et cookie de session
+  transitent en clair tant qu'aucun TLS n'est ajouté manuellement. À faire
+  avant d'exposer une instance publiquement : documenter/outiller un reverse
+  proxy TLS (Caddy ou nginx+certbot) dans `install.sh`/README, au même
+  endroit que la recommandation existante sur les comptes admin.
+- **`rate_limit_generate` ignore les reverse proxy** (audit du 2026-08-25) :
+  lit `request.client.host` directement ; une fois un reverse proxy TLS en
+  place (point précédent), toutes les requêtes partagent la même IP côté
+  serveur. Prévoir un en-tête de confiance optionnel, désactivé par défaut.
+- **Pages frontend du parcours principal sans test d'intégration** (audit du
+  2026-08-25) : `GeneratePage.tsx`/`SettingsPage.tsx` n'ont aucun test,
+  contrairement à la logique pure déjà couverte (cf. point ci-dessus sur les
+  tests frontend). Au moins un test par page (chemin heureux + un cas
+  d'échec) serait à ajouter au fil de l'eau.
 
 ## Audit sécurité du 2026-06-28 (suite des alertes CodeQL)
 
@@ -134,3 +150,37 @@ Priorité 1 close. Priorité 2 : voir "Idées / prochaines pistes" ci-dessus.
   attendu (la valeur enregistrée est toujours prioritaire), mais ça peut
   surprendre juste après ce correctif si le navigateur avait déjà visité
   l'instance.
+
+## Revue technique du 2026-08-25 — priorité 1 (dette identifiée par analyse)
+
+Revue à froid (pas un audit de sécurité déclenché par un incident) : relance
+complète de la suite de tests + lint + `pip-audit`/`npm audit` sur les deux
+stacks (tout au vert), puis lecture ciblée de `nfogen/api.py`/`accounts.py`
+et de la chaîne de déploiement. Trois correctifs à faible effort appliqués
+immédiatement ; les constats plus coûteux (TLS, reverse proxy, tests
+frontend) sont ajoutés à "Idées / prochaines pistes" ci-dessus plutôt que
+traités dans la foulée.
+
+- **Verrou anti-bruteforce du login par token partagé entre toutes les IP** :
+  `_login_throttle_key(None)` renvoyait toujours la constante `"token"` —
+  contrairement au login par compte nommé (verrouillé par identifiant), 5
+  échecs sur `/login` en mode token, depuis n'importe quelle IP, verrouillait
+  le login par token pour tout le monde pendant 30s. Corrigé : la clé de
+  throttle du login par token inclut désormais l'IP cliente
+  (`_login_throttle_key(username, client_ip)`), sur le modèle déjà utilisé
+  par `rate_limit_generate`.
+- **Pas de longueur minimale sur les mots de passe des comptes nommés** :
+  `create_account()` ne rejetait qu'un mot de passe vide. Minimum de 8
+  caractères ajouté (`accounts._MIN_PASSWORD_LENGTH`), message d'erreur
+  explicite.
+- **Canal temporel dans `accounts.authenticate()`** : un identifiant inconnu
+  retournait immédiatement (`hashed is None`) sans exécuter les PBKDF2
+  (~260 000 itérations), contrairement à un identifiant existant avec un
+  mauvais mot de passe — écart de temps de réponse mesurable, qui aurait pu
+  permettre d'énumérer les comptes existants. Corrigé : comparaison
+  systématique contre un hash réel ou factice (`accounts._DUMMY_HASH`), coût
+  constant dans les deux cas.
+
+Revérifié sans correctif nécessaire à ce stade : `profile_store.py`,
+`rules.py`, `render.py`, dépendances (0 CVE `pip-audit`/`npm audit`), lint
+(`ruff`/`oxlint`) et build frontend.
