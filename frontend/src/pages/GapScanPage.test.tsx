@@ -163,4 +163,47 @@ describe("GapScanPage", () => {
     });
     expect(await screen.findByText("Enregistré.")).toBeInTheDocument();
   });
+
+  it("pas de scan precedent : pas de case 'Scan rapide', et le scan lance est complet", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });
+
+    renderPage();
+    await screen.findByRole("button", { name: "Lancer un scan" });
+
+    expect(screen.queryByText("Scan rapide")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
+    expect(gapscanRun).toHaveBeenCalledWith(false);
+  });
+
+  it("scan precedent disponible : case 'Scan rapide' cochee par defaut, scan lance en mode incremental", async () => {
+    const user = userEvent.setup();
+    const DONE_STATUS: GapscanStatus = { ...IDLE_STATUS, state: "done", total: 1, processed: 1, finished_at: 1700000000 };
+    vi.mocked(gapscanStatus).mockResolvedValue(DONE_STATUS);
+    vi.mocked(gapscanResults).mockResolvedValue([MATRIX_GAP]);
+    vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });
+
+    renderPage();
+    const checkbox = await screen.findByRole("checkbox", { name: "Scan rapide" });
+    expect(checkbox).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
+    expect(gapscanRun).toHaveBeenCalledWith(true);
+  });
+
+  it("scan precedent disponible : decocher 'Scan rapide' force un scan complet", async () => {
+    const user = userEvent.setup();
+    const DONE_STATUS: GapscanStatus = { ...IDLE_STATUS, state: "done", total: 1, processed: 1, finished_at: 1700000000 };
+    vi.mocked(gapscanStatus).mockResolvedValue(DONE_STATUS);
+    vi.mocked(gapscanResults).mockResolvedValue([MATRIX_GAP]);
+    vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });
+
+    renderPage();
+    const checkbox = await screen.findByRole("checkbox", { name: "Scan rapide" });
+    await user.click(checkbox);
+    await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
+
+    expect(gapscanRun).toHaveBeenCalledWith(false);
+  });
 });

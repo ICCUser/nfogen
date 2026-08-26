@@ -3,7 +3,12 @@
 Etat en memoire (pas de base de donnees, coherent avec le reste de
 nfogen -- cf. `_SESSIONS`/`_LOGIN_ATTEMPTS` dans `api.py`) : un seul scan a
 la fois, resultats du dernier scan termine conserves jusqu'au prochain.
-Perdu au redemarrage du processus, comme les sessions.
+
+Persiste sur disque de facon optionnelle (`gapscan_results_store.py`,
+NFOGEN_GAPSCAN_RESULTS_FILE) : sans ca, un redemarrage du processus (ex.
+`scripts/update.sh`) faisait tout perdre, forcant a rescanner une
+bibliotheque entiere depuis zero -- retour utilisateur, 2026-08-26.
+Recharge au chargement du module (equivalent d'un demarrage de processus).
 
 Les clients (C411/Radarr/Sonarr) sont fournis DEJA CONSTRUITS par
 l'appelant (`api.py`, a partir des variables d'environnement) : ce module
@@ -18,6 +23,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
 
+from . import gapscan_results_store
 from .c411_client import C411Client
 from .gapscan import GapResult, run_gapscan, sort_by_priority
 from .radarr_client import RadarrClient
@@ -46,6 +52,28 @@ _progress = _Progress()
 _results: list[GapResult] = []
 
 
+def _restore_persisted() -> None:
+    """Recharge le dernier scan persiste (voir gapscan_results_store.py) au
+    chargement du module -- sans ca, /gapscan/results renverrait une liste
+    vide juste apres un redemarrage/une mise a jour, meme si un scan complet
+    a deja ete fait. No-op si la persistance n'est pas configuree ou si rien
+    n'a jamais ete sauvegarde."""
+    global _results
+    loaded = gapscan_results_store.load()
+    if loaded is None:
+        return
+    restored, saved_at = loaded
+    with _lock:
+        _results = restored
+        _progress.state = ScanState.DONE
+        _progress.total = len(restored)
+        _progress.processed = len(restored)
+        _progress.finished_at = saved_at
+
+
+_restore_persisted()
+
+
 def status() -> dict[str, Any]:
     with _lock:
         p = _progress
@@ -69,7 +97,12 @@ def results(status_filter: Optional[str] = None) -> list[GapResult]:
     return items
 
 
-def _run(c411: C411Client, radarr: Optional[RadarrClient], sonarr: Optional[SonarrClient]) -> None:
+def _run(
+    c411: C411Client,
+    radarr: Optional[RadarrClient],
+    sonarr: Optional[SonarrClient],
+    previous_results: Optional[list[GapResult]],
+) -> None:
     global _results
     try:
         def on_progress(done: int, total: int) -> None:
@@ -77,11 +110,16 @@ def _run(c411: C411Client, radarr: Optional[RadarrClient], sonarr: Optional[Sona
                 _progress.processed = done
                 _progress.total = total
 
-        collected = run_gapscan(c411, radarr=radarr, sonarr=sonarr, on_progress=on_progress)
+        collected = run_gapscan(
+            c411, radarr=radarr, sonarr=sonarr, on_progress=on_progress,
+            previous_results=previous_results,
+        )
+        sorted_results = sort_by_priority(collected)
         with _lock:
-            _results = sort_by_priority(collected)
+            _results = sorted_results
             _progress.state = ScanState.DONE
             _progress.finished_at = time.time()
+        gapscan_results_store.save(sorted_results)
     except Exception as exc:  # noqa: BLE001 -- toute erreur client -> statut "error", jamais une exception non geree dans le thread
         with _lock:
             _progress.state = ScanState.ERROR
@@ -99,20 +137,30 @@ def start(
     c411: C411Client,
     radarr: Optional[RadarrClient] = None,
     sonarr: Optional[SonarrClient] = None,
+    incremental: bool = False,
 ) -> bool:
     """Lance un scan en tache de fond avec des clients deja construits.
     `False` si un scan est deja en cours (un seul a la fois) -- les clients
     fournis restent alors a la charge de l'appelant (jamais fermes par ce
-    module dans ce cas)."""
+    module dans ce cas).
+
+    `incremental` : reutilise les resultats du dernier scan (memoire ou
+    persistes, voir _restore_persisted) pour les titres deja COVERED et
+    dont la qualite locale n'a pas change -- evite de tout rescanner a
+    chaque fois (retour utilisateur, 2026-08-26). `False` par defaut : scan
+    complet, comportement historique."""
     with _lock:
         if _progress.state == ScanState.RUNNING:
             return False
+        previous_results = list(_results) if incremental else None
         _progress.state = ScanState.RUNNING
         _progress.started_at = time.time()
         _progress.finished_at = None
         _progress.error = None
         _progress.total = 0
         _progress.processed = 0
-    thread = threading.Thread(target=_run, args=(c411, radarr, sonarr), daemon=True)
+    thread = threading.Thread(
+        target=_run, args=(c411, radarr, sonarr, previous_results), daemon=True
+    )
     thread.start()
     return True

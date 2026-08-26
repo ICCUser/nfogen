@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nfogen import api as api_module
+from nfogen.c411_client import C411Release
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.registry import unregister_profile
 
@@ -1088,6 +1089,14 @@ class _FakeGapscanRadarr:
         self.closed = True
 
 
+class _FakeGapscanC411Covered(_FakeGapscanC411):
+    """Renvoie toujours une release couvrant exactement 'Matrix' -- utilise
+    pour verifier le mode incremental (POST /gapscan/run?incremental=true)."""
+
+    def search_movie(self, query=None, imdb_id=None, tmdb_id=None):
+        return [C411Release(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+
+
 def _patch_gapscan_clients(monkeypatch, mod, radarr_cls=_FakeGapscanRadarr, sonarr_cls=None):
     monkeypatch.setattr(mod, "C411Client", _FakeGapscanC411)
     monkeypatch.setattr(mod, "RadarrClient", radarr_cls)
@@ -1231,6 +1240,32 @@ def test_gapscan_run_then_status_then_results(reload_api, monkeypatch):
     assert results[0]["media_type"] == "movie"
     assert results[0]["title"] == "Matrix"
     assert results[0]["status"] == "absent"  # FakeGapscanC411 ne renvoie jamais de match
+
+
+def test_gapscan_run_incremental_reuses_covered_results(reload_api, monkeypatch):
+    """POST /gapscan/run?incremental=true : un titre COVERED au scan
+    precedent est repris tel quel, sans reinterroger C411 -- retour
+    utilisateur, 2026-08-26 (voir gapscan_runner.py)."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
+    monkeypatch.setattr(mod, "C411Client", _FakeGapscanC411Covered)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    status = _wait_gapscan_done(client)
+    assert status["state"] == "done"
+    assert client.get("/gapscan/results").json()[0]["status"] == "covered"
+
+    # Si reinterroge, ce client renverrait ABSENT (aucun match) : revelateur.
+    monkeypatch.setattr(mod, "C411Client", _FakeGapscanC411)
+    run2 = client.post("/gapscan/run", params={"incremental": "true"})
+    assert run2.status_code == 200
+    status2 = _wait_gapscan_done(client)
+    assert status2["state"] == "done"
+    assert client.get("/gapscan/results").json()[0]["status"] == "covered"
 
 
 def test_gapscan_results_filterable_by_status_query_param(reload_api, monkeypatch):

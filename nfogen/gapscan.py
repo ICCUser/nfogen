@@ -65,6 +65,25 @@ def _filter_by_year(matches: list[C411Release], year: Optional[int]) -> list[C41
     return kept
 
 
+def _quality_fingerprint(q: ReleaseQuality) -> tuple:
+    """Les seuls champs qui affectent une comparaison C411 (`is_quality_upgrade`/
+    `is_language_gap`) -- exclut `raw` (le nom de fichier exact peut differer
+    cosmetiquement sans rien changer au verdict)."""
+    return (q.resolution, q.source, q.codec, tuple(sorted(q.languages)), q.multi, q.pure)
+
+
+def _can_reuse(previous: Optional[GapResult], local_quality: ReleaseQuality) -> bool:
+    """Mode incremental (voir run_gapscan/gapscan_runner.py) : un resultat
+    precedent n'est reutilisable sans reinterroger C411 que s'il etait deja
+    COVERED (un gap merite d'etre reverifie, C411 a pu se remplir depuis) ET
+    que la qualite locale n'a pas change depuis (sinon la comparaison
+    pourrait changer) -- retour utilisateur, 2026-08-26 : "je vais pas tout
+    rescanner a chaque fois"."""
+    if previous is None or previous.status != GapStatus.COVERED:
+        return False
+    return _quality_fingerprint(previous.local_quality) == _quality_fingerprint(local_quality)
+
+
 def _classify(local_quality: ReleaseQuality, matches: list[C411Release]) -> GapStatus:
     if not matches:
         return GapStatus.ABSENT
@@ -78,13 +97,17 @@ def _classify(local_quality: ReleaseQuality, matches: list[C411Release]) -> GapS
     return GapStatus.COVERED
 
 
-def scan_movie(movie: RadarrMovieFile, c411: C411Client) -> GapResult:
+def scan_movie(
+    movie: RadarrMovieFile, c411: C411Client, previous: Optional[GapResult] = None
+) -> GapResult:
     tmdb_id = str(movie.tmdb_id) if movie.tmdb_id else None
     local_quality = build_quality(
         movie.scene_name or movie.title,
         fallback_resolution=movie.best_resolution,
         fallback_language_names=movie.language_names,
     )
+    if _can_reuse(previous, local_quality):
+        return previous  # type: ignore[return-value]
     base = dict(
         media_type="movie", title=movie.title, year=movie.year, season_number=None,
         imdb_id=movie.imdb_id, tmdb_id=tmdb_id, tvdb_id=None, local_quality=local_quality,
@@ -114,12 +137,16 @@ def scan_movie(movie: RadarrMovieFile, c411: C411Client) -> GapResult:
     )
 
 
-def scan_series_season(season: SonarrSeasonFile, c411: C411Client) -> GapResult:
+def scan_series_season(
+    season: SonarrSeasonFile, c411: C411Client, previous: Optional[GapResult] = None
+) -> GapResult:
     local_quality = build_quality(
         season.scene_name or season.title,
         fallback_resolution=season.best_resolution,
         fallback_language_names=season.language_names,
     )
+    if _can_reuse(previous, local_quality):
+        return previous  # type: ignore[return-value]
     base = dict(
         media_type="series", title=season.title, year=season.year,
         season_number=season.season_number, imdb_id=season.imdb_id, tmdb_id=None,
@@ -140,29 +167,53 @@ def scan_series_season(season: SonarrSeasonFile, c411: C411Client) -> GapResult:
     )
 
 
+def _result_key(r: GapResult) -> tuple:
+    """Identifiant stable d'un titre (ou saison) entre deux scans, pour
+    retrouver son resultat precedent en mode incremental : prefere les
+    identifiants externes (stables meme si le titre change de casse/
+    ponctuation), repli sur titre(+annee) sinon."""
+    if r.media_type == "movie":
+        return ("movie", r.imdb_id or r.tmdb_id or r.title, r.year)
+    return ("series", r.tvdb_id or r.imdb_id or r.title, r.season_number)
+
+
 def run_gapscan(
     c411: C411Client,
     radarr: Optional[RadarrClient] = None,
     sonarr: Optional[SonarrClient] = None,
     on_progress: Optional[Callable[[int, int], None]] = None,
+    previous_results: Optional[list[GapResult]] = None,
 ) -> list[GapResult]:
     """Lance un scan complet. `radarr`/`sonarr` optionnels (l'un ou l'autre,
     ou les deux). `on_progress(traites, total)`, appele apres chaque item --
     utilise par `gapscan_runner.py` pour exposer une progression via
-    `GET /gapscan/status` sans dupliquer cette boucle ailleurs."""
+    `GET /gapscan/status` sans dupliquer cette boucle ailleurs.
+
+    `previous_results` (mode incremental, optionnel) : resultats du dernier
+    scan termine -- un titre deja COVERED et inchange localement est repris
+    tel quel sans reinterroger C411 (voir `_can_reuse`). Retour utilisateur,
+    2026-08-26."""
     items: list[tuple[str, object]] = []
     if radarr is not None:
         items.extend(("movie", movie) for movie in radarr.list_movie_files())
     if sonarr is not None:
         items.extend(("series", season) for season in sonarr.list_season_files())
 
+    previous_by_key: dict[tuple, GapResult] = {}
+    if previous_results:
+        for r in previous_results:
+            previous_by_key[_result_key(r)] = r
+
     total = len(items)
     results: list[GapResult] = []
     for index, (kind, item) in enumerate(items, start=1):
         if kind == "movie":
-            results.append(scan_movie(item, c411))  # type: ignore[arg-type]
+            tmdb_id = str(item.tmdb_id) if item.tmdb_id else None  # type: ignore[attr-defined]
+            key = ("movie", item.imdb_id or tmdb_id or item.title, item.year)  # type: ignore[attr-defined]
+            results.append(scan_movie(item, c411, previous=previous_by_key.get(key)))  # type: ignore[arg-type]
         else:
-            results.append(scan_series_season(item, c411))  # type: ignore[arg-type]
+            key = ("series", item.tvdb_id or item.imdb_id or item.title, item.season_number)  # type: ignore[attr-defined]
+            results.append(scan_series_season(item, c411, previous=previous_by_key.get(key)))  # type: ignore[arg-type]
         if on_progress is not None:
             on_progress(index, total)
     return results

@@ -57,6 +57,11 @@ export default function GapScanPage() {
   const [filter, setFilter] = useState<GapStatus | "">("");
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  // Scan rapide (mode incremental) : coche par defaut des qu'un scan
+  // precedent existe (voir handleRun / GAPSCAN.md, "Persistance des
+  // resultats + scan incremental") -- l'utilisateur peut decocher pour
+  // forcer un scan complet.
+  const [incremental, setIncremental] = useState(true);
   const pollRef = useRef<number | null>(null);
 
   // Formulaire de configuration (Sonarr/Radarr/C411) : replie par defaut,
@@ -141,7 +146,7 @@ export default function GapScanPage() {
     setStarting(true);
     setError(null);
     try {
-      await gapscanRun();
+      await gapscanRun(hasPreviousScan && incremental);
       // refreshStatus() demarre elle-meme le polling si l'etat est
       // "running" (voir plus haut) -- pas d'appel a startPolling() ici :
       // un scan deja termine au premier appel ne doit pas en declencher un
@@ -197,6 +202,9 @@ export default function GapScanPage() {
   const running = status?.state === "running";
   const notConfigured = config !== null && !config.c411_configured;
   const noLibrary = config !== null && config.c411_configured && !config.sonarr_configured && !config.radarr_configured;
+  // Un scan precedent existe (memoire ou repris du disque au demarrage,
+  // voir gapscan_results_store.py) des qu'un "done" a deja ete rapporte.
+  const hasPreviousScan = status?.state === "done" && status.finished_at !== null;
 
   return (
     <div className="space-y-4">
@@ -208,7 +216,19 @@ export default function GapScanPage() {
             encore, ou pas dans ta qualité — candidats à uploader.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          {hasPreviousScan && (
+            <label className="flex items-center gap-1.5 text-sm text-ink-dim" title="Reprend les titres déjà couverts et inchangés du dernier scan sans les réinterroger sur C411 — plus rapide.">
+              <input
+                type="checkbox"
+                checked={incremental}
+                onChange={(e) => setIncremental(e.target.checked)}
+                disabled={starting || running}
+                className="h-4 w-4 rounded border-line-strong"
+              />
+              Scan rapide
+            </label>
+          )}
           <button
             type="button"
             onClick={handleExportCsv}

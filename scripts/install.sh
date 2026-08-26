@@ -179,6 +179,12 @@ if [[ -f "${ENV_FILE}" ]] && ! grep -q "^NFOGEN_GAPSCAN_CONFIG_FILE=" "${ENV_FIL
     echo "# a chaud depuis la page \"Scan C411\" (PUT /gapscan/config)." >> "${ENV_FILE}"
     echo "NFOGEN_GAPSCAN_CONFIG_FILE=${DATA_DIR}/gapscan_config.json" >> "${ENV_FILE}"
 fi
+# Meme principe : le dernier scan termine survit desormais a un redemarrage
+# du service (ex. cette meme commande update.sh) au lieu d'etre perdu et de
+# forcer un rescan complet -- retour utilisateur, 2026-08-26.
+if [[ -f "${ENV_FILE}" ]] && ! grep -q "^NFOGEN_GAPSCAN_RESULTS_FILE=" "${ENV_FILE}"; then
+    echo "NFOGEN_GAPSCAN_RESULTS_FILE=${DATA_DIR}/gapscan_results.json" >> "${ENV_FILE}"
+fi
 _set_env_var NFOGEN_DOMAIN "${NFOGEN_DOMAIN}" "${ENV_FILE}"
 _set_env_var NFOGEN_LOCAL_TLS "${NFOGEN_LOCAL_TLS}" "${ENV_FILE}"
 if [[ -n "${NFOGEN_DOMAIN}" || -n "${NFOGEN_LOCAL_TLS}" ]]; then

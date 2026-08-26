@@ -747,14 +747,17 @@ def _build_gapscan_clients() -> tuple[Any, Any, Any]:
 
 
 @app.post("/gapscan/run", dependencies=[Depends(require_token)])
-def gapscan_run() -> dict[str, str]:
+def gapscan_run(incremental: bool = Query(False)) -> dict[str, str]:
+    """`incremental=true` : reutilise les resultats du dernier scan pour les
+    titres deja couverts et inchanges localement, au lieu de tout
+    reinterroger C411 -- voir gapscan_runner.start()."""
     _require_gapscan_available()
     try:
         c411, sonarr, radarr = _build_gapscan_clients()
     except (ValueError, C411Error, SonarrError, RadarrError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    started = gapscan_runner.start(c411, radarr=radarr, sonarr=sonarr)
+    started = gapscan_runner.start(c411, radarr=radarr, sonarr=sonarr, incremental=incremental)
     if not started:
         c411.close()
         if sonarr is not None:

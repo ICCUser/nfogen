@@ -160,7 +160,7 @@ nfogen/
 
 | Endpoint | Auth | Usage |
 |---|---|---|
-| `POST /gapscan/run` | oui (même modèle que `/profiles/store*`) | Lance un scan complet (tâche de fond — voir "Exécution" ci-dessous). `400` si mal configuré, `409` si un scan tourne déjà |
+| `POST /gapscan/run` | oui (même modèle que `/profiles/store*`) | Lance un scan (tâche de fond — voir "Exécution" ci-dessous). `?incremental=true` : reprend les titres déjà couverts et inchangés du dernier scan sans les réinterroger. `400` si mal configuré, `409` si un scan tourne déjà |
 | `GET /gapscan/status` | oui | État (`idle`/`running`/`done`/`error`) + progression (`processed`/`total`) du dernier scan |
 | `GET /gapscan/results` | oui | Derniers résultats (JSON), filtrable par statut (`?status=absent`) |
 | `GET /gapscan/results/export.csv` | oui | Export CSV, mêmes filtres |
@@ -186,7 +186,8 @@ en tâche de fond (`nfogen/gapscan_runner.py`, `threading.Thread`), un seul
 scan à la fois (409 sinon), résultats gardés en mémoire jusqu'au prochain
 scan (pas de re-scan à chaque chargement de page). Limitation de débit vers
 C411 : `NFOGEN_C411_MIN_INTERVAL_SECONDS` (0.5s par défaut, ajustable) —
-valeur prudente faute de limites documentées publiquement.
+valeur prudente faute de limites documentées publiquement. Persistance sur
+disque et mode incrémental : voir "Persistance des résultats" plus bas.
 
 ## Frontend prévu
 
@@ -269,6 +270,36 @@ Deux correctifs :
   projet (nfogen ne télécharge/n'héberge/ne distribue rien aujourd'hui,
   voir README "Avertissement"), à décider explicitement plutôt qu'à
   ajouter incidemment.
+
+### Persistance des résultats + scan incrémental (2026-08-26)
+
+Retour utilisateur après le premier scan réel complet (~1140 titres) :
+"à chaque MAJ je vais devoir refaire un scan ? ... j'ai déjà scanné, je vais
+pas tout rescanner c'est pas fou". Deux problèmes distincts, réglés
+ensemble :
+
+1. **Les résultats ne survivaient pas à un redémarrage du processus** — y
+   compris celui déclenché par `scripts/update.sh` lui-même. `_progress`/
+   `_results` dans `gapscan_runner.py` étaient purement en mémoire.
+   Corrigé : `nfogen/gapscan_results_store.py` (même principe que
+   `gapscan_config_store.py`) écrit le dernier scan terminé sur disque —
+   fichier optionnel `NFOGEN_GAPSCAN_RESULTS_FILE` (ajouté par
+   `scripts/install.sh`, `chmod 600`), rechargé au chargement du module.
+   `GET /gapscan/results` répond donc correctement juste après un
+   redémarrage, avant même qu'un nouveau scan ait tourné.
+2. **Un nouveau scan repartait toujours de zéro** — même si rien n'avait
+   changé localement pour la plupart des titres. Corrigé : `POST
+   /gapscan/run?incremental=true` (`gapscan_runner.start(..., incremental=
+   True)` → `run_gapscan(..., previous_results=...)`) reprend tel quel le
+   résultat précédent d'un titre si (a) il était déjà `covered` et (b) sa
+   qualité locale (résolution/source/codec/langues/`pure`) n'a pas changé
+   depuis — aucun appel C411 dans ce cas. Tout le reste (nouveaux titres,
+   qualité locale changée, titres pas encore couverts) est réinterrogé
+   normalement : un gap non comblé mérite d'être revérifié, C411 a pu se
+   remplir depuis le dernier passage.
+
+Le frontend expose ce choix (scan complet vs rapide) sur la page "Scan
+C411", rapide par défaut dès qu'un scan précédent existe.
 
 ## Plan de tests (calqué sur l'existant, `tests/test_c411.py` etc.)
 

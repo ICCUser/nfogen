@@ -159,3 +159,84 @@ def test_scan_error_is_reported_in_status_not_raised():
     status = gapscan_runner.status()
     assert status["state"] == "error"
     assert "Radarr injoignable" in status["error"]
+
+
+# --------------------------------------------------------------------------- #
+# Persistance sur disque (survit a un redemarrage du processus) + mode
+# incremental -- retour utilisateur, 2026-08-26 : "a chaque MAJ je vais
+# devoir refaire un scan ? ... je vais pas tout rescanner c'est pas fou".
+# --------------------------------------------------------------------------- #
+def test_results_are_lost_on_reload_when_persistence_not_configured():
+    """Comportement historique inchange par defaut : pas de fichier
+    configure, rien ne survit a un 'redemarrage' (reload)."""
+    c411 = FakeC411(movie_results=[])
+    radarr = FakeRadarr(movies=[_movie()])
+    gapscan_runner.start(c411, radarr=radarr)
+    _wait_until_not_running()
+    assert len(gapscan_runner.results()) == 1
+
+    importlib.reload(gapscan_runner)
+
+    assert gapscan_runner.results() == []
+    assert gapscan_runner.status()["state"] == "idle"
+
+
+def test_results_persist_across_a_process_restart_when_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("NFOGEN_GAPSCAN_RESULTS_FILE", str(tmp_path / "results.json"))
+    importlib.reload(gapscan_runner)  # applique le nouvel env var (charge au module-level)
+
+    c411 = FakeC411(movie_results=[])
+    radarr = FakeRadarr(movies=[_movie()])
+    gapscan_runner.start(c411, radarr=radarr)
+    _wait_until_not_running()
+    assert len(gapscan_runner.results()) == 1
+
+    importlib.reload(gapscan_runner)  # simule un redemarrage du processus (ex. update.sh)
+
+    results = gapscan_runner.results()
+    assert len(results) == 1
+    assert results[0].media_type == "movie"
+    status = gapscan_runner.status()
+    assert status["state"] == "done"  # pas "idle" : un scan est bien deja disponible
+    assert status["finished_at"] is not None
+
+
+def test_start_with_incremental_reuses_covered_results_from_last_scan():
+    """Un titre COVERED au dernier scan, dont la qualite locale n'a pas
+    change, n'est pas reinterroge sur C411 -- coeur du correctif."""
+    movie = RadarrMovieFile(
+        movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
+    )
+    c411_first = FakeC411(
+        movie_results=[C411Release(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+    )
+    gapscan_runner.start(c411_first, radarr=FakeRadarr(movies=[movie]))
+    _wait_until_not_running()
+    assert gapscan_runner.results()[0].status.value == "covered"
+
+    # Si reinterroge a tort, ce second client renverrait ABSENT (revelateur).
+    c411_second = FakeC411(movie_results=[])
+    gapscan_runner.start(c411_second, radarr=FakeRadarr(movies=[movie]), incremental=True)
+    _wait_until_not_running()
+
+    assert gapscan_runner.results()[0].status.value == "covered"
+
+
+def test_start_without_incremental_rescans_everything():
+    """Vaut confirmation que `incremental` est bien un opt-in explicite (le
+    scan complet, par defaut, reste le comportement historique)."""
+    movie = RadarrMovieFile(
+        movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
+    )
+    c411_first = FakeC411(
+        movie_results=[C411Release(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+    )
+    gapscan_runner.start(c411_first, radarr=FakeRadarr(movies=[movie]))
+    _wait_until_not_running()
+    assert gapscan_runner.results()[0].status.value == "covered"
+
+    c411_second = FakeC411(movie_results=[])
+    gapscan_runner.start(c411_second, radarr=FakeRadarr(movies=[movie]))  # incremental=False (defaut)
+    _wait_until_not_running()
+
+    assert gapscan_runner.results()[0].status.value == "absent"

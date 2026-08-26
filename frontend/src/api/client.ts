@@ -292,8 +292,12 @@ export function gapscanConfigWrite(fields: GapscanConfigWrite): Promise<GapscanC
   return request<GapscanConfig>("/gapscan/config", { method: "PUT", body: JSON.stringify(fields) });
 }
 
-export function gapscanRun(): Promise<{ status: string }> {
-  return request("/gapscan/run", { method: "POST" });
+/** `incremental` : reprend les titres deja couverts et inchanges du
+ * dernier scan sans les reinterroger sur C411 (voir GAPSCAN.md, section
+ * "Persistance des resultats + scan incremental"). */
+export function gapscanRun(incremental = false): Promise<{ status: string }> {
+  const qs = incremental ? "?incremental=true" : "";
+  return request(`/gapscan/run${qs}`, { method: "POST" });
 }
 
 export function gapscanStatus(): Promise<GapscanStatus> {

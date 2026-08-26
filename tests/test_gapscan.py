@@ -188,6 +188,68 @@ def test_scan_movie_flags_double_upload_window():
 
 
 # --------------------------------------------------------------------------- #
+# Mode incremental (`previous=`) : retour utilisateur du 2026-08-26, "je vais
+# pas tout rescanner a chaque fois" -- un titre deja COVERED au scan
+# precedent, dont la qualite locale n'a pas change depuis, doit etre repris
+# tel quel sans reinterroger C411.
+# --------------------------------------------------------------------------- #
+def test_scan_movie_reuses_previous_result_when_covered_and_quality_unchanged():
+    c411_first = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")])
+    previous = scan_movie(_movie(), c411_first)
+    assert previous.status == GapStatus.COVERED
+
+    c411_second = FakeC411()  # si appele a tort, renverrait ABSENT (revelateur)
+    result = scan_movie(_movie(), c411_second, previous=previous)
+
+    assert result is previous
+    assert c411_second.calls == []
+
+
+def test_scan_movie_rescans_when_previous_was_not_covered():
+    """Un gap non comble merite d'etre reverifie : C411 a pu se remplir
+    depuis le dernier scan."""
+    c411_first = FakeC411(movie_results=[])
+    previous = scan_movie(_movie(), c411_first)
+    assert previous.status == GapStatus.ABSENT
+
+    c411_second = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")])
+    result = scan_movie(_movie(), c411_second, previous=previous)
+
+    assert c411_second.calls != []
+    assert result.status == GapStatus.COVERED
+
+
+def test_scan_movie_rescans_when_local_quality_changed():
+    """La bibliotheque locale a pu etre mise a niveau (Sonarr/Radarr a grabbe
+    une meilleure version) depuis le scan precedent : la comparaison
+    precedente n'est plus valable."""
+    c411_first = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.1080p.BluRay.x265-QTZ")])
+    previous = scan_movie(
+        _movie(best_resolution=1080, scene_name="Matrix.1999.MULTI.VFF.1080p.BluRay.x265-QTZ"),
+        c411_first,
+    )
+    assert previous.status == GapStatus.COVERED
+
+    c411_second = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.1080p.BluRay.x265-QTZ")])
+    result = scan_movie(_movie(), c411_second, previous=previous)  # 2160p par defaut, cf. _movie()
+
+    assert c411_second.calls != []
+    assert result.status == GapStatus.QUALITY_GAP
+
+
+def test_scan_series_season_reuses_previous_result_when_covered_and_unchanged():
+    c411_first = FakeC411(tv_results=[_release("Breaking.Bad.S01.MULTI.VFF.2160p.WEBRip.x265-SQUEEZE")])
+    previous = scan_series_season(_season(), c411_first)
+    assert previous.status == GapStatus.COVERED
+
+    c411_second = FakeC411()
+    result = scan_series_season(_season(), c411_second, previous=previous)
+
+    assert result is previous
+    assert c411_second.calls == []
+
+
+# --------------------------------------------------------------------------- #
 # scan_series_season
 # --------------------------------------------------------------------------- #
 def _season(**overrides) -> SonarrSeasonFile:
@@ -301,6 +363,28 @@ def test_run_gapscan_still_reports_progress_after_an_item_failure():
         on_progress=lambda done, total: calls.append((done, total)),
     )
     assert calls == [(1, 2), (2, 2)]
+
+
+def test_run_gapscan_reuses_previous_results_for_unchanged_covered_items():
+    """Mode incremental de bout en bout : combine `previous_results` avec la
+    bibliotheque Radarr+Sonarr (voir tests scan_movie/scan_series_season
+    ci-dessus pour la logique unitaire)."""
+    c411_first = FakeC411(
+        movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")], tv_results=[]
+    )
+    first_pass = run_gapscan(c411_first, radarr=_FakeRadarr(), sonarr=_FakeSonarr())
+
+    c411_second = FakeC411()  # rien configure : un appel a tort renverrait ABSENT (revelateur)
+    second_pass = run_gapscan(
+        c411_second, radarr=_FakeRadarr(), sonarr=_FakeSonarr(), previous_results=first_pass
+    )
+
+    movie_result = next(r for r in second_pass if r.media_type == "movie")
+    series_result = next(r for r in second_pass if r.media_type == "series")
+    assert movie_result.status == GapStatus.COVERED  # repris tel quel, pas reinterroge
+    assert ("movie", None, "tt0133093", "603") not in c411_second.calls
+    assert series_result.status == GapStatus.ABSENT  # non couvert avant -> reinterroge normalement
+    assert ("tv", None, "tt0903747", 1) in c411_second.calls
 
 
 def test_sort_by_priority_orders_gaps_before_covered():
