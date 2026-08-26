@@ -142,6 +142,107 @@ def test_generate_rate_limit_is_per_client_ip(reload_api):
     assert client_b.post("/generate/json", json=GAME_PAYLOAD).status_code == 200
 
 
+# --------------------------------------------------------------------------- #
+# NFOGEN_TRUST_PROXY_HEADERS (priorite 3 de l'audit) : derriere le reverse
+# proxy Caddy ajoute par install.sh (NFOGEN_DOMAIN/NFOGEN_LOCAL_TLS),
+# request.client.host vaut toujours l'IP de Caddy (127.0.0.1) sans ceci --
+# tous les clients partageraient un seul quota au lieu d'un quota par IP.
+# --------------------------------------------------------------------------- #
+def test_rate_limit_ignores_x_forwarded_for_by_default(reload_api):
+    """Sans NFOGEN_TRUST_PROXY_HEADERS, l'en-tete est ignore (comportement
+    par defaut, pas de confiance accordee a un en-tete que N'IMPORTE QUEL
+    client peut fournir lui-meme sans reverse proxy devant l'API)."""
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE="1")
+    client = TestClient(mod.app, client=("9.9.9.9", 12345))
+
+    assert (
+        client.post(
+            "/generate/json", json=GAME_PAYLOAD, headers={"X-Forwarded-For": "1.1.1.1"}
+        ).status_code
+        == 200
+    )
+    # Meme "IP" annoncee par le client lui-meme (1.1.1.1) sur la 2e requete :
+    # sans confiance dans l'en-tete, seule l'IP TCP reelle (9.9.9.9) compte,
+    # donc le quota (1/min) est bien consomme -> 429.
+    resp = client.post(
+        "/generate/json", json=GAME_PAYLOAD, headers={"X-Forwarded-For": "2.2.2.2"}
+    )
+    assert resp.status_code == 429
+
+
+def test_rate_limit_trusts_rightmost_x_forwarded_for_when_enabled(reload_api):
+    """Avec NFOGEN_TRUST_PROXY_HEADERS=1, seule la valeur la PLUS A DROITE de
+    X-Forwarded-For compte (celle ajoutee par notre reverse proxy immediat,
+    jamais falsifiable par le client) -- pas la plus a gauche, que le client
+    peut fixer lui-meme."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE="1",
+        NFOGEN_TRUST_PROXY_HEADERS="1",
+    )
+    # Simule deux clients reels distincts derriere le MEME reverse proxy
+    # (meme IP TCP source vue par uvicorn), differencies seulement par la
+    # valeur ajoutee par le proxy en fin d'en-tete.
+    client_a = TestClient(mod.app, client=("127.0.0.1", 12345))
+    client_b = TestClient(mod.app, client=("127.0.0.1", 12345))
+
+    assert (
+        client_a.post(
+            "/generate/json", json=GAME_PAYLOAD, headers={"X-Forwarded-For": "1.2.3.4"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client_a.post(
+            "/generate/json", json=GAME_PAYLOAD, headers={"X-Forwarded-For": "1.2.3.4"}
+        ).status_code
+        == 429
+    )
+    # client_b : IP forwardee differente -> quota independant, pas encore consomme.
+    assert (
+        client_b.post(
+            "/generate/json", json=GAME_PAYLOAD, headers={"X-Forwarded-For": "5.6.7.8"}
+        ).status_code
+        == 200
+    )
+
+
+def test_rate_limit_trusted_header_takes_rightmost_hop_not_client_supplied_prefix(reload_api):
+    """Un client pourrait pre-remplir X-Forwarded-For lui-meme avant que le
+    reverse proxy n'ajoute SA valeur a droite (ex. "attaquant-invente,
+    vraie-ip-tcp-du-client") : seule la valeur la plus a droite doit compter,
+    jamais un prefixe que le client controle entierement. Deux vraies IP TCP
+    DIFFERENTES cote serveur (sinon un en-tete simplement ignore donnerait le
+    meme resultat par coincidence, cf. le test precedent) : seule l'egalite
+    du dernier maillon de X-Forwarded-For doit rapprocher ces deux requetes
+    du meme quota."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE="1",
+        NFOGEN_TRUST_PROXY_HEADERS="1",
+    )
+    client_1 = TestClient(mod.app, client=("198.51.100.1", 12345))
+    client_2 = TestClient(mod.app, client=("198.51.100.2", 12345))
+
+    assert (
+        client_1.post(
+            "/generate/json",
+            json=GAME_PAYLOAD,
+            headers={"X-Forwarded-For": "invente-par-le-client, 203.0.113.7"},
+        ).status_code
+        == 200
+    )
+    # Prefixe different, vraie IP TCP differente aussi -- mais meme dernier
+    # maillon (203.0.113.7) : doit partager le meme quota (1/min), deja
+    # consomme -> 429.
+    resp = client_2.post(
+        "/generate/json",
+        json=GAME_PAYLOAD,
+        headers={"X-Forwarded-For": "autre-invention, 203.0.113.7"},
+    )
+    assert resp.status_code == 429
+
+
 def test_generate_rate_limit_window_resets_after_real_delay(reload_api, monkeypatch):
     mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE="1")
     monkeypatch.setattr(mod, "_GENERATE_RATE_WINDOW_SECONDS", 0.15)
@@ -422,6 +523,48 @@ def test_login_lockout_is_per_account_not_global(reload_api, tmp_path):
     # admin1 verrouille, mais admin2 doit toujours pouvoir se connecter normalement
     client2 = TestClient(mod.app)
     resp = client2.post("/login", json={"username": "admin2", "password": "autresecret"})
+    assert resp.status_code == 200
+
+
+def test_login_lockout_on_token_is_per_ip_not_global(reload_api):
+    """Le login par token n'a qu'un seul "compte" partage : le verrou
+    anti-bruteforce doit se faire par IP source, pas globalement -- sinon un
+    tiers anonyme peut bloquer le login par token pour tout le monde en
+    enchainant des echecs (cf. audit)."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    attacker = TestClient(mod.app, client=("1.2.3.4", 12345))
+    victim = TestClient(mod.app, client=("5.6.7.8", 12345))
+
+    for _ in range(5):
+        resp = attacker.post("/login", json={"token": "mauvais"})
+        assert resp.status_code == 401
+
+    locked = attacker.post("/login", json={"token": "secret123"})
+    assert locked.status_code == 429
+
+    # victim, depuis une autre IP, n'est pas affecte par le verrou de attacker
+    resp = victim.post("/login", json={"token": "secret123"})
+    assert resp.status_code == 200
+
+
+def test_login_lockout_on_token_trusts_forwarded_for_when_enabled(reload_api):
+    """Le verrou par IP du login token (cf. plus haut) beneficie du meme
+    en-tete de confiance : sans NFOGEN_TRUST_PROXY_HEADERS, deux clients
+    reels derriere le meme reverse proxy partageraient le meme verrou."""
+    mod = reload_api(NFOGEN_API_TOKEN="secret123", NFOGEN_TRUST_PROXY_HEADERS="1")
+    client = TestClient(mod.app, client=("127.0.0.1", 12345))
+
+    for _ in range(5):
+        resp = client.post(
+            "/login", json={"token": "mauvais"}, headers={"X-Forwarded-For": "1.2.3.4"}
+        )
+        assert resp.status_code == 401
+
+    # Meme IP TCP source (127.0.0.1, le reverse proxy), mais IP forwardee
+    # differente -> pas affecte par le verrou de 1.2.3.4.
+    resp = client.post(
+        "/login", json={"token": "secret123"}, headers={"X-Forwarded-For": "5.6.7.8"}
+    )
     assert resp.status_code == 200
 
 

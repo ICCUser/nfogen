@@ -39,6 +39,30 @@ C411. Historique détaillé des changements : `git log`.
   dès qu'un deuxième existe. Le `.zip` du profil reste disponible en plus
   (API et CLI, sans surcharge préalable).
 - **`rules.json` : motifs regex admin sans timeout** : fait, exécution via RE2.
+- **TLS non documenté sur le déploiement natif recommandé** : fait
+  (2026-08-25). `NFOGEN_DOMAIN=...` (Caddy + Let's Encrypt, domaine public)
+  ou `NFOGEN_LOCAL_TLS=1` (Caddy + certificat auto-signé, serveur local/LAN
+  sans domaine ni Internet) ajoutés à `scripts/install.sh`, mutuellement
+  exclusifs, persistés dans `nfogen.env`. `uvicorn` bascule sur `127.0.0.1`
+  dans les deux cas (Caddy devient le seul point d'entrée réseau),
+  `NFOGEN_COOKIE_SECURE=1` automatique. Voir README.md.
+- **`rate_limit_generate` ignore les reverse proxy** : fait (2026-08-25).
+  `NFOGEN_TRUST_PROXY_HEADERS=1` (désactivé par défaut) fait lire
+  `_client_ip()` la valeur la plus a droite de `X-Forwarded-For` (celle
+  ajoutee par le reverse proxy immediat, jamais falsifiable par le client
+  qui peut pre-remplir l'en-tete lui-meme) au lieu de `request.client.host` —
+  couvre a la fois `rate_limit_generate` et le verrou anti-bruteforce du
+  login par token (meme fonction partagee). A n'activer que derriere un
+  reverse proxy de confiance (Caddy ajoute par `NFOGEN_DOMAIN`/
+  `NFOGEN_LOCAL_TLS`) : sans lui, n'importe quel client pourrait usurper
+  l'IP de son choix via cet en-tete.
+- **Pages frontend du parcours principal sans test d'intégration** : fait
+  (2026-08-25). Un test chemin heureux + un test d'echec par page
+  (`GeneratePage.test.tsx`, `SettingsPage.test.tsx`) : extraction WASM
+  reussie vs repli sur upload classique ; connexion par token reussie vs
+  token invalide. Verifies utiles (pas vacuous) par mutation manuelle du
+  code avant de les committer : cassage delibere de chaque chemin, test
+  correspondant bien mis en echec, puis code restaure.
 
 ## Audit sécurité du 2026-06-28 (suite des alertes CodeQL)
 
@@ -134,3 +158,108 @@ Priorité 1 close. Priorité 2 : voir "Idées / prochaines pistes" ci-dessus.
   attendu (la valeur enregistrée est toujours prioritaire), mais ça peut
   surprendre juste après ce correctif si le navigateur avait déjà visité
   l'instance.
+
+## Revue technique du 2026-08-25 — priorité 1 (dette identifiée par analyse)
+
+Revue à froid (pas un audit de sécurité déclenché par un incident) : relance
+complète de la suite de tests + lint + `pip-audit`/`npm audit` sur les deux
+stacks (tout au vert), puis lecture ciblée de `nfogen/api.py`/`accounts.py`
+et de la chaîne de déploiement. Trois correctifs à faible effort appliqués
+immédiatement ; les constats plus coûteux (TLS, reverse proxy, tests
+frontend) sont ajoutés à "Idées / prochaines pistes" ci-dessus plutôt que
+traités dans la foulée.
+
+- **Verrou anti-bruteforce du login par token partagé entre toutes les IP** :
+  `_login_throttle_key(None)` renvoyait toujours la constante `"token"` —
+  contrairement au login par compte nommé (verrouillé par identifiant), 5
+  échecs sur `/login` en mode token, depuis n'importe quelle IP, verrouillait
+  le login par token pour tout le monde pendant 30s. Corrigé : la clé de
+  throttle du login par token inclut désormais l'IP cliente
+  (`_login_throttle_key(username, client_ip)`), sur le modèle déjà utilisé
+  par `rate_limit_generate`.
+- **Pas de longueur minimale sur les mots de passe des comptes nommés** :
+  `create_account()` ne rejetait qu'un mot de passe vide. Minimum de 8
+  caractères ajouté (`accounts._MIN_PASSWORD_LENGTH`), message d'erreur
+  explicite.
+- **Canal temporel dans `accounts.authenticate()`** : un identifiant inconnu
+  retournait immédiatement (`hashed is None`) sans exécuter les PBKDF2
+  (~260 000 itérations), contrairement à un identifiant existant avec un
+  mauvais mot de passe — écart de temps de réponse mesurable, qui aurait pu
+  permettre d'énumérer les comptes existants. Corrigé : comparaison
+  systématique contre un hash réel ou factice (`accounts._DUMMY_HASH`), coût
+  constant dans les deux cas.
+
+Revérifié sans correctif nécessaire à ce stade : `profile_store.py`,
+`rules.py`, `render.py`, dépendances (0 CVE `pip-audit`/`npm audit`), lint
+(`ruff`/`oxlint`) et build frontend.
+
+## TLS sur le déploiement natif (2026-08-25) — priorité 2
+
+Suite de la revue technique ci-dessus : `scripts/install.sh` exposait
+`uvicorn` en HTTP nu sur le port 8000, sans reverse proxy, y compris pour le
+chemin d'installation "recommandé" du README. Deux modes optionnels,
+mutuellement exclusifs, ajoutés (aucun des deux : comportement inchangé,
+HTTP nu comme avant) :
+
+- **`NFOGEN_DOMAIN=mon-domaine.example`** : installe [Caddy](https://caddyserver.com/)
+  (dépôt officiel, même logique que NodeSource déjà utilisée pour Node.js) en
+  reverse proxy devant l'API, certificat Let's Encrypt obtenu et renouvelé
+  automatiquement. Nécessite un domaine public déjà résolu vers le serveur et
+  les ports 80/443 joignables depuis Internet — non vérifié par le script, une
+  erreur ACME de Caddy (visible via `journalctl -u caddy`) le signalera sinon.
+- **`NFOGEN_LOCAL_TLS=1`** : même reverse proxy Caddy, mais certificat
+  auto-signé (`tls internal`, CA locale à Caddy) — aucun domaine public ni
+  accès Internet requis, pensé pour un serveur local/LAN qui veut chiffrer le
+  trafic sans dépendre de Let's Encrypt. Avertissement navigateur attendu tant
+  que le certificat n'est pas importé manuellement côté client.
+
+Dans les deux modes : `uvicorn` bascule de `0.0.0.0` à `127.0.0.1` (Caddy
+devient le seul point d'entrée réseau), `NFOGEN_COOKIE_SECURE=1` écrit
+automatiquement dans `nfogen.env`. Le choix est persisté dans ce même fichier
+(jamais régénéré en entier, seules les clés `NFOGEN_DOMAIN`/
+`NFOGEN_LOCAL_TLS`/`NFOGEN_COOKIE_SECURE` sont ajoutées/mises à jour) : `sudo
+./scripts/update.sh`, qui ne repasse aucune variable, retrouve le mode déjà
+configuré sans action de l'admin. `install.sh` gère `/etc/caddy/Caddyfile` en
+entier (écrasé à chaque exécution) — non adapté à une machine où Caddy sert
+déjà d'autres sites.
+
+Effet de bord identifié et documenté ci-dessus ("Idées / prochaines
+pistes") : une fois un de ces modes actif, `rate_limit_generate` (qui lit
+`request.client.host`) voit systématiquement l'IP de Caddy plutôt que celle
+du client réel — pas corrigé dans ce lot, volontairement laissé pour la
+priorité 3 avec les tests d'intégration frontend.
+
+Aucun test automatisé possible pour `install.sh` (script de provisioning
+root, aucun test existant ne le couvre) : logique de résolution/persistance
+TLS extraite et rejouée sur 7 scénarios (défaut, activation, relecture sans
+variable comme le fait `update.sh`, bascule de mode, conflit des deux
+variables, retour explicite au HTTP) dans un harnais isolé, sur le code réel
+du script plutôt qu'une réécriture. `bash -n` propre.
+
+## Priorité 3 : en-tête de proxy de confiance + tests frontend (2026-08-25)
+
+Clôture des deux derniers constats de la revue technique.
+
+- **`NFOGEN_TRUST_PROXY_HEADERS=1`** (désactivé par défaut) : `_client_ip()`
+  (`nfogen/api.py`, partagée par `rate_limit_generate` et le verrou du login
+  par token) lit désormais la valeur la plus à droite de `X-Forwarded-For`
+  quand activé, au lieu de toujours utiliser `request.client.host` —
+  redevenu nécessaire depuis Caddy (priorité 2), qui voit `127.0.0.1` pour
+  tous les clients réels une fois `NFOGEN_DOMAIN`/`NFOGEN_LOCAL_TLS` actif.
+  Seule la valeur la plus à droite compte (celle ajoutée par le reverse
+  proxy immédiat), jamais un préfixe que le client pourrait fournir
+  lui-même en pré-remplissant l'en-tête — testé explicitement (un préfixe
+  différent ne doit pas créer un quota séparé). À n'activer que derrière un
+  reverse proxy de confiance : sans lui, l'en-tête devient une usurpation
+  d'IP triviale pour n'importe quel client direct.
+- **Tests d'intégration `GeneratePage`/`SettingsPage`** :
+  `GeneratePage.test.tsx` (extraction vidéo locale réussie → pas d'upload,
+  vs échec de l'extraction → repli sur upload avec avertissement affiché) et
+  `SettingsPage.test.tsx` (connexion par token réussie → "Connecté."
+  affiché, vs token invalide → message d'erreur, formulaire toujours
+  visible). Les deux fichiers passaient du premier coup (comportement
+  existant déjà correct) : vérifiés non complaisants par mutation manuelle
+  avant commit — cassage délibéré de chaque chemin testé (repli sur upload
+  forcé sans condition ; erreur de connexion avalée silencieusement), test
+  correspondant bien mis en échec dans les deux cas, code ensuite restauré
+  à l'identique (`git diff` vide sur les deux fichiers de page).

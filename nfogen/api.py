@@ -82,6 +82,7 @@ _REQUIRE_AUTH_FOR_GENERATE = os.environ.get("NFOGEN_REQUIRE_AUTH_FOR_GENERATE", 
 _generate_rate_limit = os.environ.get("NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE")
 _GENERATE_RATE_LIMIT_PER_MINUTE = int(_generate_rate_limit) if _generate_rate_limit else None
 _GENERATE_RATE_WINDOW_SECONDS = 60.0
+_TRUST_PROXY_HEADERS = os.environ.get("NFOGEN_TRUST_PROXY_HEADERS", "0") == "1"
 
 
 class _Session(NamedTuple):
@@ -245,12 +246,34 @@ def require_token_for_generate(
     require_token(authorization=authorization, session_cookie=session_cookie)
 
 
+def _client_ip(request: Request) -> str:
+    """IP consideree comme celle du client, pour le rate-limit et le verrou
+    anti-bruteforce du login. Par defaut, l'IP TCP directe -- suffisant tant
+    que nfogen encaisse les connexions directement. Derriere un reverse
+    proxy (Caddy ajoute par scripts/install.sh via NFOGEN_DOMAIN/
+    NFOGEN_LOCAL_TLS), cette IP directe est TOUJOURS celle du proxy : sans
+    NFOGEN_TRUST_PROXY_HEADERS=1, tous les clients partageraient un seul
+    quota. Active, on lit X-Forwarded-For et on ne retient QUE la valeur la
+    plus a droite -- celle ajoutee par notre reverse proxy immediat, jamais
+    falsifiable par le client (qui peut pre-remplir l'en-tete lui-meme avant
+    que le proxy n'y ajoute sa propre valeur). Ne PAS activer sans reverse
+    proxy devant l'API : n'importe quel client pourrait alors usurper l'IP
+    de son choix via cet en-tete."""
+    direct_ip = request.client.host if request.client is not None else "unknown"
+    if not _TRUST_PROXY_HEADERS:
+        return direct_ip
+    forwarded = request.headers.get("x-forwarded-for")
+    if not forwarded:
+        return direct_ip
+    return forwarded.rsplit(",", 1)[-1].strip() or direct_ip
+
+
 def rate_limit_generate(request: Request) -> None:
     """Plafonne les requetes/minute par IP sur /generate*, si active."""
     if _GENERATE_RATE_LIMIT_PER_MINUTE is None:
         return
     _sweep_stale_entries()
-    client_ip = request.client.host if request.client is not None else "unknown"
+    client_ip = _client_ip(request)
     now = time.monotonic()
     timestamps = _GENERATE_REQUEST_LOG.setdefault(client_ip, [])
     cutoff = now - _GENERATE_RATE_WINDOW_SECONDS
@@ -267,8 +290,12 @@ def rate_limit_generate(request: Request) -> None:
     timestamps.append(now)
 
 
-def _login_throttle_key(username: Optional[str]) -> str:
-    return f"user:{username}" if username else "token"
+def _login_throttle_key(username: Optional[str], client_ip: str) -> str:
+    """Compte nomme : verrou par identifiant (protege un compte cible, quelle
+    que soit l'IP d'origine). Token partage (`username` absent) : un seul
+    "compte" existe pour tout le monde, donc verrou par IP -- sinon un tiers
+    anonyme pourrait bloquer le login par token pour tous les utilisateurs."""
+    return f"user:{username}" if username else f"token:{client_ip}"
 
 
 def _check_not_locked(key: str) -> None:
@@ -296,12 +323,13 @@ class LoginRequest(BaseModel):
 
 
 @app.post("/login")
-def login(req: LoginRequest, response: Response) -> dict[str, str]:
+def login(req: LoginRequest, request: Request, response: Response) -> dict[str, str]:
     """Verifie le token ou un compte nomme, pose un cookie de session httpOnly."""
     _sweep_stale_entries()
+    client_ip = _client_ip(request)
     identity: Optional[str]
     if req.username:
-        key = _login_throttle_key(req.username)
+        key = _login_throttle_key(req.username, client_ip)
         _check_not_locked(key)
         if not accounts.is_configured():
             raise HTTPException(
@@ -312,7 +340,7 @@ def login(req: LoginRequest, response: Response) -> dict[str, str]:
             raise HTTPException(status_code=401, detail="Identifiant ou mot de passe invalide.")
         identity = req.username
     elif req.token is not None:
-        key = _login_throttle_key(None)
+        key = _login_throttle_key(None, client_ip)
         _check_not_locked(key)
         if _API_TOKEN is None:
             raise HTTPException(

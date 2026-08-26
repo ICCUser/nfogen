@@ -53,6 +53,33 @@ Mise à jour (remplace le code, garde le token API et les profils utilisateur) :
 sudo ./scripts/update.sh
 ```
 
+#### TLS (recommandé avant d'exposer l'instance publiquement)
+
+Par défaut, `install.sh` sert du HTTP en clair sur le port 8000 — adapté à un
+serveur local/LAN de confiance, mais pas à une instance joignable depuis
+Internet (identifiants et cookie de session transiteraient sans
+chiffrement). Deux modes optionnels, mutuellement exclusifs, ajoutent un
+reverse proxy [Caddy](https://caddyserver.com/) devant l'API :
+
+```bash
+# Domaine public : certificat Let's Encrypt automatique (DNS deja en place,
+# ports 80/443 joignables depuis Internet)
+sudo NFOGEN_DOMAIN=nfo.mon-domaine.example ./scripts/install.sh
+
+# Serveur local/LAN, sans domaine public ni acces Internet : certificat
+# auto-signe (a accepter/importer manuellement dans chaque navigateur)
+sudo NFOGEN_LOCAL_TLS=1 ./scripts/install.sh
+```
+
+Le choix est persisté dans `/etc/nfogen/nfogen.env` : `sudo
+./scripts/update.sh` seul (sans variable) le reprend automatiquement à
+chaque mise à jour. Dans les deux modes, `uvicorn` n'écoute plus que sur
+`127.0.0.1` (Caddy devient le seul point d'entrée réseau) et
+`NFOGEN_COOKIE_SECURE` passe à `1`. `install.sh` gère `/etc/caddy/Caddyfile`
+en entier (écrasé à chaque exécution) : si Caddy sert déjà d'autres sites
+sur cette machine, configurez le reverse proxy vers nfogen à la main plutôt
+que d'utiliser ces variables.
+
 ### Avec Docker (autres distributions)
 
 ```bash

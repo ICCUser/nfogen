@@ -55,6 +55,16 @@ def test_create_rejects_empty_password():
         accounts.create_account("admin1", "")
 
 
+def test_create_rejects_short_password():
+    with pytest.raises(accounts.AccountsError):
+        accounts.create_account("admin1", "short1")
+
+
+def test_create_accepts_password_at_minimum_length():
+    accounts.create_account("admin1", "secret12")  # 8 caracteres : minimum accepte
+    assert accounts.authenticate("admin1", "secret12") is True
+
+
 def test_delete_removes_account():
     accounts.create_account("admin1", "secret123")
     accounts.create_account("admin2", "autresecret")
@@ -79,3 +89,21 @@ def test_delete_last_account_refused():
 def test_verify_password_rejects_malformed_hash():
     assert accounts.verify_password("x", "pas-un-hash-valide") is False
     assert accounts.verify_password("x", "") is False
+
+
+def test_authenticate_runs_pbkdf2_even_for_unknown_username(monkeypatch):
+    """Un identifiant inconnu doit quand meme declencher un calcul PBKDF2
+    complet (cout constant), pour ne pas laisser un ecart de temps de reponse
+    reveler quels comptes existent (cf. audit -- authenticate() court-circuitait
+    avant sur `hashed is None`)."""
+    accounts.create_account("admin1", "secret123")
+    calls: list[object] = []
+    real_pbkdf2 = accounts.hashlib.pbkdf2_hmac
+
+    def _counting_pbkdf2(*args, **kwargs):
+        calls.append(None)
+        return real_pbkdf2(*args, **kwargs)
+
+    monkeypatch.setattr(accounts.hashlib, "pbkdf2_hmac", _counting_pbkdf2)
+    assert accounts.authenticate("inconnu", "peu-importe") is False
+    assert len(calls) == 1
