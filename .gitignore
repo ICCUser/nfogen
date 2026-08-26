@@ -13,3 +13,4 @@ tests/Video test/
 # Secrets locaux (cles API C411/Sonarr/Radarr, etc.) : jamais commit.
 .env
 .env.local
+.superpowers/
