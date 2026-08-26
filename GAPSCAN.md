@@ -25,14 +25,23 @@ uploader avec `nfogen` (génération NFO déjà existante).
 Bonne nouvelle : C411 expose une **API Torznab standard** (le protocole
 que parlent déjà Prowlarr/Sonarr/Radarr/Jackett), pas une API maison —
 confirmé par capture d'écran (section "Intégrations API" du site) et par
-appels réels avec la clé fournie (scope "Torznab/RSS (lecture)" only,
-aucun téléchargement de contenu).
+appels réels avec la clé fournie.
+
+**Correction (2026-08-26)** : cette section affirmait que la clé était
+cantonnée au scope "Torznab/RSS (lecture)" et ne permettait aucun
+téléchargement. Confirmé faux par l'utilisateur — sa clé permet aussi de
+pousser un upload (`POST /api/torrents`, même clé). GapScan n'appelle
+jamais cet endpoint (lecture seule par construction, `c411_client.py` n'a
+que `search_movie`/`search_tv`) donc aucun changement de code, mais la clé
+elle-même est plus sensible que documenté ici à l'origine : une clé
+compromise permettrait plus qu'une simple lecture du catalogue. Pousser un
+upload directement depuis nfogen (utiliser cette capacité plutôt que de
+simplement la documenter) est noté en piste future ci-dessous.
 
 - **Base URL** : `https://c411.org/api`
-- **Auth** : clé en query param `?apikey=...` (le header
-  `Authorization: Bearer` vu dans la capture est pour l'endpoint
-  d'**upload** séparé `POST /api/torrents`, hors scope GapScan qui est
-  lecture seule).
+- **Auth** : clé en query param `?apikey=...`, la même que pour
+  `POST /api/torrents` (upload) -- pas un scope separe malgre le header
+  `Authorization: Bearer` different vu dans la capture pour cet endpoint.
 - **`t=caps`** (sans clé) → capacités + catégories. Pertinent pour
   GapScan : `2000`/`2030`/`2060`/`2070`/`2010` (Films, Anime, Documentaire,
   Collection) et `5000`/`5070`/`5080`/`5060` (Séries, Anime Série,
@@ -193,7 +202,11 @@ Nouvelle page (ex. "Scan C411") dans `frontend/` :
 
 - Les clés API (Sonarr, Radarr, C411) suivent le même traitement que les
   secrets existants du projet : jamais en clair côté client, stockage
-  serveur uniquement, protégé par `NFOGEN_API_TOKEN`/comptes nommés.
+  serveur uniquement, protégé par `NFOGEN_API_TOKEN`/comptes nommés. La clé
+  C411 est plus sensible qu'il n'y paraît : elle permet aussi de pousser un
+  upload (`POST /api/torrents`, voir plus haut), pas seulement de lire le
+  catalogue -- une clé compromise a un impact plus large qu'une simple
+  fuite de lecture.
 - GapScan **ne télécharge, n'héberge et ne distribue aucun contenu** —
   même avertissement que le reste de `nfogen` (voir README). Il ne fait
   que comparer des métadonnées (ta bibliothèque locale que tu possèdes
@@ -232,6 +245,30 @@ Deux correctifs :
   voir "Flux" ci-dessus) au lieu de laisser l'exception remonter — avant ce
   correctif, la progression déjà faite sur une grosse bibliothèque était
   perdue au premier accroc réseau, transitoire ou non.
+
+### Premier scan réel (2026-08-26) : deux correctifs de justesse du matching
+
+- **Saison 0 exclue** : `Misfits S00` remontait dans les résultats — la
+  saison 0 est la convention Sonarr pour les "Specials" (extras, hors
+  série), pas une vraie saison diffusée, sans équivalent dans les packs
+  C411 standard. `sonarr_client.list_season_files()` l'exclut désormais.
+- **Repli par titre trop restrictif** : un film avec un `imdb_id`/`tmdb_id`
+  connu (ex. Joker) ne trouvait rien sur C411 si l'ID n'y était pas
+  reporté — cf. "présents sur la plupart des items mais pas
+  systématiquement" plus haut. `scan_movie()` retente désormais par titre
+  dès que la recherche par ID échoue, plus seulement quand aucun ID n'est
+  connu. Filtré par année (`_filter_by_year`) pour ne pas confondre des
+  films homonymes de millésimes différents (plusieurs "Joker" existent :
+  2019, 2024...) — une release sans année détectable dans son titre n'est
+  pas écartée par prudence.
+- **Piste non retenue pour l'instant, notée pour plus tard** : la clé API
+  C411 de l'utilisateur permet aussi de pousser un upload (voir correction
+  plus haut, section "API C411"). GapScan reste strictement lecture seule
+  (aucun appel à `POST /api/torrents`) — automatiser l'upload depuis
+  nfogen à partir d'un gap détecté serait un changement de nature du
+  projet (nfogen ne télécharge/n'héberge/ne distribue rien aujourd'hui,
+  voir README "Avertissement"), à décider explicitement plutôt qu'à
+  ajouter incidemment.
 
 ## Plan de tests (calqué sur l'existant, `tests/test_c411.py` etc.)
 

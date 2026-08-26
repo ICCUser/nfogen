@@ -8,6 +8,7 @@ qualite par defaut (`quality.py`, ajustables).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Iterable, Optional
@@ -45,6 +46,25 @@ class GapResult:
     error: Optional[str] = None  # detail si status == ERROR, sinon None
 
 
+_YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
+
+
+def _filter_by_year(matches: list[C411Release], year: Optional[int]) -> list[C411Release]:
+    """Ecarte les matches d'un repli par TITRE dont le millesime explicite
+    differe de `year` (ex. plusieurs films distincts partagent le meme
+    titre a des annees differentes -- incident reel, "Joker" 2015/2019/
+    2024). Une release sans annee detectable dans son titre n'est pas
+    ecartee par prudence (ambigu plutot que silencieusement ignore)."""
+    if year is None:
+        return matches
+    kept = []
+    for m in matches:
+        found = _YEAR_RE.search(m.title)
+        if found is None or int(found.group(1)) == year:
+            kept.append(m)
+    return kept
+
+
 def _classify(local_quality: ReleaseQuality, matches: list[C411Release]) -> GapStatus:
     if not matches:
         return GapStatus.ABSENT
@@ -75,8 +95,14 @@ def scan_movie(movie: RadarrMovieFile, c411: C411Client) -> GapResult:
     # suivants) -- incident reel du 2026-08-25.
     try:
         matches = c411.search_movie(imdb_id=movie.imdb_id, tmdb_id=tmdb_id)
-        if not matches and not (movie.imdb_id or tmdb_id):
-            matches = c411.search_movie(query=movie.title)
+        if not matches:
+            # Repli par titre : necessaire meme quand un ID externe est
+            # connu, pas seulement en son absence -- torznab:attr imdbid/
+            # tmdbid ne sont PAS systematiquement presents sur les releases
+            # C411 (cf. GAPSCAN.md), une recherche par ID peut donc echouer
+            # a tort. Filtre par annee pour ne pas confondre des films
+            # homonymes de millesimes differents (incident reel, "Joker").
+            matches = _filter_by_year(c411.search_movie(query=movie.title), movie.year)
     except C411Error as exc:
         return GapResult(**base, status=GapStatus.ERROR, error=str(exc))
     return GapResult(

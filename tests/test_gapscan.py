@@ -28,9 +28,15 @@ def _release(title: str, imdb_id: Optional[str] = None, dvf: float = 1.0, uvf: f
 
 @dataclass
 class FakeC411:
-    """Retourne des resultats fixes, indexes par le type d'appel recu."""
+    """Retourne des resultats fixes, indexes par le type d'appel recu.
+
+    `title_movie_results`, si fourni, distingue la reponse a un repli par
+    TITRE (query non None) de celle a une recherche par ID -- necessaire
+    pour tester le repli sans exigence externe (voir tests dedies plus
+    bas)."""
 
     movie_results: list[C411Release] = field(default_factory=list)
+    title_movie_results: Optional[list[C411Release]] = None
     tv_results: list[C411Release] = field(default_factory=list)
     calls: list[tuple] = field(default_factory=list)
     raises: Optional[Exception] = None
@@ -39,6 +45,8 @@ class FakeC411:
         self.calls.append(("movie", query, imdb_id, tmdb_id))
         if self.raises is not None:
             raise self.raises
+        if query is not None and self.title_movie_results is not None:
+            return self.title_movie_results
         return self.movie_results
 
     def search_tv(self, query=None, imdb_id=None, tmdb_id=None, season=None, ep=None):
@@ -91,6 +99,58 @@ def test_scan_movie_falls_back_to_title_query_without_external_ids():
     c411 = FakeC411(movie_results=[])
     scan_movie(_movie(imdb_id=None, tmdb_id=None), c411)
     assert ("movie", "Matrix", None, None) in c411.calls
+
+
+def test_scan_movie_falls_back_to_title_even_when_id_search_finds_nothing():
+    """Incident reel (retour utilisateur, 'Joker') : torznab:attr imdbid/
+    tmdbid ne sont PAS systematiquement presents sur les releases C411 (cf.
+    GAPSCAN.md) -- une recherche par ID peut donc echouer alors que le
+    titre existe bel et bien sur le tracker. Le repli par titre doit avoir
+    lieu meme quand un ID externe est connu, pas seulement en son absence."""
+    c411 = FakeC411(
+        movie_results=[],  # la recherche par ID (imdb/tmdb) ne trouve rien
+        title_movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")],
+    )
+    result = scan_movie(_movie(), c411)  # imdb_id/tmdb_id bien fournis ici
+    assert ("movie", None, "tt0133093", "603") in c411.calls  # recherche par ID tentee
+    assert ("movie", "Matrix", None, None) in c411.calls  # PUIS repli par titre
+    assert result.status == GapStatus.COVERED  # le repli a bien trouve la release
+
+
+def test_scan_movie_title_fallback_discards_a_different_year():
+    """Le repli par titre est plus permissif (simple recherche texte) : sans
+    filtre, une release homonyme d'un AUTRE millesime (plusieurs films
+    s'appellent 'Joker' a des annees differentes) serait prise pour une
+    couverture valide. Filtre par annee quand elle est connue localement."""
+    c411 = FakeC411(
+        movie_results=[],
+        title_movie_results=[_release("Joker.2019.MULTI.VFF.2160p.BluRay.x265-TEAM")],
+    )
+    result = scan_movie(_movie(title="Joker", year=2015, imdb_id="tt0000000", tmdb_id=1), c411)
+    assert ("movie", "Joker", None, None) in c411.calls  # le repli a bien eu lieu...
+    assert result.status == GapStatus.ABSENT  # ...mais le match 2019 ne compte pas pour un film de 2015
+    assert result.c411_matches == []
+
+
+def test_scan_movie_title_fallback_keeps_a_matching_year():
+    c411 = FakeC411(
+        movie_results=[],
+        title_movie_results=[_release("Joker.2019.MULTI.VFF.2160p.BluRay.x265-TEAM")],
+    )
+    result = scan_movie(_movie(title="Joker", year=2019, imdb_id="tt0000000", tmdb_id=1), c411)
+    assert result.status == GapStatus.COVERED
+
+
+def test_scan_movie_title_fallback_keeps_releases_without_a_parseable_year():
+    """Un titre sans annee explicite dans le nom n'est pas ecarte par
+    prudence -- mieux vaut un match ambigu remonte a l'utilisateur qu'une
+    couverture reelle silencieusement ignoree."""
+    c411 = FakeC411(
+        movie_results=[],
+        title_movie_results=[_release("Joker.MULTI.VFF.2160p.BluRay.x265-TEAM")],
+    )
+    result = scan_movie(_movie(title="Joker", year=2015, imdb_id="tt0000000", tmdb_id=1), c411)
+    assert result.status == GapStatus.COVERED
 
 
 def test_scan_movie_flags_freeleech_alternative():

@@ -91,14 +91,21 @@ class SonarrClient:
         """Bibliotheque locale agregee par saison.
 
         Une saison sans aucun fichier telecharge n'apparait pas : rien a
-        comparer a C411 pour elle.
+        comparer a C411 pour elle. La saison 0 (convention Sonarr pour les
+        "Specials" -- extras/bonus/hors-serie) est exclue : ce n'est pas
+        une vraie saison diffusee, elle ne correspond a aucune convention
+        de pack C411 standard (incident reel corrige le 2026-08-26,
+        "Misfits S00" remontait a tort dans les resultats).
         """
         seasons: list[SonarrSeasonFile] = []
         for series in self.list_series():
             files = self.list_episode_files(series["id"])
             by_season: dict[int, list[dict[str, Any]]] = {}
             for episode_file in files:
-                by_season.setdefault(episode_file["seasonNumber"], []).append(episode_file)
+                season_number = episode_file["seasonNumber"]
+                if season_number == 0:
+                    continue
+                by_season.setdefault(season_number, []).append(episode_file)
             for season_number, season_files in by_season.items():
                 best = max(
                     season_files,

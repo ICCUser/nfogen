@@ -60,6 +60,35 @@ def test_list_season_files_aggregates_by_season_and_keeps_best_resolution():
     assert season2.best_resolution == 1080
 
 
+def test_season_zero_specials_are_excluded():
+    """Incident reel (retour utilisateur) : 'Misfits S00' remontait dans les
+    resultats GapScan. La saison 0 est la convention Sonarr pour les
+    'Specials' (extras, bonus, hors-serie) -- pas une vraie saison
+    diffusee, elle ne correspond a aucune convention de pack C411 standard
+    et n'a rien a faire dans une comparaison de bibliotheque."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=SERIES)
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "seasonNumber": 0,
+                    "sceneName": "Breaking.Bad.S00.Special.1080p.WEB-TEAM",
+                    "quality": {"quality": {"name": "WEB-1080p", "resolution": 1080}},
+                    "languages": [{"name": "French"}],
+                },
+                *EPISODE_FILES,
+            ],
+        )
+
+    seasons = _client(handler).list_season_files()
+
+    assert 0 not in {s.season_number for s in seasons}
+    assert len(seasons) == 2  # S01/S02 uniquement, cf. test precedent
+
+
 def test_series_without_episode_files_produces_no_season():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/series":
