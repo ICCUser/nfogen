@@ -10,6 +10,9 @@ precedent (endpoints /gapscan/*), un complement.
 """
 from __future__ import annotations
 
+import stat
+import sys
+
 import pytest
 
 from nfogen import gapscan_config_store as store
@@ -96,3 +99,14 @@ def test_write_without_config_file_env_var_raises(monkeypatch):
     monkeypatch.delenv("NFOGEN_GAPSCAN_CONFIG_FILE", raising=False)
     with pytest.raises(store.GapscanConfigStoreError):
         store.write(c411_api_key="x")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="permissions POSIX non applicables sur Windows")
+def test_write_sets_restrictive_permissions(tmp_path):
+    """Contrairement a nfogen.env (chmod 600 explicite dans install.sh), ce
+    fichier contient des cles API en clair (Sonarr/Radarr/C411) sans
+    protection equivalente avant ce correctif -- lisible par n'importe quel
+    utilisateur local du systeme (ex. un swizzin multi-utilisateurs)."""
+    store.write(c411_api_key="secret")
+    mode = stat.S_IMODE((tmp_path / "gapscan_config.json").stat().st_mode)
+    assert mode == 0o600

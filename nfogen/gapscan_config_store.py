@@ -84,6 +84,15 @@ def write(
             data[key] = value
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Contrairement a nfogen.env (chmod 600 explicite dans install.sh), ce
+    # fichier contient des cles API en clair (Sonarr/Radarr/C411) : sans
+    # ceci il herite du umask par defaut du processus, potentiellement
+    # lisible par d'autres utilisateurs du systeme (ex. un serveur
+    # multi-utilisateurs). os.chmod est un no-op inoffensif sur Windows.
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass  # systeme de fichiers qui ne supporte pas chmod (rare) : tant pis, pas fatal
 
 
 def _resolve(file_key: str, env_key: str) -> Optional[str]:
