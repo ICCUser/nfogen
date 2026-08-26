@@ -210,19 +210,19 @@ export default function GeneratePage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Générer un NFO</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="font-display text-xl font-semibold text-ink">Générer un NFO</h1>
+        <p className="text-sm text-ink-dim">
           Envoyez un fichier (ou plusieurs, pour un album) et générez le NFO directement depuis le
           navigateur — l'équivalent de la bibliothèque Python ou d'un appel d'API en script. Pour la
           vidéo, l'analyse se fait localement dans le navigateur (aucun envoi de fichier).
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 rounded-md border border-slate-200 bg-white p-4">
-        <label className="block text-sm font-medium text-slate-700">
+      <div className="grid grid-cols-2 gap-4 rounded-md border border-line bg-surface p-4">
+        <label className="block text-sm font-medium text-ink-dim">
           Profil
           <select
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
             value={profile}
             onChange={(e) => {
               setProfile(e.target.value);
@@ -238,10 +238,10 @@ export default function GeneratePage() {
           </select>
         </label>
 
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-sm font-medium text-ink-dim">
           Catégorie
           <select
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
           >
@@ -254,12 +254,12 @@ export default function GeneratePage() {
           </select>
         </label>
 
-        <label className="col-span-2 block text-sm font-medium text-slate-700">
+        <label className="col-span-2 block text-sm font-medium text-ink-dim">
           Fichier(s) source — vidéo seule, ou plusieurs fichiers audio pour un album
           <input
             type="file"
             multiple
-            className="mt-1 block w-full text-sm"
+            className="mt-1 block w-full text-sm text-ink-dim"
             onChange={(e) => {
               const selected = Array.from(e.target.files ?? []);
               setFiles(selected);
@@ -270,7 +270,7 @@ export default function GeneratePage() {
             }}
           />
           {files.length > 0 && (
-            <ul className="mt-1 list-disc pl-5 text-xs text-slate-500">
+            <ul className="mt-1 list-disc pl-5 font-mono text-xs text-ink-faint">
               {files.map((f) => (
                 <li key={f.name}>
                   {f.name} ({(f.size / 1024 / 1024).toFixed(1)} Mo)
@@ -280,10 +280,10 @@ export default function GeneratePage() {
           )}
         </label>
 
-        <label className="col-span-2 block text-sm font-medium text-slate-700">
+        <label className="col-span-2 block text-sm font-medium text-ink-dim">
           Métadonnées complémentaires (JSON — ex. release_name, title, requirements…)
           <textarea
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+            className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-xs text-ink"
             rows={5}
             value={dataText}
             onChange={(e) => setDataText(e.target.value)}
@@ -292,19 +292,19 @@ export default function GeneratePage() {
       </div>
 
       {extractionNotice && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           {extractionNotice}
         </div>
       )}
 
       {proposalUnavailable && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           Proposition de nom indisponible : {proposalUnavailable} (vérifiez le token API dans Réglages).
         </div>
       )}
 
       {proposal && proposal.name === null && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           <p className="font-medium">Proposition de nom impossible :</p>
           <ul className="list-disc pl-5">
             {proposal.warnings.map((w, i) => (
@@ -315,9 +315,9 @@ export default function GeneratePage() {
       )}
 
       {proposal && proposal.name !== null && proposal.warnings.length > 0 && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           <p className="font-medium">
-            release_name proposé : <code>{proposal.name}</code> — à vérifier avant de générer :
+            release_name proposé : <code className="font-mono">{proposal.name}</code> — à vérifier avant de générer :
           </p>
           <ul className="list-disc pl-5">
             {proposal.warnings.map((w, i) => (
@@ -332,7 +332,7 @@ export default function GeneratePage() {
           type="button"
           onClick={run}
           disabled={loading}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
         >
           {loading ? loadingLabel : "Générer"}
         </button>
@@ -340,20 +340,20 @@ export default function GeneratePage() {
           type="button"
           onClick={download}
           disabled={loading || nfo === null}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100 disabled:opacity-50"
+          className="rounded-md border border-line-strong px-4 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
         >
           Télécharger le .nfo
         </button>
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           {error}
         </div>
       )}
 
       {warnings.length > 0 && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           <p className="font-medium">Avertissements :</p>
           <ul className="list-disc pl-5">
             {warnings.map((w, i) => (
@@ -364,7 +364,7 @@ export default function GeneratePage() {
       )}
 
       {nfo !== null && (
-        <pre className="max-h-[32rem] overflow-auto rounded-md border border-slate-200 bg-white p-3 text-xs">
+        <pre className="max-h-[32rem] overflow-auto rounded-md border border-line bg-surface p-3 font-mono text-xs text-ink">
           {nfo}
         </pre>
       )}

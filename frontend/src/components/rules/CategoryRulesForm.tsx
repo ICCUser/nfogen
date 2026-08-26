@@ -12,14 +12,16 @@ const COMPARATORS: Comparator[] = ["int_equals", "codec_alias"];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block text-sm font-medium text-slate-700">
+    <label className="block text-sm font-medium text-ink-dim">
       {label}
       {children}
     </label>
   );
 }
 
-const inputCls = "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
+const inputCls = "mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink";
+const rowInputCls = "rounded border border-line-strong bg-surface px-2 py-1 text-sm text-ink";
+const rowMonoCls = "rounded border border-line-strong bg-surface px-2 py-1 font-mono text-xs text-ink";
 
 export default function CategoryRulesForm({ rules, onChange }: Props) {
   function patch(p: Partial<CategoryRules>) {
@@ -46,7 +48,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
         </Field>
         <Field label="Modèle de nom de fichier (filename_template)">
           <input
-            className={inputCls}
+            className={`${inputCls} font-mono`}
             value={rules.filename_template ?? ""}
             onChange={(e) => patch({ filename_template: e.target.value || undefined })}
             placeholder="ex. {release_name}.nfo"
@@ -61,7 +63,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
         </Field>
         <Field label="Exemple conforme (example)">
           <input
-            className={inputCls}
+            className={`${inputCls} font-mono`}
             value={rules.example ?? ""}
             onChange={(e) => patch({ example: e.target.value || undefined })}
           />
@@ -69,7 +71,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
       </div>
 
       <div className="flex gap-6">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-ink-dim">
           <input
             type="checkbox"
             checked={rules.forbid_spaces ?? false}
@@ -77,7 +79,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
           />
           Interdire les espaces
         </label>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-ink-dim">
           <input
             type="checkbox"
             checked={rules.forbid_non_ascii ?? false}
@@ -88,7 +90,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
       </div>
 
       <section>
-        <h3 className="mb-2 text-sm font-semibold text-slate-900">Tokens (motifs de nommage)</h3>
+        <h3 className="mb-2 font-display text-sm font-semibold text-ink">Tokens (motifs de nommage)</h3>
         <ListEditor<Token>
           items={rules.tokens ?? []}
           onChange={(tokens) => patch({ tokens: tokens.length ? tokens : undefined })}
@@ -97,19 +99,19 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
           renderRow={(token, update) => (
             <div className="grid grid-cols-2 gap-2">
               <input
-                className="rounded border border-slate-300 px-2 py-1 text-sm"
+                className={rowInputCls}
                 placeholder="nom"
                 value={token.name}
                 onChange={(e) => update({ name: e.target.value })}
               />
               <input
-                className="rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+                className={rowMonoCls}
                 placeholder="regex Python (?P<...>...)"
                 value={token.pattern}
                 onChange={(e) => update({ pattern: e.target.value })}
               />
               <select
-                className="rounded border border-slate-300 px-2 py-1 text-sm"
+                className={rowInputCls}
                 value={token.level ?? ""}
                 onChange={(e) => update({ level: (e.target.value || undefined) as TokenLevel | undefined })}
               >
@@ -121,19 +123,19 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
                 ))}
               </select>
               <input
-                className="rounded border border-slate-300 px-2 py-1 text-sm"
+                className={rowInputCls}
                 placeholder="groupe (optionnel)"
                 value={token.group ?? ""}
                 onChange={(e) => update({ group: e.target.value || undefined })}
               />
               <input
-                className="col-span-2 rounded border border-slate-300 px-2 py-1 text-sm"
+                className={`col-span-2 ${rowInputCls}`}
                 placeholder="message si 'required' et absent"
                 value={token.error ?? ""}
                 onChange={(e) => update({ error: e.target.value || undefined })}
               />
               <input
-                className="col-span-2 rounded border border-slate-300 px-2 py-1 text-sm"
+                className={`col-span-2 ${rowInputCls}`}
                 placeholder="message si 'recommended' et absent"
                 value={token.warning ?? ""}
                 onChange={(e) => update({ warning: e.target.value || undefined })}
@@ -144,10 +146,10 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
       </section>
 
       <section>
-        <h3 className="mb-2 text-sm font-semibold text-slate-900">
+        <h3 className="mb-2 font-display text-sm font-semibold text-ink">
           Groupes alternatifs (require_one_of_groups)
         </h3>
-        <p className="mb-2 text-xs text-slate-500">
+        <p className="mb-2 text-xs text-ink-faint">
           Pour chaque groupe, au moins un token membre doit matcher — sinon le message associé bloque la
           génération.
         </p>
@@ -160,7 +162,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
       </section>
 
       <section>
-        <h3 className="mb-2 text-sm font-semibold text-slate-900">
+        <h3 className="mb-2 font-display text-sm font-semibold text-ink">
           Croisements avec le fichier réel (cross_checks)
         </h3>
         <ListEditor<CrossCheck>
@@ -172,19 +174,19 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
             <div className="space-y-1">
               <div className="grid grid-cols-3 gap-2">
                 <input
-                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  className={rowInputCls}
                   placeholder="capture (groupe nommé d'un token)"
                   value={check.capture}
                   onChange={(e) => update({ capture: e.target.value })}
                 />
                 <input
-                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  className={rowInputCls}
                   placeholder="metadata_field (ex. video_height)"
                   value={check.metadata_field}
                   onChange={(e) => update({ metadata_field: e.target.value })}
                 />
                 <select
-                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  className={rowInputCls}
                   value={check.comparator}
                   onChange={(e) => update({ comparator: e.target.value as Comparator })}
                 >
@@ -196,7 +198,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
                 </select>
               </div>
               <input
-                className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                className={`w-full ${rowInputCls}`}
                 placeholder="message ({capture} / {actual} disponibles)"
                 value={check.message}
                 onChange={(e) => update({ message: e.target.value })}
@@ -210,7 +212,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
       </section>
 
       <section>
-        <h3 className="mb-2 text-sm font-semibold text-slate-900">
+        <h3 className="mb-2 font-display text-sm font-semibold text-ink">
           Vérification des langues de piste (track_language_checks)
         </h3>
         <ListEditor<TrackLanguageCheck>
@@ -221,25 +223,25 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
           renderRow={(check, update) => (
             <div className="grid grid-cols-2 gap-2">
               <input
-                className="rounded border border-slate-300 px-2 py-1 text-sm"
+                className={rowInputCls}
                 placeholder="metadata_field (ex. audio_languages)"
                 value={check.metadata_field}
                 onChange={(e) => update({ metadata_field: e.target.value })}
               />
               <input
-                className="rounded border border-slate-300 px-2 py-1 text-sm"
+                className={rowInputCls}
                 placeholder="label (ex. Piste audio)"
                 value={check.label}
                 onChange={(e) => update({ label: e.target.value })}
               />
               <input
-                className="rounded border border-slate-300 px-2 py-1 text-sm"
+                className={rowInputCls}
                 placeholder="hint_capture (optionnel)"
                 value={check.hint_capture ?? ""}
                 onChange={(e) => update({ hint_capture: e.target.value || undefined })}
               />
               <input
-                className="rounded border border-slate-300 px-2 py-1 text-sm"
+                className={rowInputCls}
                 placeholder="message si liste vide (optionnel)"
                 value={check.warn_if_empty ?? ""}
                 onChange={(e) => update({ warn_if_empty: e.target.value || undefined })}
@@ -250,26 +252,26 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
       </section>
 
       <section>
-        <h3 className="mb-2 text-sm font-semibold text-slate-900">
+        <h3 className="mb-2 font-display text-sm font-semibold text-ink">
           Proposition automatique de nom (name_proposal)
         </h3>
-        <p className="mb-2 text-xs text-slate-500">
-          Suggère un <code>release_name</code> à partir des noms de fichiers sélectionnés (page « Générer »),
+        <p className="mb-2 text-xs text-ink-faint">
+          Suggère un <code className="font-mono">release_name</code> à partir des noms de fichiers sélectionnés (page « Générer »),
           sans upload. Champs disponibles dans le modèle :{" "}
-          <code>{"{title} {identifier} {language} {resolution} {video_codec} {audio} {source} {team}"}</code>.
+          <code className="font-mono">{"{title} {identifier} {language} {resolution} {video_codec} {audio} {source} {team}"}</code>.
         </p>
         <Field label="Modèle (template)">
           <input
-            className={inputCls}
+            className={`${inputCls} font-mono`}
             value={rules.name_proposal?.template ?? ""}
             onChange={(e) => patchNameProposal({ template: e.target.value || undefined })}
             placeholder="ex. {title}.{identifier}.{language}.{resolution}p.{source}.{audio}.{video_codec}-{team}"
           />
         </Field>
         <div className="mt-3">
-          <p className="mb-1 text-xs font-medium text-slate-700">
-            Correspondance des tags de langue (language_aliases) — ex. clé <code>FR+JA</code>, valeur{" "}
-            <code>MULTI.VFF</code>
+          <p className="mb-1 text-xs font-medium text-ink-dim">
+            Correspondance des tags de langue (language_aliases) — ex. clé <code className="font-mono">FR+JA</code>, valeur{" "}
+            <code className="font-mono">MULTI.VFF</code>
           </p>
           <KeyValueEditor
             value={rules.name_proposal?.language_aliases ?? {}}

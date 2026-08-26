@@ -27,18 +27,18 @@ export function ListEditor<T>({ items, onChange, newItem, renderRow, addLabel }:
   return (
     <div className="space-y-2">
       {items.map((item, i) => (
-        <div key={i} className="flex items-start gap-2 rounded-md border border-slate-200 p-2">
+        <div key={i} className="flex items-start gap-2 rounded-md border border-line p-2">
           <div className="flex-1 space-y-1">{renderRow(item, (patch) => updateAt(i, patch))}</div>
           <button
             type="button"
             onClick={() => removeAt(i)}
-            className="shrink-0 text-xs text-red-600 hover:underline"
+            className="shrink-0 text-xs text-crit hover:underline"
           >
             Supprimer
           </button>
         </div>
       ))}
-      <button type="button" onClick={add} className="text-sm text-slate-700 underline">
+      <button type="button" onClick={add} className="text-sm text-accent-ink underline">
         + {addLabel}
       </button>
     </div>
@@ -65,7 +65,7 @@ export function KeyValueEditor({ value, onChange, keyPlaceholder, valuePlacehold
       {entries.map(([k, v], i) => (
         <div key={i} className="flex gap-2">
           <input
-            className="w-1/3 rounded border border-slate-300 px-2 py-1 text-sm"
+            className="w-1/3 rounded border border-line-strong bg-surface px-2 py-1 text-sm text-ink"
             placeholder={keyPlaceholder}
             value={k}
             onChange={(e) => {
@@ -75,7 +75,7 @@ export function KeyValueEditor({ value, onChange, keyPlaceholder, valuePlacehold
             }}
           />
           <input
-            className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+            className="flex-1 rounded border border-line-strong bg-surface px-2 py-1 text-sm text-ink"
             placeholder={valuePlaceholder}
             value={v}
             onChange={(e) => {
@@ -86,7 +86,7 @@ export function KeyValueEditor({ value, onChange, keyPlaceholder, valuePlacehold
           />
           <button
             type="button"
-            className="text-xs text-red-600 hover:underline"
+            className="text-xs text-crit hover:underline"
             onClick={() => setEntries(entries.filter((_, idx) => idx !== i))}
           >
             Supprimer
@@ -95,7 +95,7 @@ export function KeyValueEditor({ value, onChange, keyPlaceholder, valuePlacehold
       ))}
       <button
         type="button"
-        className="text-sm text-slate-700 underline"
+        className="text-sm text-accent-ink underline"
         onClick={() => setEntries([...entries, ["", ""]])}
       >
         + Ajouter

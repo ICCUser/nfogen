@@ -7,17 +7,19 @@ import ProfileEditorPage from "./pages/ProfileEditorPage";
 import SettingsPage from "./pages/SettingsPage";
 
 function navClass({ isActive }: { isActive: boolean }) {
-  return `px-3 py-2 rounded-md text-sm font-medium ${
-    isActive ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
+  return `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+    isActive ? "bg-accent text-surface" : "text-ink-dim hover:bg-surface-2 hover:text-ink"
   }`;
 }
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-bg font-sans text-ink">
+      <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <span className="text-lg font-semibold text-slate-900">nfogen</span>
+          <span className="font-display text-lg font-bold text-ink">
+            nfogen<span className="font-mono text-sm text-accent">.nfo</span>
+          </span>
           <nav className="flex gap-1">
             <NavLink to="/" className={navClass} end>
               Générer

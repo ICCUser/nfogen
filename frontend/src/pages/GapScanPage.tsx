@@ -21,11 +21,11 @@ const STATUS_LABEL: Record<GapStatus, string> = {
 };
 
 const STATUS_BADGE_CLASS: Record<GapStatus, string> = {
-  absent: "bg-sky-100 text-sky-700",
-  quality_gap: "bg-amber-100 text-amber-800",
-  language_gap: "bg-amber-100 text-amber-800",
-  covered: "bg-slate-100 text-slate-500",
-  error: "bg-red-100 text-red-700",
+  absent: "bg-info-bg text-info",
+  quality_gap: "bg-warn-bg text-warn",
+  language_gap: "bg-warn-bg text-warn",
+  covered: "bg-surface-2 text-ink-faint",
+  error: "bg-crit-bg text-crit",
 };
 
 const FILTERS: { value: GapStatus | ""; label: string }[] = [
@@ -202,8 +202,8 @@ export default function GapScanPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Scan C411</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="font-display text-xl font-semibold text-ink">Scan C411</h1>
+          <p className="text-sm text-ink-dim">
             Compare ta bibliothèque Sonarr/Radarr au catalogue C411 pour repérer ce qui n'y est pas
             encore, ou pas dans ta qualité — candidats à uploader.
           </p>
@@ -213,7 +213,7 @@ export default function GapScanPage() {
             type="button"
             onClick={handleExportCsv}
             disabled={!results || results.length === 0}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100 disabled:opacity-50"
+            className="rounded-md border border-line-strong px-4 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
           >
             Export CSV
           </button>
@@ -221,7 +221,7 @@ export default function GapScanPage() {
             type="button"
             onClick={handleRun}
             disabled={starting || running || notConfigured || noLibrary}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
           >
             {running ? "Scan en cours…" : "Lancer un scan"}
           </button>
@@ -229,85 +229,85 @@ export default function GapScanPage() {
       </div>
 
       {notConfigured && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           Clé API C411 non configurée — renseigne-la ci-dessous.
         </div>
       )}
       {!notConfigured && noLibrary && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           Aucune instance Sonarr ni Radarr configurée — renseigne au moins l'une des deux ci-dessous.
         </div>
       )}
 
-      <div className="rounded-md border border-slate-200 bg-white">
+      <div className="rounded-md border border-line bg-surface">
         <button
           type="button"
           onClick={() => setShowConfigForm((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-slate-900"
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink"
         >
           Configuration (Sonarr, Radarr, C411)
-          <span className="text-slate-400">{showConfigForm ? "▲" : "▼"}</span>
+          <span className="text-ink-faint">{showConfigForm ? "▲" : "▼"}</span>
         </button>
         {showConfigForm && (
-          <div className="space-y-3 border-t border-slate-200 p-4">
-            <p className="text-xs text-slate-500">
+          <div className="space-y-3 border-t border-line p-4">
+            <p className="text-xs text-ink-faint">
               Enregistré côté serveur ({" "}
-              <code className="rounded bg-slate-100 px-1">NFOGEN_GAPSCAN_CONFIG_FILE</code>{" "}
+              <code className="rounded bg-surface-2 px-1 font-mono">NFOGEN_GAPSCAN_CONFIG_FILE</code>{" "}
               requis). Un champ « clé » laissé vide ne modifie pas la clé déjà enregistrée.
             </p>
 
             <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm font-medium text-slate-700">
+              <label className="block text-sm font-medium text-ink-dim">
                 URL Sonarr
                 <input
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
                   placeholder="http://sonarr.local:8989"
                   value={sonarrUrl}
                   onChange={(e) => setSonarrUrl(e.target.value)}
                 />
               </label>
-              <label className="block text-sm font-medium text-slate-700">
+              <label className="block text-sm font-medium text-ink-dim">
                 Clé API Sonarr
                 <input
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
                   type="password"
                   placeholder={config?.sonarr_configured ? "•••• (enregistrée)" : ""}
                   value={sonarrApiKey}
                   onChange={(e) => setSonarrApiKey(e.target.value)}
                 />
               </label>
-              <label className="block text-sm font-medium text-slate-700">
+              <label className="block text-sm font-medium text-ink-dim">
                 URL Radarr
                 <input
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
                   placeholder="http://radarr.local:7878"
                   value={radarrUrl}
                   onChange={(e) => setRadarrUrl(e.target.value)}
                 />
               </label>
-              <label className="block text-sm font-medium text-slate-700">
+              <label className="block text-sm font-medium text-ink-dim">
                 Clé API Radarr
                 <input
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
                   type="password"
                   placeholder={config?.radarr_configured ? "•••• (enregistrée)" : ""}
                   value={radarrApiKey}
                   onChange={(e) => setRadarrApiKey(e.target.value)}
                 />
               </label>
-              <label className="block text-sm font-medium text-slate-700">
+              <label className="block text-sm font-medium text-ink-dim">
                 URL de base C411
                 <input
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
                   placeholder="https://c411.org"
                   value={c411BaseUrl}
                   onChange={(e) => setC411BaseUrl(e.target.value)}
                 />
               </label>
-              <label className="block text-sm font-medium text-slate-700">
+              <label className="block text-sm font-medium text-ink-dim">
                 Clé API C411
                 <input
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
                   type="password"
                   placeholder={config?.c411_configured ? "•••• (enregistrée)" : ""}
                   value={c411ApiKey}
@@ -316,45 +316,45 @@ export default function GapScanPage() {
               </label>
             </div>
 
-            {configError && <p className="text-sm text-red-600">{configError}</p>}
+            {configError && <p className="text-sm text-crit">{configError}</p>}
 
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={handleSaveConfig}
                 disabled={configSaving}
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
               >
                 {configSaving ? "Enregistrement…" : "Enregistrer"}
               </button>
-              {configSaved && <span className="text-sm text-emerald-600">Enregistré.</span>}
+              {configSaved && <span className="text-sm text-good">Enregistré.</span>}
             </div>
           </div>
         )}
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           {error} — vérifiez les <Link to="/settings" className="underline">réglages de connexion</Link>.
         </div>
       )}
 
       {status && status.state === "error" && status.error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           Le dernier scan a échoué : {status.error}
         </div>
       )}
 
       {running && (
-        <div className="space-y-1 rounded-md border border-slate-200 bg-white p-4">
-          <p className="text-sm text-slate-600">
+        <div className="space-y-1 rounded-md border border-line bg-surface p-4">
+          <p className="font-mono text-sm text-ink-dim">
             {status && status.total > 0
               ? `${status.processed} / ${status.total} titres traités…`
               : "Récupération de la bibliothèque…"}
           </p>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
             <div
-              className="h-full bg-slate-900 transition-all"
+              className="h-full bg-accent transition-all"
               style={{
                 width: status && status.total > 0 ? `${(100 * status.processed) / status.total}%` : "10%",
               }}
@@ -363,10 +363,10 @@ export default function GapScanPage() {
         </div>
       )}
 
-      <label className="block text-sm font-medium text-slate-700">
+      <label className="block text-sm font-medium text-ink-dim">
         Filtrer par statut
         <select
-          className="mt-1 w-full max-w-xs rounded-md border border-slate-300 px-3 py-2 text-sm"
+          className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
           value={filter}
           onChange={(e) => setFilter(e.target.value as GapStatus | "")}
         >
@@ -378,17 +378,17 @@ export default function GapScanPage() {
         </select>
       </label>
 
-      {results === null && !error && <p className="text-sm text-slate-500">Chargement…</p>}
+      {results === null && !error && <p className="text-sm text-ink-faint">Chargement…</p>}
 
       {results !== null && results.length === 0 && (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-ink-faint">
           Aucun résultat{filter && " pour ce statut"}. {!status || status.state === "idle" ? "Lance un scan pour commencer." : ""}
         </p>
       )}
 
       {results !== null && results.length > 0 && (
-        <table className="w-full overflow-hidden rounded-md border border-slate-200 bg-white text-sm">
-          <thead className="bg-slate-100 text-left text-slate-600">
+        <table className="w-full overflow-hidden rounded-md border border-line bg-surface text-sm">
+          <thead className="bg-surface-2 text-left text-ink-dim">
             <tr>
               <th className="px-4 py-2">Titre</th>
               <th className="px-4 py-2">Type</th>
@@ -399,11 +399,11 @@ export default function GapScanPage() {
           </thead>
           <tbody>
             {results.map((r, i) => (
-              <tr key={`${r.imdb_id ?? r.tvdb_id ?? r.title}-${r.season_number ?? i}`} className="border-t border-slate-100">
-                <td className="px-4 py-2 font-medium text-slate-900">
+              <tr key={`${r.imdb_id ?? r.tvdb_id ?? r.title}-${r.season_number ?? i}`} className="border-t border-line">
+                <td className="px-4 py-2 font-mono font-medium text-ink">
                   {r.title} {r.year ? `(${r.year})` : ""}
                 </td>
-                <td className="px-4 py-2 text-slate-600">
+                <td className="px-4 py-2 text-ink-dim">
                   {r.media_type === "movie" ? "Film" : `Série S${String(r.season_number).padStart(2, "0")}`}
                 </td>
                 <td className="px-4 py-2">
@@ -414,15 +414,15 @@ export default function GapScanPage() {
                     {STATUS_LABEL[r.status]}
                   </span>
                   {r.has_freeleech_alternative && (
-                    <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">FL</span>
+                    <span className="ml-1 rounded-full bg-good-bg px-2 py-0.5 text-xs text-good">FL</span>
                   )}
                   {r.has_double_upload_window && (
-                    <span className="ml-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700">2x</span>
+                    <span className="ml-1 rounded-full bg-info-bg px-2 py-0.5 text-xs text-info">2x</span>
                   )}
                 </td>
-                <td className="px-4 py-2 text-slate-600">{qualitySummary(r.local_quality)}</td>
+                <td className="px-4 py-2 font-mono text-ink-dim">{qualitySummary(r.local_quality)}</td>
                 <td className="px-4 py-2 text-right">
-                  <Link to="/" className="text-sm text-slate-700 underline">
+                  <Link to="/" className="text-sm text-accent-ink underline">
                     Générer
                   </Link>
                 </td>

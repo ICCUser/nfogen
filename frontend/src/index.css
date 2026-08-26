@@ -1,6 +1,68 @@
 @import "tailwindcss";
 
+/* Identite visuelle nfogen : structure claire et dense (tableaux/formulaires
+   d'abord), typographie technique assumee -- tout ce qui est litteral
+   (release_name, regex, JSON, chemins, statuts) reste en monospace, jamais
+   melange au texte courant. Mode sombre automatique (prefers-color-scheme),
+   pas de bascule manuelle : les deux jeux de variables partagent les memes
+   noms, donc les utilitaires Tailwind generes (bg-surface, text-ink...)
+   suivent sans avoir besoin de prefixes dark: dans le JSX. */
+@theme {
+  --font-sans: "Public Sans", system-ui, "Segoe UI", sans-serif;
+  --font-display: "Archivo", system-ui, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --color-bg: #f5f7f5;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef1ee;
+  --color-ink: #14201a;
+  --color-ink-dim: #4d5c53;
+  --color-ink-faint: #7c8b81;
+  --color-line: #d7e0da;
+  --color-line-strong: #aebdb3;
+  --color-accent: #0f6a5e;
+  --color-accent-ink: #0b4f46;
+  --color-good: #3f7d4a;
+  --color-good-bg: #e3ede2;
+  --color-warn: #a3701f;
+  --color-warn-bg: #f3e7d1;
+  --color-crit: #a8443a;
+  --color-crit-bg: #f4e0dd;
+  --color-info: #2f6f8f;
+  --color-info-bg: #e1edf1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0e1512;
+    --color-surface: #141d19;
+    --color-surface-2: #1b2621;
+    --color-ink: #dfe8e2;
+    --color-ink-dim: #9fb0a6;
+    --color-ink-faint: #6c7d73;
+    --color-line: #26332c;
+    --color-line-strong: #37473e;
+    --color-accent: #6bc9b3;
+    --color-accent-ink: #8fdcc9;
+    --color-good: #7cbb84;
+    --color-good-bg: #1c2b1f;
+    --color-warn: #dcae5c;
+    --color-warn-bg: #332818;
+    --color-crit: #e18b80;
+    --color-crit-bg: #33201e;
+    --color-info: #7fc3e0;
+    --color-info-bg: #1a2a30;
+  }
+}
+
 body {
   margin: 0;
-  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-surface);
 }

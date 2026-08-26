@@ -43,12 +43,12 @@ export default function PreviewPanel({ profile, category }: Props) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-600">
-        Données d'exemple (équivalent de <code className="rounded bg-slate-100 px-1">data</code> dans
+      <p className="text-sm text-ink-dim">
+        Données d'exemple (équivalent de <code className="rounded bg-surface-2 px-1 font-mono">data</code> dans
         l'API) — n'écrit rien sur disque, n'affecte aucun profil.
       </p>
       <textarea
-        className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+        className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-xs text-ink"
         rows={6}
         value={sampleData}
         onChange={(e) => setSampleData(e.target.value)}
@@ -57,19 +57,19 @@ export default function PreviewPanel({ profile, category }: Props) {
         type="button"
         onClick={run}
         disabled={loading}
-        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+        className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
       >
         {loading ? "Génération…" : "Tester"}
       </button>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-md border border-crit bg-crit-bg px-3 py-2 text-sm text-crit">
           {error}
         </div>
       )}
 
       {warnings.length > 0 && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <div className="rounded-md border border-warn bg-warn-bg px-3 py-2 text-sm text-warn">
           <p className="font-medium">Avertissements :</p>
           <ul className="list-disc pl-5">
             {warnings.map((w, i) => (
@@ -80,7 +80,7 @@ export default function PreviewPanel({ profile, category }: Props) {
       )}
 
       {nfo !== null && (
-        <pre className="max-h-96 overflow-auto rounded-md border border-slate-200 bg-white p-3 text-xs">
+        <pre className="max-h-96 overflow-auto rounded-md border border-line bg-surface p-3 font-mono text-xs text-ink">
           {nfo}
         </pre>
       )}
