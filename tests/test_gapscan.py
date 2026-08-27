@@ -6,6 +6,7 @@ comparaison est visee ici, `test_c411_client.py`/`test_sonarr_client.py`/
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -37,6 +38,12 @@ class FakeC411:
 
     movie_results: list[C411Release] = field(default_factory=list)
     title_movie_results: Optional[list[C411Release]] = None
+    # Reponses par requete TEXTE exacte (query) -- necessaire pour tester le
+    # repli par titre ALTERNATIF (voir tests dedies plus bas) sans perturber
+    # title_movie_results, qui reste la reponse par defaut pour tout autre
+    # titre non liste ici.
+    query_results: dict[str, list[C411Release]] = field(default_factory=dict)
+    tv_query_results: dict[str, list[C411Release]] = field(default_factory=dict)
     tv_results: list[C411Release] = field(default_factory=list)
     calls: list[tuple] = field(default_factory=list)
     raises: Optional[Exception] = None
@@ -45,6 +52,8 @@ class FakeC411:
         self.calls.append(("movie", query, imdb_id, tmdb_id))
         if self.raises is not None:
             raise self.raises
+        if query is not None and query in self.query_results:
+            return self.query_results[query]
         if query is not None and self.title_movie_results is not None:
             return self.title_movie_results
         return self.movie_results
@@ -53,6 +62,8 @@ class FakeC411:
         self.calls.append(("tv", query, imdb_id, season))
         if self.raises is not None:
             raise self.raises
+        if query is not None and query in self.tv_query_results:
+            return self.tv_query_results[query]
         return self.tv_results
 
 
@@ -237,6 +248,100 @@ def test_scan_movie_rescans_when_local_quality_changed():
     assert result.status == GapStatus.QUALITY_GAP
 
 
+def test_scan_movie_does_not_reuse_a_stale_covered_result():
+    """`max_age_seconds` (retour utilisateur, 2026-08-27 : "c411 enleve et
+    ajoute assez souvent des torrents") : un resultat COVERED trop ancien
+    est reverifie, meme si rien n'a change localement -- une release
+    couvrante a pu disparaitre de C411 depuis."""
+    c411_first = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")])
+    previous = scan_movie(_movie(), c411_first)
+    previous.checked_at = time.time() - 1000  # bien au-dela de max_age_seconds=10
+
+    c411_second = FakeC411()  # si non reinterroge a tort, testerait le mauvais chemin
+    result = scan_movie(_movie(), c411_second, previous=previous, max_age_seconds=10)
+
+    assert c411_second.calls != []
+    assert result.status == GapStatus.ABSENT  # reinterroge pour de vrai, plus repris tel quel
+
+
+def test_scan_movie_reuses_a_fresh_covered_result_within_max_age():
+    c411_first = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")])
+    previous = scan_movie(_movie(), c411_first)
+
+    c411_second = FakeC411()
+    result = scan_movie(_movie(), c411_second, previous=previous, max_age_seconds=1000)
+
+    assert c411_second.calls == []
+    assert result is previous
+
+
+def test_scan_movie_without_max_age_seconds_never_expires():
+    """`max_age_seconds=None` (par defaut) : comportement historique,
+    aucune limite d'age -- pour ne pas casser les appels existants qui ne
+    s'en soucient pas."""
+    c411_first = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")])
+    previous = scan_movie(_movie(), c411_first)
+    previous.checked_at = time.time() - 10_000_000
+
+    c411_second = FakeC411()
+    result = scan_movie(_movie(), c411_second, previous=previous)
+
+    assert c411_second.calls == []
+    assert result is previous
+
+
+def test_scan_movie_missing_checked_at_is_treated_as_stale():
+    """Resultat persiste avant l'ajout de `checked_at` (retro-compatibilite,
+    voir gapscan_results_store.py) : reverifie par prudence des qu'une
+    limite d'age est demandee, plutot que suppose "toujours frais"."""
+    c411_first = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")])
+    previous = scan_movie(_movie(), c411_first)
+    previous.checked_at = None
+
+    c411_second = FakeC411()
+    scan_movie(_movie(), c411_second, previous=previous, max_age_seconds=1000)
+
+    assert c411_second.calls != []
+
+
+# --------------------------------------------------------------------------- #
+# Titres alternatifs (VF) : C411 est un tracker francophone, un titre
+# original en anglais peut y etre liste sous son titre de sortie/diffusion
+# FR (ex. "Wild Card" -> "Joker", "White Collar" -> "FBI, duo tres special")
+# -- retour utilisateur, 2026-08-27. Sonarr/Radarr connaissent en general
+# ces titres alternatifs (`alternateTitles`).
+# --------------------------------------------------------------------------- #
+def test_scan_movie_falls_back_to_alternate_titles_when_primary_title_finds_nothing():
+    c411 = FakeC411(
+        movie_results=[],  # recherche par ID : rien
+        title_movie_results=[],  # titre original ("Wild Card") : rien non plus
+        query_results={"Joker": [_release("Joker.2015.MULTI.VFF.2160p.BluRay.x265-TEAM")]},
+    )
+    movie = _movie(
+        title="Wild Card", year=2015, imdb_id="tt2321549", tmdb_id=228165,
+        alternate_titles=["Joker"],
+    )
+    result = scan_movie(movie, c411)
+
+    assert ("movie", "Wild Card", None, None) in c411.calls  # titre original tente d'abord
+    assert ("movie", "Joker", None, None) in c411.calls  # PUIS le titre alternatif FR
+    assert result.status == GapStatus.COVERED
+
+
+def test_scan_movie_alternate_title_still_filtered_by_year():
+    c411 = FakeC411(
+        movie_results=[],
+        title_movie_results=[],
+        query_results={"Joker": [_release("Joker.2019.MULTI.VFF.2160p.BluRay.x265-TEAM")]},
+    )
+    movie = _movie(
+        title="Wild Card", year=2015, imdb_id="tt2321549", tmdb_id=228165,
+        alternate_titles=["Joker"],
+    )
+    result = scan_movie(movie, c411)
+    assert result.status == GapStatus.ABSENT  # le "Joker" 2019 (DC) ne compte pas pour "Wild Card" 2015
+
+
 def test_scan_series_season_reuses_previous_result_when_covered_and_unchanged():
     c411_first = FakeC411(tv_results=[_release("Breaking.Bad.S01.MULTI.VFF.2160p.WEBRip.x265-SQUEEZE")])
     previous = scan_series_season(_season(), c411_first)
@@ -274,6 +379,25 @@ def test_scan_series_season_absent_when_no_match():
 def test_scan_series_season_covered():
     c411 = FakeC411(tv_results=[_release("Breaking.Bad.S01.MULTI.VFF.2160p.WEBRip.x265-SQUEEZE")])
     result = scan_series_season(_season(), c411)
+    assert result.status == GapStatus.COVERED
+
+
+def test_scan_series_season_falls_back_to_alternate_titles_when_primary_title_finds_nothing():
+    """Incident reel : "White Collar" est diffuse en France sous le titre
+    "FBI, duo tres special"."""
+    c411 = FakeC411(
+        tv_results=[],  # ID + titre original ("White Collar") : rien
+        tv_query_results={
+            "FBI, duo tres special": [
+                _release("FBI.duo.tres.special.S01.MULTI.VFF.2160p.WEBRip.x265-TEAM")
+            ],
+        },
+    )
+    season = _season(title="White Collar", alternate_titles=["FBI, duo tres special"])
+    result = scan_series_season(season, c411)
+
+    assert ("tv", "White Collar", None, 1) in c411.calls
+    assert ("tv", "FBI, duo tres special", None, 1) in c411.calls
     assert result.status == GapStatus.COVERED
 
 
@@ -363,6 +487,23 @@ def test_run_gapscan_still_reports_progress_after_an_item_failure():
         on_progress=lambda done, total: calls.append((done, total)),
     )
     assert calls == [(1, 2), (2, 2)]
+
+
+def test_run_gapscan_only_movies_skips_series():
+    """`only=` (retour utilisateur, 2026-08-27) : permet de scanner Radarr et
+    Sonarr separement, pour repartir la charge sur plusieurs sessions
+    (limite C411 confirmee : 15 requetes/min)."""
+    c411 = FakeC411(movie_results=[], tv_results=[])
+    results = run_gapscan(c411, radarr=_FakeRadarr(), sonarr=_FakeSonarr(), only="movies")
+    assert {r.media_type for r in results} == {"movie"}
+    assert not any(call[0] == "tv" for call in c411.calls)
+
+
+def test_run_gapscan_only_series_skips_movies():
+    c411 = FakeC411(movie_results=[], tv_results=[])
+    results = run_gapscan(c411, radarr=_FakeRadarr(), sonarr=_FakeSonarr(), only="series")
+    assert {r.media_type for r in results} == {"series"}
+    assert not any(call[0] == "movie" for call in c411.calls)
 
 
 def test_run_gapscan_reuses_previous_results_for_unchanged_covered_items():

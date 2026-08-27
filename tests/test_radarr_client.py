@@ -53,6 +53,32 @@ def test_list_movie_files_skips_movies_without_a_file():
     assert movies[0].language_names == ["French"]
 
 
+def test_list_movie_files_exposes_alternate_titles():
+    """C411 liste parfois un film sous son titre de sortie FR, different de
+    l'original (ex. "Wild Card" -> "Joker") -- utilise en repli par
+    gapscan.py (retour utilisateur, 2026-08-27)."""
+    movies_with_alt = [
+        {
+            **MOVIES[0],
+            "alternateTitles": [{"title": "Le Titre FR"}, {"title": ""}, {"sourceType": "tmdb"}],
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=movies_with_alt)
+
+    movies = _client(handler).list_movie_files()
+    assert movies[0].alternate_titles == ["Le Titre FR"]  # entrees sans titre exploitable ignorees
+
+
+def test_list_movie_files_defaults_alternate_titles_to_empty_list():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=MOVIES)  # pas de cle "alternateTitles"
+
+    movies = _client(handler).list_movie_files()
+    assert movies[0].alternate_titles == []
+
+
 def test_requires_base_url_and_api_key():
     with pytest.raises(RadarrError):
         RadarrClient(base_url="", api_key="x")

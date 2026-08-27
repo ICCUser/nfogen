@@ -34,6 +34,12 @@ class RadarrMovieFile:
     quality_name: Optional[str] = None
     scene_name: Optional[str] = None
     language_names: list[str] = field(default_factory=list)
+    # Titres alternatifs connus de Radarr (ex. titre de sortie FR different
+    # de l'original) -- utilises en repli par gapscan.py quand la recherche
+    # C411 par titre principal ne trouve rien : C411 est un tracker
+    # francophone, qui liste souvent sous le titre de diffusion FR (ex.
+    # "Wild Card" -> "Joker"), pas l'original (retour utilisateur, 2026-08-27).
+    alternate_titles: list[str] = field(default_factory=list)
 
 
 class RadarrClient:
@@ -99,6 +105,9 @@ class RadarrClient:
                     quality_name=quality.get("name"),
                     scene_name=movie_file.get("sceneName"),
                     language_names=[lang.get("name", "") for lang in movie_file.get("languages", [])],
+                    alternate_titles=[
+                        t.get("title", "") for t in movie.get("alternateTitles", []) if t.get("title")
+                    ],
                 )
             )
         return movies

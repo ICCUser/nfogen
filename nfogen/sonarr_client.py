@@ -38,6 +38,10 @@ class SonarrSeasonFile:
     quality_name: Optional[str] = None
     scene_name: Optional[str] = None
     language_names: list[str] = field(default_factory=list)
+    # Titres alternatifs connus de Sonarr (ex. titre de diffusion FR
+    # different de l'original, "White Collar" -> "FBI, duo tres special")
+    # -- meme raison que RadarrMovieFile.alternate_titles, voir la-bas.
+    alternate_titles: list[str] = field(default_factory=list)
 
 
 class SonarrClient:
@@ -125,6 +129,11 @@ class SonarrClient:
                         quality_name=quality.get("name"),
                         scene_name=best.get("sceneName"),
                         language_names=[lang.get("name", "") for lang in best.get("languages", [])],
+                        alternate_titles=[
+                            t.get("title", "")
+                            for t in series.get("alternateTitles", [])
+                            if t.get("title")
+                        ],
                     )
                 )
         return seasons

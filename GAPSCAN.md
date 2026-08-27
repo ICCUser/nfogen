@@ -160,7 +160,7 @@ nfogen/
 
 | Endpoint | Auth | Usage |
 |---|---|---|
-| `POST /gapscan/run` | oui (même modèle que `/profiles/store*`) | Lance un scan (tâche de fond — voir "Exécution" ci-dessous). `?incremental=true` : reprend les titres déjà couverts et inchangés du dernier scan sans les réinterroger. `400` si mal configuré, `409` si un scan tourne déjà |
+| `POST /gapscan/run` | oui (même modèle que `/profiles/store*`) | Lance un scan (tâche de fond — voir "Exécution" ci-dessous). `?incremental=true` : reprend les titres déjà couverts et inchangés du dernier scan sans les réinterroger (sauf s'ils dépassent `NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS`, 7 jours par défaut). `?only=movies`/`?only=series` : ne scanne qu'une des deux bibliothèques. `400` si mal configuré ou `only` invalide, `409` si un scan tourne déjà |
 | `GET /gapscan/status` | oui | État (`idle`/`running`/`done`/`error`) + progression (`processed`/`total`) du dernier scan |
 | `GET /gapscan/results` | oui | Derniers résultats (JSON), filtrable par statut (`?status=absent`) |
 | `GET /gapscan/results/export.csv` | oui | Export CSV, mêmes filtres |
@@ -300,6 +300,50 @@ ensemble :
 
 Le frontend expose ce choix (scan complet vs rapide) sur la page "Scan
 C411", rapide par défaut dès qu'un scan précédent existe.
+
+### Débit confirmé, scan par catégorie, expiration du mode incrémental, titres alternatifs (2026-08-27)
+
+Suite d'échange avec les admins C411 + retours après usage réel du mode
+incrémental :
+
+- **Débit réellement sûr** : les admins C411 ont confirmé directement une
+  limite de **15 requêtes/min par utilisateur**. `NFOGEN_C411_MIN_INTERVAL_SECONDS`
+  (2.0s par défaut, choisi avant cette confirmation, sur la seule base d'un
+  429 observé une fois) dépassait cette limite (~30/min). Nouveau défaut :
+  **4.5s (~13,3/min)**, marge de sécurité sous le seuil confirmé.
+- **Scan par catégorie** : `POST /gapscan/run?only=movies` ou `?only=series`
+  scanne Radarr ou Sonarr séparément (`run_gapscan(..., only=...)`), pour
+  répartir la charge sur plusieurs sessions si besoin. Sélecteur ajouté sur
+  la page "Scan C411". (Les codes de catégorie C411 eux-mêmes — Film 2000,
+  Série TV 5000, etc. — n'ont pas besoin d'être passés explicitement : les
+  types Torznab `t=movie`/`t=tvsearch` déjà utilisés par `c411_client.py`
+  scopent déjà la recherche côté indexeur.)
+- **Expiration du mode incrémental** : retour utilisateur — C411 retire et
+  ajoute des torrents assez souvent, un `covered` repris indéfiniment sans
+  jamais être revérifié pourrait devenir faux avec le temps. `GapResult`
+  gagne un champ `checked_at` (horodatage de la dernière vérification
+  RÉELLE auprès de C411 ; conservé tel quel, pas rafraîchi, quand un
+  résultat est simplement repris sans réinterroger C411). `_can_reuse()`
+  n'accepte de reprendre un `covered` que s'il a moins de
+  `NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS` (7 jours par défaut, ajustable)
+  — au-delà, réinterrogé normalement même si rien n'a changé localement.
+  Un résultat persisté avant l'ajout de ce champ (`checked_at` absent) est
+  traité comme périmé par prudence dès qu'une limite d'âge est demandée.
+- **Titres alternatifs (VF)** : C411 est un tracker francophone qui liste
+  souvent un titre sous son nom de sortie/diffusion FR, pas l'original —
+  incident réel remonté : "Wild Card" (film avec Jason Statham) sort en
+  France sous le titre "Joker" ; "White Collar" est diffusée sous "FBI, duo
+  très spécial". La recherche par ID (imdb/tmdb/tvdb) reste toujours
+  tentée en premier (la plus fiable), puis le titre original en repli ;
+  seulement si les deux échouent, `scan_movie()`/`scan_series_season()`
+  essaient maintenant chaque titre alternatif connu de Sonarr/Radarr
+  (`alternateTitles`, exposé via `RadarrMovieFile.alternate_titles`/
+  `SonarrSeasonFile.alternate_titles`), dans l'ordre, jusqu'au premier qui
+  trouve quelque chose. Toujours filtré par année pour les films
+  (`_filter_by_year`), pour ne pas confondre un homonyme d'un autre
+  millésime. Best-effort : ne fonctionne que si Sonarr/Radarr ont
+  effectivement indexé ce titre alternatif pour ce média précis — pas
+  garanti à 100%.
 
 ## Plan de tests (calqué sur l'existant, `tests/test_c411.py` etc.)
 

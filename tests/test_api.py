@@ -21,6 +21,7 @@ from nfogen import api as api_module
 from nfogen.c411_client import C411Release
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.registry import unregister_profile
+from nfogen.sonarr_client import SonarrSeasonFile
 
 
 @pytest.fixture
@@ -1097,6 +1098,22 @@ class _FakeGapscanC411Covered(_FakeGapscanC411):
         return [C411Release(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
 
 
+class _FakeGapscanSonarr:
+    def __init__(self, *args, **kwargs):
+        self.closed = False
+
+    def list_season_files(self):
+        return [
+            SonarrSeasonFile(
+                series_id=1, title="Breaking Bad", year=2008, tvdb_id=81189, imdb_id="tt0903747",
+                season_number=1, episode_file_count=1,
+            )
+        ]
+
+    def close(self):
+        self.closed = True
+
+
 def _patch_gapscan_clients(monkeypatch, mod, radarr_cls=_FakeGapscanRadarr, sonarr_cls=None):
     monkeypatch.setattr(mod, "C411Client", _FakeGapscanC411)
     monkeypatch.setattr(mod, "RadarrClient", radarr_cls)
@@ -1240,6 +1257,86 @@ def test_gapscan_run_then_status_then_results(reload_api, monkeypatch):
     assert results[0]["media_type"] == "movie"
     assert results[0]["title"] == "Matrix"
     assert results[0]["status"] == "absent"  # FakeGapscanC411 ne renvoie jamais de match
+
+
+def test_gapscan_run_uses_a_rate_limit_safe_default_interval(reload_api, monkeypatch):
+    """15 requetes/min confirmees directement par les admins C411
+    (2026-08-27) -- l'intervalle par defaut doit rester strictement sous ce
+    seuil (60/15 = 4s pile), avec marge (4.5s -> ~13,3/min)."""
+    captured: dict = {}
+
+    class CapturingC411(_FakeGapscanC411):
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+            super().__init__(*args, **kwargs)
+
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+        NFOGEN_C411_MIN_INTERVAL_SECONDS=None,
+    )
+    monkeypatch.setattr(mod, "C411Client", CapturingC411)
+    monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+
+    assert captured["min_interval_seconds"] >= 4.0
+
+
+def test_gapscan_run_only_movies_excludes_series(reload_api, monkeypatch):
+    """`?only=movies` (retour utilisateur, 2026-08-27) : scanne Radarr sans
+    interroger Sonarr, meme quand les deux sont configures."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+        NFOGEN_SONARR_URL="http://sonarr.local", NFOGEN_SONARR_API_KEY="z",
+    )
+    _patch_gapscan_clients(monkeypatch, mod, sonarr_cls=_FakeGapscanSonarr)
+    client = TestClient(mod.app)
+
+    run = client.post("/gapscan/run", params={"only": "movies"})
+    assert run.status_code == 200
+    _wait_gapscan_done(client)
+
+    results = client.get("/gapscan/results").json()
+    assert {r["media_type"] for r in results} == {"movie"}
+
+
+def test_gapscan_run_rejects_an_invalid_only_value(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+    resp = client.post("/gapscan/run", params={"only": "bogus"})
+    assert resp.status_code == 400
+
+
+def test_gapscan_run_reads_the_incremental_max_age_env_var(reload_api, monkeypatch):
+    """`NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS` (retour utilisateur,
+    2026-08-27 : C411 retire/ajoute des torrents assez souvent) -- converti
+    en secondes et transmis a gapscan_runner.start() seulement quand
+    incremental=true."""
+    captured: dict = {}
+
+    def fake_start(c411, radarr=None, sonarr=None, incremental=False, only=None, max_age_seconds=None):
+        captured["max_age_seconds"] = max_age_seconds
+        return True
+
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+        NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS="3",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    monkeypatch.setattr(mod.gapscan_runner, "start", fake_start)
+    client = TestClient(mod.app)
+
+    resp = client.post("/gapscan/run", params={"incremental": "true"})
+    assert resp.status_code == 200
+    assert captured["max_age_seconds"] == 3 * 86400
 
 
 def test_gapscan_run_incremental_reuses_covered_results(reload_api, monkeypatch):

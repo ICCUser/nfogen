@@ -723,10 +723,12 @@ def _build_gapscan_clients() -> tuple[Any, Any, Any]:
             "voir GAPSCAN.md."
         )
     c411_key, c411_base_url = c411_config
-    # Limites exactes de l'API C411 non documentees publiquement (cf.
-    # GAPSCAN.md). 0.5s a declenche un 429 en test manuel (2026-08-25) :
-    # 2s par defaut desormais, plus prudent. Ajustable si besoin.
-    min_interval = float(os.environ.get("NFOGEN_C411_MIN_INTERVAL_SECONDS", "2.0"))
+    # Limite confirmee directement par les admins C411 (2026-08-27) : 15
+    # requetes/min par utilisateur (60/15 = 4s pile). 4.5s par defaut
+    # desormais (~13,3/min), marge de securite -- 2.0s (~30/min, choisi
+    # avant cette confirmation) depassait la limite reelle. Ajustable si
+    # besoin.
+    min_interval = float(os.environ.get("NFOGEN_C411_MIN_INTERVAL_SECONDS", "4.5"))
     c411 = C411Client(
         c411_key, base_url=c411_base_url.rstrip("/") + "/api", min_interval_seconds=min_interval
     )
@@ -747,17 +749,30 @@ def _build_gapscan_clients() -> tuple[Any, Any, Any]:
 
 
 @app.post("/gapscan/run", dependencies=[Depends(require_token)])
-def gapscan_run(incremental: bool = Query(False)) -> dict[str, str]:
+def gapscan_run(
+    incremental: bool = Query(False), only: Optional[str] = Query(None)
+) -> dict[str, str]:
     """`incremental=true` : reutilise les resultats du dernier scan pour les
-    titres deja couverts et inchanges localement, au lieu de tout
-    reinterroger C411 -- voir gapscan_runner.start()."""
+    titres deja couverts et inchanges localement (au-dela de
+    NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS, reverifie quand meme -- C411
+    retire/ajoute des torrents assez souvent). `only=movies`/`only=series` :
+    ne scanne qu'une des deux bibliotheques, pour repartir la charge sur
+    plusieurs sessions (limite C411 confirmee : 15 requetes/min). Voir
+    gapscan_runner.start()."""
     _require_gapscan_available()
+    if only not in (None, "movies", "series"):
+        raise HTTPException(status_code=400, detail="only doit valoir 'movies' ou 'series'.")
     try:
         c411, sonarr, radarr = _build_gapscan_clients()
     except (ValueError, C411Error, SonarrError, RadarrError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    started = gapscan_runner.start(c411, radarr=radarr, sonarr=sonarr, incremental=incremental)
+    max_age_days = float(os.environ.get("NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS", "7"))
+    max_age_seconds = max_age_days * 86400 if incremental else None
+    started = gapscan_runner.start(
+        c411, radarr=radarr, sonarr=sonarr, incremental=incremental,
+        only=only, max_age_seconds=max_age_seconds,
+    )
     if not started:
         c411.close()
         if sonarr is not None:

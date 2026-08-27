@@ -9,6 +9,7 @@ qualite par defaut (`quality.py`, ajustables).
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Iterable, Optional
@@ -44,6 +45,12 @@ class GapResult:
     has_freeleech_alternative: bool = False
     has_double_upload_window: bool = False
     error: Optional[str] = None  # detail si status == ERROR, sinon None
+    # Horodatage de la derniere verification REELLE aupres de C411 (`None`
+    # pour un resultat persiste avant l'ajout de ce champ) -- repris tel
+    # quel (pas rafraichi) quand ce resultat est simplement REPRIS sans
+    # reinterroger C411 (mode incremental), pour que `_can_reuse` puisse
+    # juger de sa fraicheur reelle. Voir `max_age_seconds`.
+    checked_at: Optional[float] = None
 
 
 _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
@@ -72,16 +79,34 @@ def _quality_fingerprint(q: ReleaseQuality) -> tuple:
     return (q.resolution, q.source, q.codec, tuple(sorted(q.languages)), q.multi, q.pure)
 
 
-def _can_reuse(previous: Optional[GapResult], local_quality: ReleaseQuality) -> bool:
+def _can_reuse(
+    previous: Optional[GapResult],
+    local_quality: ReleaseQuality,
+    max_age_seconds: Optional[float] = None,
+) -> bool:
     """Mode incremental (voir run_gapscan/gapscan_runner.py) : un resultat
     precedent n'est reutilisable sans reinterroger C411 que s'il etait deja
     COVERED (un gap merite d'etre reverifie, C411 a pu se remplir depuis) ET
     que la qualite locale n'a pas change depuis (sinon la comparaison
     pourrait changer) -- retour utilisateur, 2026-08-26 : "je vais pas tout
-    rescanner a chaque fois"."""
+    rescanner a chaque fois".
+
+    `max_age_seconds` (optionnel) : au-dela de cet age, meme un COVERED
+    inchange est reverifie -- C411 retire et ajoute des releases assez
+    souvent (retour utilisateur, 2026-08-27), un COVERED indefiniment
+    repris pourrait devenir faux avec le temps. `None` (par defaut) :
+    aucune limite d'age. Un resultat sans `checked_at` (persiste avant
+    l'ajout de ce champ) est traite comme perime des qu'une limite est
+    demandee -- prudence plutot que suppose "toujours frais"."""
     if previous is None or previous.status != GapStatus.COVERED:
         return False
-    return _quality_fingerprint(previous.local_quality) == _quality_fingerprint(local_quality)
+    if _quality_fingerprint(previous.local_quality) != _quality_fingerprint(local_quality):
+        return False
+    if max_age_seconds is None:
+        return True
+    if previous.checked_at is None:
+        return False
+    return (time.time() - previous.checked_at) < max_age_seconds
 
 
 def _classify(local_quality: ReleaseQuality, matches: list[C411Release]) -> GapStatus:
@@ -98,7 +123,10 @@ def _classify(local_quality: ReleaseQuality, matches: list[C411Release]) -> GapS
 
 
 def scan_movie(
-    movie: RadarrMovieFile, c411: C411Client, previous: Optional[GapResult] = None
+    movie: RadarrMovieFile,
+    c411: C411Client,
+    previous: Optional[GapResult] = None,
+    max_age_seconds: Optional[float] = None,
 ) -> GapResult:
     tmdb_id = str(movie.tmdb_id) if movie.tmdb_id else None
     local_quality = build_quality(
@@ -106,7 +134,7 @@ def scan_movie(
         fallback_resolution=movie.best_resolution,
         fallback_language_names=movie.language_names,
     )
-    if _can_reuse(previous, local_quality):
+    if _can_reuse(previous, local_quality, max_age_seconds):
         return previous  # type: ignore[return-value]
     base = dict(
         media_type="movie", title=movie.title, year=movie.year, season_number=None,
@@ -126,6 +154,18 @@ def scan_movie(
             # a tort. Filtre par annee pour ne pas confondre des films
             # homonymes de millesimes differents (incident reel, "Joker").
             matches = _filter_by_year(c411.search_movie(query=movie.title), movie.year)
+        if not matches:
+            # Repli par titre ALTERNATIF : C411 est un tracker francophone,
+            # qui liste souvent un film sous son titre de sortie/diffusion
+            # FR, pas l'original (incident reel, "Wild Card" -> "Joker",
+            # retour utilisateur 2026-08-27). S'arrete au premier titre
+            # alternatif qui trouve quelque chose.
+            for alt_title in movie.alternate_titles:
+                if alt_title == movie.title:
+                    continue
+                matches = _filter_by_year(c411.search_movie(query=alt_title), movie.year)
+                if matches:
+                    break
     except C411Error as exc:
         return GapResult(**base, status=GapStatus.ERROR, error=str(exc))
     return GapResult(
@@ -134,18 +174,22 @@ def scan_movie(
         c411_matches=matches,
         has_freeleech_alternative=any(m.is_freeleech or m.is_half_leech for m in matches),
         has_double_upload_window=any(m.is_double_upload for m in matches),
+        checked_at=time.time(),
     )
 
 
 def scan_series_season(
-    season: SonarrSeasonFile, c411: C411Client, previous: Optional[GapResult] = None
+    season: SonarrSeasonFile,
+    c411: C411Client,
+    previous: Optional[GapResult] = None,
+    max_age_seconds: Optional[float] = None,
 ) -> GapResult:
     local_quality = build_quality(
         season.scene_name or season.title,
         fallback_resolution=season.best_resolution,
         fallback_language_names=season.language_names,
     )
-    if _can_reuse(previous, local_quality):
+    if _can_reuse(previous, local_quality, max_age_seconds):
         return previous  # type: ignore[return-value]
     base = dict(
         media_type="series", title=season.title, year=season.year,
@@ -156,6 +200,15 @@ def scan_series_season(
         matches = c411.search_tv(imdb_id=season.imdb_id, season=season.season_number)
         if not matches:
             matches = c411.search_tv(query=season.title, season=season.season_number)
+        if not matches:
+            # Repli par titre alternatif -- meme raison que scan_movie, voir
+            # la-bas ("White Collar" -> "FBI, duo tres special").
+            for alt_title in season.alternate_titles:
+                if alt_title == season.title:
+                    continue
+                matches = c411.search_tv(query=alt_title, season=season.season_number)
+                if matches:
+                    break
     except C411Error as exc:
         return GapResult(**base, status=GapStatus.ERROR, error=str(exc))
     return GapResult(
@@ -164,6 +217,7 @@ def scan_series_season(
         c411_matches=matches,
         has_freeleech_alternative=any(m.is_freeleech or m.is_half_leech for m in matches),
         has_double_upload_window=any(m.is_double_upload for m in matches),
+        checked_at=time.time(),
     )
 
 
@@ -183,20 +237,26 @@ def run_gapscan(
     sonarr: Optional[SonarrClient] = None,
     on_progress: Optional[Callable[[int, int], None]] = None,
     previous_results: Optional[list[GapResult]] = None,
+    only: Optional[str] = None,
+    max_age_seconds: Optional[float] = None,
 ) -> list[GapResult]:
-    """Lance un scan complet. `radarr`/`sonarr` optionnels (l'un ou l'autre,
-    ou les deux). `on_progress(traites, total)`, appele apres chaque item --
-    utilise par `gapscan_runner.py` pour exposer une progression via
+    """Lance un scan. `radarr`/`sonarr` optionnels (l'un ou l'autre, ou les
+    deux). `on_progress(traites, total)`, appele apres chaque item -- utilise
+    par `gapscan_runner.py` pour exposer une progression via
     `GET /gapscan/status` sans dupliquer cette boucle ailleurs.
 
     `previous_results` (mode incremental, optionnel) : resultats du dernier
     scan termine -- un titre deja COVERED et inchange localement est repris
-    tel quel sans reinterroger C411 (voir `_can_reuse`). Retour utilisateur,
-    2026-08-26."""
+    tel quel sans reinterroger C411 (voir `_can_reuse`), sauf s'il depasse
+    `max_age_seconds`. Retour utilisateur, 2026-08-26/27.
+
+    `only` ("movies"/"series"/None) : ne scanne qu'une des deux bibliotheques
+    -- pour repartir la charge sur plusieurs sessions (limite C411 confirmee :
+    15 requetes/min). Retour utilisateur, 2026-08-27."""
     items: list[tuple[str, object]] = []
-    if radarr is not None:
+    if radarr is not None and only != "series":
         items.extend(("movie", movie) for movie in radarr.list_movie_files())
-    if sonarr is not None:
+    if sonarr is not None and only != "movies":
         items.extend(("series", season) for season in sonarr.list_season_files())
 
     previous_by_key: dict[tuple, GapResult] = {}
@@ -210,10 +270,18 @@ def run_gapscan(
         if kind == "movie":
             tmdb_id = str(item.tmdb_id) if item.tmdb_id else None  # type: ignore[attr-defined]
             key = ("movie", item.imdb_id or tmdb_id or item.title, item.year)  # type: ignore[attr-defined]
-            results.append(scan_movie(item, c411, previous=previous_by_key.get(key)))  # type: ignore[arg-type]
+            results.append(
+                scan_movie(
+                    item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds
+                )
+            )  # type: ignore[arg-type]
         else:
             key = ("series", item.tvdb_id or item.imdb_id or item.title, item.season_number)  # type: ignore[attr-defined]
-            results.append(scan_series_season(item, c411, previous=previous_by_key.get(key)))  # type: ignore[arg-type]
+            results.append(
+                scan_series_season(
+                    item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds
+                )
+            )  # type: ignore[arg-type]
         if on_progress is not None:
             on_progress(index, total)
     return results

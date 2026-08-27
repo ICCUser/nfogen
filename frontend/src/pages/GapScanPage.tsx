@@ -62,6 +62,10 @@ export default function GapScanPage() {
   // resultats + scan incremental") -- l'utilisateur peut decocher pour
   // forcer un scan complet.
   const [incremental, setIncremental] = useState(true);
+  // Scan par categorie (retour utilisateur, 2026-08-27) : scanner Radarr et
+  // Sonarr separement, pour repartir la charge sur plusieurs sessions
+  // (limite C411 confirmee : 15 requetes/min).
+  const [only, setOnly] = useState<"" | "movies" | "series">("");
   const pollRef = useRef<number | null>(null);
 
   // Formulaire de configuration (Sonarr/Radarr/C411) : replie par defaut,
@@ -146,7 +150,7 @@ export default function GapScanPage() {
     setStarting(true);
     setError(null);
     try {
-      await gapscanRun(hasPreviousScan && incremental);
+      await gapscanRun(hasPreviousScan && incremental, only || undefined);
       // refreshStatus() demarre elle-meme le polling si l'etat est
       // "running" (voir plus haut) -- pas d'appel a startPolling() ici :
       // un scan deja termine au premier appel ne doit pas en declencher un
@@ -217,6 +221,17 @@ export default function GapScanPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <select
+            value={only}
+            onChange={(e) => setOnly(e.target.value as "" | "movies" | "series")}
+            disabled={starting || running}
+            aria-label="Bibliothèque à scanner"
+            className="rounded-md border border-line-strong bg-surface px-2 py-2 text-sm text-ink"
+          >
+            <option value="">Films + séries</option>
+            <option value="movies">Films seulement</option>
+            <option value="series">Séries seulement</option>
+          </select>
           {hasPreviousScan && (
             <label className="flex items-center gap-1.5 text-sm text-ink-dim" title="Reprend les titres déjà couverts et inchangés du dernier scan sans les réinterroger sur C411 — plus rapide.">
               <input
