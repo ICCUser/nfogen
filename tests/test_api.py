@@ -1236,6 +1236,34 @@ def test_gapscan_run_rejects_when_neither_sonarr_nor_radarr_configured(reload_ap
     assert resp.status_code == 400
 
 
+def test_gapscan_run_rejects_only_movies_when_radarr_not_configured(reload_api, monkeypatch):
+    """Bug reel trouve en audit (2026-08-27) : Sonarr seul configure +
+    `only=movies` faisait "reussir" un scan de 0 titre en silence (aucune
+    des deux bibliotheques n'etait interrogee), au lieu de signaler que
+    `only=movies` n'a pas de sens sans Radarr."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_SONARR_URL="http://sonarr.local", NFOGEN_SONARR_API_KEY="y",
+        NFOGEN_RADARR_URL=None,
+    )
+    _patch_gapscan_clients(monkeypatch, mod, sonarr_cls=_FakeGapscanSonarr)
+    client = TestClient(mod.app)
+    resp = client.post("/gapscan/run", params={"only": "movies"})
+    assert resp.status_code == 400
+
+
+def test_gapscan_run_rejects_only_series_when_sonarr_not_configured(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+        NFOGEN_SONARR_URL=None,
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+    resp = client.post("/gapscan/run", params={"only": "series"})
+    assert resp.status_code == 400
+
+
 def test_gapscan_run_then_status_then_results(reload_api, monkeypatch):
     mod = reload_api(
         NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",

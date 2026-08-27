@@ -25,8 +25,12 @@ jobs:
       - name: Installer la dependance systeme (libmediainfo)
         run: sudo apt-get update && sudo apt-get install -y libmediainfo0v5
 
-      - name: Installer nfogen (+ extras api et dev)
-        run: pip install -e ".[api,dev]"
+      # gapscan explicite (pas seulement api+dev) : les tests gapscan_*
+      # passaient jusqu'ici par coincidence (dev depend aussi de httpx),
+      # sans lien explicite avec l'extra qu'ils testent reellement --
+      # trouve en audit (2026-08-27).
+      - name: Installer nfogen (+ extras api, gapscan et dev)
+        run: pip install -e ".[api,gapscan,dev]"
 
       - name: Lint (ruff)
         run: ruff check .

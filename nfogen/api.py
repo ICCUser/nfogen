@@ -767,6 +767,27 @@ def gapscan_run(
     except (ValueError, C411Error, SonarrError, RadarrError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Bug reel trouve en audit (2026-08-27) : "au moins Sonarr OU Radarr
+    # configure" (verifie par _build_gapscan_clients) ne suffit pas quand
+    # `only` cible precisement celui qui MANQUE -- sans ce garde-fou, le
+    # scan "reussissait" en silence avec 0 titre traite.
+    if only == "movies" and radarr is None:
+        c411.close()
+        if sonarr is not None:
+            sonarr.close()
+        raise HTTPException(
+            status_code=400,
+            detail="only=movies demande, mais Radarr n'est pas configure.",
+        )
+    if only == "series" and sonarr is None:
+        c411.close()
+        if radarr is not None:
+            radarr.close()
+        raise HTTPException(
+            status_code=400,
+            detail="only=series demande, mais Sonarr n'est pas configure.",
+        )
+
     max_age_days = float(os.environ.get("NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS", "7"))
     max_age_seconds = max_age_days * 86400 if incremental else None
     started = gapscan_runner.start(

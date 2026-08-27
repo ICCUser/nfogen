@@ -461,16 +461,20 @@ Compare ta bibliothèque Sonarr/Radarr au catalogue C411 pour repérer les
 films/séries que tu possèdes mais qui ne sont pas (ou pas dans ta qualité)
 sur le tracker — candidats à uploader avec `nfogen`. Installé par défaut
 sur le déploiement natif (`scripts/install.sh` installe l'extra `gapscan`
-et configure `NFOGEN_GAPSCAN_CONFIG_FILE=/var/lib/nfogen/gapscan_config.json`) ;
-ailleurs, extra pip dédié (`pip install -e ".[api,gapscan]"`). Reste
-inactif (`GapScan` renvoie `501`) tant qu'aucune clé C411 n'est
-enregistrée. Configuration (URLs + clés Sonarr/Radarr/C411) modifiable à
-chaud depuis la page « Scan C411 » du frontend (`NFOGEN_GAPSCAN_CONFIG_FILE`
-requis, déjà réglé par `install.sh`), ou par variables d'environnement en
-lecture seule sinon (`NFOGEN_C411_API_KEY`, `NFOGEN_SONARR_URL`/`_API_KEY`,
-`NFOGEN_RADARR_URL`/`_API_KEY` — voir `.env.example`). Endpoints
-`/gapscan/*` protégés comme `/profiles/store*`. Détail complet (API
-Torznab C411, politique anti-doublon, architecture) : [GAPSCAN.md](GAPSCAN.md).
+et configure `NFOGEN_GAPSCAN_CONFIG_FILE`/`NFOGEN_GAPSCAN_RESULTS_FILE` sous
+`/var/lib/nfogen/`) ; **absent de l'image Docker** (`Dockerfile` n'installe
+que l'extra `api`) — `pip install -e ".[api,gapscan]"` pour l'activer
+ailleurs. `501` sur `/gapscan/*` si l'extra n'est pas installé (`httpx`
+manquant) ; `400` si l'extra est bien là mais qu'aucune clé C411/aucune
+instance Sonarr-Radarr n'est encore configurée (deux causes distinctes,
+pas le même message). Configuration (URLs + clés Sonarr/Radarr/C411)
+modifiable à chaud depuis la page « Scan C411 » du frontend
+(`NFOGEN_GAPSCAN_CONFIG_FILE` requis, déjà réglé par `install.sh`), ou par
+variables d'environnement en lecture seule sinon (`NFOGEN_C411_API_KEY`,
+`NFOGEN_SONARR_URL`/`_API_KEY`, `NFOGEN_RADARR_URL`/`_API_KEY` — voir
+`.env.example`). Endpoints `/gapscan/*` protégés comme `/profiles/store*`.
+Détail complet (API Torznab C411, politique anti-doublon, architecture,
+persistance/scan incrémental) : [GAPSCAN.md](GAPSCAN.md).
 
 ## Tests
 

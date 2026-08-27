@@ -63,6 +63,32 @@ C411. Historique détaillé des changements : `git log`.
   token invalide. Verifies utiles (pas vacuous) par mutation manuelle du
   code avant de les committer : cassage delibere de chaque chemin, test
   correspondant bien mis en echec, puis code restaure.
+- **`nfogen/api.py` (849 lignes, ~2,7x le fichier suivant) fait tout : auth,
+  comptes, profils, generation, GapScan** — decouper en `APIRouter` par
+  domaine (`gapscan_routes.py`, `profile_routes.py`...) serait plus lisible
+  a mesure que le fichier grossit. Pas fait dans la revue du 2026-08-27 :
+  changement structurel, pas un bug, a planifier separement plutot qu'en
+  passant.
+- **`GapScanPage.tsx` (471 lignes) concentre config Sonarr/Radarr/C411 +
+  lancement de scan + tableau de resultats** — memes raisons qu'au-dessus,
+  extraction de sous-composants a envisager si la page continue de
+  grossir. Pas fait dans la revue du 2026-08-27.
+- **`c411_matches` (les releases C411 concurrentes trouvees pour un titre)
+  n'est jamais affiche dans l'UI** — seuls des badges FL/2x agreges sont
+  visibles, pas le detail (quelle release exactement, sa resolution/ses
+  seeders). Remonte en revue du 2026-08-27, pas tranche : a confirmer si
+  c'est un manque reel ou un choix de simplicite assume.
+- **Le lien "Générer" par ligne de résultat GapScan ne préremplit rien** —
+  il existe (`GapScanPage.tsx`, chaque ligne) mais renvoie vers la page
+  Générer sans transmettre le titre/la qualité locale du gap. Remonte en
+  revue du 2026-08-27 : a clarifier si un prefill etait l'intention
+  d'origine ou si le lien est volontairement un simple raccourci de
+  navigation.
+- **Image Docker sans l'extra `gapscan`** (`Dockerfile` : `pip install
+  ".[api]"`, contrairement a `scripts/install.sh` qui installe
+  `[api,gapscan]`) — incoherence non documentee avant la revue du
+  2026-08-27 (corrigee dans le README, pas dans le comportement : a
+  decider si Docker doit aussi embarquer `gapscan` par defaut).
 
 ## Audit sécurité du 2026-06-28 (suite des alertes CodeQL)
 
@@ -263,3 +289,72 @@ Clôture des deux derniers constats de la revue technique.
   forcé sans condition ; erreur de connexion avalée silencieusement), test
   correspondant bien mis en échec dans les deux cas, code ensuite restauré
   à l'identique (`git diff` vide sur les deux fichiers de page).
+
+## Revue technique + fonctionnelle du 2026-08-27
+
+Revue générale demandée explicitement (pas déclenchée par un incident) :
+forces/faiblesses du projet + alignement fonctionnel (les fonctionnalités
+correspondent-elles au besoin réel ?). `pip-audit`/`npm audit` : 0 CVE sur
+les deux stacks. `ruff`/`oxlint`/`tsc -b`/`vite build` : tout au vert.
+
+**Revue de sécurité ciblée** — GapScan (`nfogen/gapscan*.py`,
+`c411_client.py`, `sonarr_client.py`, `radarr_client.py`, section GapScan
+de `api.py`) est le code le plus volumineux jamais ajouté depuis le
+dernier audit de sécurité complet (2026-08-25) et n'avait jamais reçu de
+revue dédiée. Passée en détail contre les catégories usuelles (injection,
+auth, SSRF, désérialisation, exposition de données) : **aucune
+vulnérabilité HIGH/MEDIUM trouvée**. Points vérifiés spécifiquement :
+parsing XML (`xml.etree.ElementTree`, pas de résolution d'entités externe
+par défaut — pas de XXE), reconstruction de `C411Release`/`GapResult`
+depuis le fichier persisté (`json.loads` + kwargs, jamais `pickle`/`eval`),
+clé API C411 jamais dans une URL journalisée (`_redact()`), clés
+Sonarr/Radarr transmises par en-tête (jamais dans une URL, donc jamais
+dans un message d'erreur `httpx`), export CSV (`title` provient de
+Sonarr/Radarr — donc de TMDB/TVDB, pas directement d'un upload C411 tiers
+— injection de formule jugée trop indirecte pour être retenue), aucune
+route ne réexpose les réponses brutes Sonarr/Radarr. `PUT /gapscan/config`
+laisse un admin déjà authentifié pointer les URLs Sonarr/Radarr/C411 où il
+veut : cohérent avec le reste de l'app (mêmes conditions qu'un `SSRF` par
+un admin de confiance ailleurs dans le projet), pas une vulnérabilité
+nouvelle.
+
+**Bugs concrets trouvés et corrigés dans la foulée** (petits, sans
+ambiguïté, appliqués directement sur `main`) :
+
+- **`POST /gapscan/run?only=movies` sans Radarr configuré (ou `only=series`
+  sans Sonarr) "réussissait" en silence avec 0 titre traité** au lieu de
+  signaler l'incohérence — `_build_gapscan_clients()` ne vérifiait que "au
+  moins un des deux", pas que celui demandé par `only` soit bien présent.
+  Corrigé : `400` explicite dans ce cas. Testé (RED confirmé avant
+  correctif).
+- **`.env.example` désynchronisé** : `NFOGEN_C411_MIN_INTERVAL_SECONDS`
+  affichait encore l'ancien défaut (2.0, remplacé par 4.5 la veille) avec
+  un commentaire obsolète ; `NFOGEN_GAPSCAN_RESULTS_FILE` et
+  `NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS` (ajoutés la veille aussi)
+  n'y figuraient pas du tout. Mis à jour.
+- **README.md conflait deux causes distinctes de blocage GapScan** :
+  "renvoie 501 tant qu'aucune clé C411 n'est enregistrée" — faux, `501`
+  signifie extra `gapscan` non installé (`httpx` manquant), `400` signifie
+  extra présent mais rien configuré. Corrigé, et l'absence de l'extra
+  `gapscan` dans l'image Docker (jamais mentionnée nulle part) documentée.
+- **CI installait `.[api,dev]`, jamais `.[api,gapscan,dev]`** — les tests
+  `gapscan_*` passaient par coïncidence (l'extra `dev` dépend aussi de
+  `httpx`, sans rapport voulu avec l'extra qu'ils exercent). Rendu
+  explicite dans `.github/workflows/ci.yml`.
+
+**Dette technique identifiée, pas traitée dans cette passe** (changement
+structurel plutôt que correctif ponctuel, ajoutée à "Idées / prochaines
+pistes" ci-dessus) : `nfogen/api.py` (849 lignes, toutes les routes sur un
+seul fichier plat) et `GapScanPage.tsx` (471 lignes, config + lancement +
+tableau dans un seul composant) sont les deux fichiers les plus gros du
+projet, de loin — candidats naturels à un découpage si le projet continue
+de grossir, mais aucun bug identifié dedans, pas urgent.
+
+**Alignement fonctionnel — questions ouvertes** (ajoutées à "Idées /
+prochaines pistes" ci-dessus, en attente de retour) : `c411_matches` (le
+détail des releases C411 concurrentes) n'est jamais affiché dans l'UI,
+seuls des badges agrégés le sont ; le lien "Générer" par ligne de résultat
+GapScan ne préremplit rien (titre/qualité) ; l'image Docker n'installe pas
+l'extra `gapscan` alors que le déploiement natif le fait par défaut. Aucun
+des trois n'est un bug — ce sont des choix de scope qui méritent d'être
+confirmés plutôt que supposés.
