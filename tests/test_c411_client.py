@@ -1,0 +1,236 @@
+"""Tests de nfogen.c411_client.
+
+Les fixtures `tests/fixtures/c411_*.xml` sont des reponses Torznab reelles
+de C411 (capturees le 2026-08-25 avec le scope "Torznab/RSS (lecture)"),
+tronquees a 3 items et avec la cle API redigee (`apikey=FAKE_KEY`).
+Aucun appel reseau reel dans ces tests.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import httpx
+import pytest
+
+from nfogen.c411_client import C411Client, C411Error, parse_torznab_response
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _read(name: str) -> str:
+    return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# Parsing pur (pas de reseau)
+# --------------------------------------------------------------------------- #
+def test_parse_movie_search_fixture():
+    releases = parse_torznab_response(_read("c411_movie_search.xml"))
+    assert len(releases) == 3
+    first = releases[0]
+    assert first.title.startswith("Matrix.COLLECTION")
+    assert first.category == "2030"
+    assert first.seeders == 147
+    assert first.download_volume_factor == 1.0
+    assert first.upload_volume_factor == 1.0
+
+
+def test_parse_movie_search_extracts_ids_when_present():
+    releases = parse_torznab_response(_read("c411_movie_search.xml"))
+    resurrections = next(r for r in releases if "Resurrections" in r.title)
+    assert resurrections.imdb_id == "tt10838180"
+    assert resurrections.tmdb_id == "624860"
+
+
+def test_parse_movie_search_ids_absent_is_not_an_error():
+    releases = parse_torznab_response(_read("c411_movie_search.xml"))
+    collection = next(r for r in releases if "COLLECTION" in r.title)
+    assert collection.imdb_id is None
+    assert collection.tmdb_id is None
+
+
+def test_release_quality_is_derived_from_title():
+    releases = parse_torznab_response(_read("c411_movie_search.xml"))
+    matrix_1999 = next(r for r in releases if r.title.startswith("Matrix.1999"))
+    assert matrix_1999.quality.resolution == 2160
+    assert matrix_1999.quality.source == "BLURAY"
+    assert matrix_1999.quality.languages == ["VFF"]
+
+
+def test_parse_tvsearch_fixture():
+    releases = parse_torznab_response(_read("c411_tvsearch.xml"))
+    assert len(releases) == 3
+    assert all(r.category == "5000" for r in releases)
+
+
+def test_freeleech_flags_default_to_normal():
+    releases = parse_torznab_response(_read("c411_movie_search.xml"))
+    assert all(not r.is_freeleech and not r.is_half_leech and not r.is_double_upload for r in releases)
+
+
+def test_parse_torznab_response_rejects_invalid_xml():
+    with pytest.raises(C411Error, match="illisible"):
+        parse_torznab_response("<not-xml")
+
+
+def test_parse_torznab_response_empty_channel_returns_empty_list():
+    header = _read("c411_movie_search.xml").split("<item>")[0]
+    assert parse_torznab_response(header + "</channel></rss>") == []
+
+
+# --------------------------------------------------------------------------- #
+# Client HTTP (transport mocke, aucun reseau)
+# --------------------------------------------------------------------------- #
+def _client_with_fixture(fixture_name: str, expected_params: dict[str, str] | None = None) -> C411Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if expected_params is not None:
+            for key, value in expected_params.items():
+                assert request.url.params.get(key) == value
+        assert request.url.params.get("apikey") == "test-key"
+        return httpx.Response(200, text=_read(fixture_name))
+
+    transport = httpx.MockTransport(handler)
+    return C411Client(api_key="test-key", http_client=httpx.Client(transport=transport))
+
+
+def test_search_movie_passes_ids_and_parses_results():
+    client = _client_with_fixture(
+        "c411_movie_search.xml", expected_params={"t": "movie", "imdbid": "tt0133093"}
+    )
+    releases = client.search_movie(imdb_id="tt0133093")
+    assert len(releases) == 3
+
+
+def test_search_tv_passes_season():
+    client = _client_with_fixture("c411_tvsearch.xml", expected_params={"t": "tvsearch", "season": "1"})
+    releases = client.search_tv(query="Breaking Bad", season=1)
+    assert len(releases) == 3
+
+
+def test_client_requires_api_key():
+    with pytest.raises(C411Error, match="[Cc]l[eé]"):
+        C411Client(api_key="")
+
+
+def test_client_wraps_http_errors():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="boom")
+
+    client = C411Client(api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(C411Error, match="echoue"):
+        client.search_movie(query="x")
+
+
+def test_error_message_never_contains_the_api_key():
+    """httpx inclut l'URL complete (avec ?apikey=...) dans le message
+    d'une erreur HTTP (ex. HTTPStatusError.__str__) : sans redaction, une
+    cle API reelle finit affichee telle quelle dans l'UI (GET
+    /gapscan/status) -- reproduit un vrai incident (cle exposee en clair
+    dans une reponse 520 de C411)."""
+    secret_key = "25a31a6e545d4f8bf244ce44f717aac2064bfa26895297df1e5e430bf9b1c203"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(520, text="")
+
+    client = C411Client(
+        api_key=secret_key, http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    with pytest.raises(C411Error) as excinfo:
+        client.search_movie(imdb_id="tt10548174", tmdb_id="1100988")
+
+    assert secret_key not in str(excinfo.value)
+
+
+# --------------------------------------------------------------------------- #
+# 429 Too Many Requests : incident reel en test manuel (l'intervalle par
+# defaut etait trop agressif) -- un seul reessai apres Retry-After plutot
+# que d'abandonner immediatement.
+# --------------------------------------------------------------------------- #
+def test_retries_once_after_429_then_succeeds():
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"Retry-After": "3"})
+        return httpx.Response(200, text=_read("c411_movie_search.xml"))
+
+    client = C411Client(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    sleeps: list[float] = []
+    client._sleep = sleeps.append  # type: ignore[attr-defined]
+
+    releases = client.search_movie(query="x")
+
+    assert len(releases) == 3
+    assert len(calls) == 2  # 1 echec + 1 reessai
+    assert sleeps == [3.0]  # respecte Retry-After
+
+
+def test_gives_up_after_a_second_429():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"Retry-After": "1"})
+
+    client = C411Client(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    client._sleep = lambda _seconds: None  # type: ignore[attr-defined]
+
+    with pytest.raises(C411Error, match="echoue"):
+        client.search_movie(query="x")
+
+
+def test_retry_after_defaults_when_header_absent_or_invalid():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429)  # pas d'en-tete Retry-After
+
+    client = C411Client(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    sleeps: list[float] = []
+    client._sleep = sleeps.append  # type: ignore[attr-defined]
+
+    with pytest.raises(C411Error):
+        client.search_movie(query="x")
+
+    assert sleeps == [5.0]  # valeur par defaut prudente
+
+
+# --------------------------------------------------------------------------- #
+# Limitation de debit (GAPSCAN.md, section "Execution" : un scan complet
+# peut interroger des centaines de titres -- respectueux de l'API C411).
+# --------------------------------------------------------------------------- #
+def test_min_interval_disabled_by_default():
+    """Par defaut (min_interval_seconds=0), aucune pause -- ne ralentit pas
+    les usages existants (ex. un simple appel manuel) sans configuration
+    explicite."""
+    sleeps: list[float] = []
+    client = _client_with_fixture("c411_movie_search.xml")
+    client._sleep = sleeps.append  # type: ignore[attr-defined]
+
+    client.search_movie(query="x")
+    client.search_movie(query="x")
+
+    assert sleeps == []
+
+
+def test_min_interval_sleeps_between_consecutive_calls():
+    sleeps: list[float] = []
+    times = iter([100.0, 100.1])  # 1er appel a t=100.0, 2e a t=100.1 (0.1s ecoule)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=_read("c411_movie_search.xml"))
+
+    client = C411Client(
+        api_key="test-key",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        min_interval_seconds=0.5,
+    )
+    client._sleep = sleeps.append  # type: ignore[attr-defined]
+    client._time = lambda: next(times)  # type: ignore[attr-defined]
+
+    client.search_movie(query="x")  # pas de pause : premier appel
+    client.search_movie(query="x")  # 0.1s ecoule depuis, il en manque 0.4
+
+    assert sleeps == [pytest.approx(0.4)]

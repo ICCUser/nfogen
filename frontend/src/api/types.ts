@@ -84,3 +84,85 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+
+// --------------------------------------------------------------------------- //
+// GapScan (nfogen/gapscan.py, voir GAPSCAN.md) : comparateur bibliotheque
+// locale (Sonarr/Radarr) <-> catalogue C411. Types miroir des dataclasses
+// Python (dataclasses.asdict cote serveur, memes noms de champs).
+// --------------------------------------------------------------------------- //
+export type GapStatus = "absent" | "quality_gap" | "language_gap" | "covered" | "error";
+
+export interface ReleaseQuality {
+  raw: string;
+  resolution: number | null;
+  source: string | null;
+  codec: string | null;
+  languages: string[];
+  multi: boolean;
+  pure: boolean;
+}
+
+export interface C411Match {
+  title: string;
+  guid: string;
+  link: string;
+  size: number | null;
+  seeders: number | null;
+  peers: number | null;
+  grabs: number | null;
+  category: string | null;
+  infohash: string | null;
+  imdb_id: string | null;
+  tmdb_id: string | null;
+  download_volume_factor: number;
+  upload_volume_factor: number;
+  pub_date: string | null;
+  quality: ReleaseQuality;
+}
+
+export interface GapResult {
+  media_type: "movie" | "series";
+  title: string;
+  year: number | null;
+  season_number: number | null;
+  imdb_id: string | null;
+  tmdb_id: string | null;
+  tvdb_id: number | null;
+  status: GapStatus;
+  local_quality: ReleaseQuality;
+  c411_matches: C411Match[];
+  has_freeleech_alternative: boolean;
+  has_double_upload_window: boolean;
+  /** Detail si status === "error" (C411 injoignable pour ce titre), sinon null. */
+  error: string | null;
+}
+
+export type GapscanState = "idle" | "running" | "done" | "error";
+
+export interface GapscanStatus {
+  state: GapscanState;
+  total: number;
+  processed: number;
+  started_at: number | null;
+  finished_at: number | null;
+  error: string | null;
+}
+
+export interface GapscanConfig {
+  c411_configured: boolean;
+  c411_base_url: string | null;
+  sonarr_configured: boolean;
+  sonarr_url: string | null;
+  radarr_configured: boolean;
+  radarr_url: string | null;
+}
+
+/** PUT /gapscan/config : chaque champ omis reste inchange cote serveur. */
+export interface GapscanConfigWrite {
+  c411_api_key?: string;
+  c411_base_url?: string;
+  sonarr_url?: string;
+  sonarr_api_key?: string;
+  radarr_url?: string;
+  radarr_api_key?: string;
+}

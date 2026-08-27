@@ -13,11 +13,11 @@ export default function AliasesField({ value, onChange }: Props) {
 
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-500">
+      <label className="block text-xs font-medium text-ink-faint">
         Alias (JSON, optionnel — ex. {'{"x264":["avc"]}'})
       </label>
       <textarea
-        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+        className="mt-1 w-full rounded border border-line-strong bg-surface px-2 py-1 font-mono text-xs text-ink"
         rows={2}
         value={text}
         onChange={(e) => {
@@ -31,7 +31,7 @@ export default function AliasesField({ value, onChange }: Props) {
           }
         }}
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-crit">{error}</p>}
     </div>
   );
 }

@@ -9,3 +9,8 @@ __pycache__/
 # Fixtures de test video reelles : trop volumineuses pour Git (plusieurs Go)
 # et potentiellement soumises au droit d'auteur. Restent en local uniquement.
 tests/Video test/
+
+# Secrets locaux (cles API C411/Sonarr/Radarr, etc.) : jamais commit.
+.env
+.env.local
+.superpowers/

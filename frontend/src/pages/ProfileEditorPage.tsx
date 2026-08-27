@@ -116,16 +116,16 @@ export default function ProfileEditorPage({ mode }: Props) {
     }
   }
 
-  if (loading) return <p className="text-sm text-slate-500">Chargement…</p>;
+  if (loading) return <p className="text-sm text-ink-faint">Chargement…</p>;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <label className="block text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-ink-dim">
             Nom du profil
             <input
-              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="mt-1 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
               value={name}
               disabled={mode === "edit"}
               onChange={(e) => setName(e.target.value)}
@@ -139,14 +139,14 @@ export default function ProfileEditorPage({ mode }: Props) {
               <button
                 type="button"
                 onClick={exportZip}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100"
+                className="rounded-md border border-line-strong px-3 py-2 text-sm text-ink hover:bg-surface-2"
               >
                 Exporter .zip
               </button>
               <button
                 type="button"
                 onClick={remove}
-                className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+                className="rounded-md border border-crit px-3 py-2 text-sm text-crit hover:bg-crit-bg"
               >
                 Supprimer
               </button>
@@ -155,7 +155,7 @@ export default function ProfileEditorPage({ mode }: Props) {
           <button
             type="button"
             onClick={() => importInputRef.current?.click()}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100"
+            className="rounded-md border border-line-strong px-3 py-2 text-sm text-ink hover:bg-surface-2"
           >
             Importer .zip
           </button>
@@ -174,7 +174,7 @@ export default function ProfileEditorPage({ mode }: Props) {
             type="button"
             onClick={save}
             disabled={saving}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Enregistrement…" : "Enregistrer"}
           </button>
@@ -182,26 +182,26 @@ export default function ProfileEditorPage({ mode }: Props) {
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           {error}
         </div>
       )}
       {notice && (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="rounded-md border border-good bg-good-bg px-4 py-3 text-sm text-good">
           {notice}
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex gap-1 border-b border-line">
         {CATEGORIES.map((c) => (
           <button
             key={c}
             type="button"
             onClick={() => setCategory(c)}
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 font-mono text-sm font-medium ${
               category === c
-                ? "border-b-2 border-slate-900 text-slate-900"
-                : "text-slate-500 hover:text-slate-700"
+                ? "border-b-2 border-accent text-ink"
+                : "text-ink-faint hover:text-ink-dim"
             }`}
           >
             {c}
@@ -216,7 +216,7 @@ export default function ProfileEditorPage({ mode }: Props) {
             type="button"
             onClick={() => setTab(t)}
             className={`rounded-md px-3 py-1.5 text-sm ${
-              tab === t ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              tab === t ? "bg-accent text-surface" : "bg-surface-2 text-ink-dim hover:bg-line"
             }`}
           >
             {t === "rules" ? "Règles" : t === "templates" ? "Template" : "Aperçu"}
@@ -224,7 +224,7 @@ export default function ProfileEditorPage({ mode }: Props) {
         ))}
       </div>
 
-      <div className="rounded-md border border-slate-200 bg-white p-4">
+      <div className="rounded-md border border-line bg-surface p-4">
         {tab === "rules" && (
           <CategoryRulesForm
             rules={rules[category] ?? {}}
@@ -241,7 +241,7 @@ export default function ProfileEditorPage({ mode }: Props) {
           <PreviewPanel profile={params.name} category={category} />
         )}
         {tab === "preview" && mode === "create" && (
-          <p className="text-sm text-slate-500">Enregistrez d'abord le profil pour pouvoir le tester.</p>
+          <p className="text-sm text-ink-faint">Enregistrez d'abord le profil pour pouvoir le tester.</p>
         )}
       </div>
     </div>

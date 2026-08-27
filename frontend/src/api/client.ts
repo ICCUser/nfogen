@@ -1,5 +1,9 @@
 import { getBaseUrl } from "./settings";
 import type {
+  GapResult,
+  GapscanConfig,
+  GapscanConfigWrite,
+  GapscanStatus,
   GenerateResult,
   ManagedProfile,
   NameProposal,
@@ -258,4 +262,58 @@ export function downloadAsFile(nfo: string, filename: string): void {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Meme mecanisme que `downloadAsFile`, mais a partir d'un Blob deja
+ * recupere (export CSV, voir `gapscanExportCsv`) plutot que d'une chaine. */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// --------------------------------------------------------------------------- //
+// GapScan (voir GAPSCAN.md) : comparateur bibliotheque locale <-> C411.
+// Configuration exclusivement par variables d'environnement cote serveur
+// (jamais via l'API, comme NFOGEN_API_TOKEN) : pas de fonction d'ecriture
+// ici, seulement lecture de l'etat de configuration.
+// --------------------------------------------------------------------------- //
+export function gapscanConfig(): Promise<GapscanConfig> {
+  return request<GapscanConfig>("/gapscan/config");
+}
+
+/** Enregistre cote serveur (fichier NFOGEN_GAPSCAN_CONFIG_FILE) : seuls les
+ * champs fournis changent, les autres restent inchanges. Les cles ne sont
+ * jamais renvoyees, meme dans la reponse de cet appel. */
+export function gapscanConfigWrite(fields: GapscanConfigWrite): Promise<GapscanConfig> {
+  return request<GapscanConfig>("/gapscan/config", { method: "PUT", body: JSON.stringify(fields) });
+}
+
+/** `incremental` : reprend les titres deja couverts et inchanges du
+ * dernier scan sans les reinterroger sur C411 (voir GAPSCAN.md, section
+ * "Persistance des resultats + scan incremental"). */
+export function gapscanRun(incremental = false): Promise<{ status: string }> {
+  const qs = incremental ? "?incremental=true" : "";
+  return request(`/gapscan/run${qs}`, { method: "POST" });
+}
+
+export function gapscanStatus(): Promise<GapscanStatus> {
+  return request<GapscanStatus>("/gapscan/status");
+}
+
+export function gapscanResults(statusFilter?: string): Promise<GapResult[]> {
+  const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
+  return request<GapResult[]>(`/gapscan/results${qs}`);
+}
+
+export async function gapscanExportCsv(statusFilter?: string): Promise<Blob> {
+  const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
+  const resp = await safeFetch(`${getBaseUrl()}/gapscan/results/export.csv${qs}`, {
+    credentials: "include",
+  });
+  if (!resp.ok) throw new ApiError(resp.status, resp.statusText);
+  return resp.blob();
 }

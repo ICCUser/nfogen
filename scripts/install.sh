@@ -140,10 +140,12 @@ rsync -a --delete \
     "${REPO_DIR}/" "${INSTALL_DIR}/"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
-echo "==> Environnement Python (venv dedie + nfogen[api])"
+echo "==> Environnement Python (venv dedie + nfogen[api,gapscan])"
 run_as_nfogen python3 -m venv "${INSTALL_DIR}/.venv"
 run_as_nfogen "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir --upgrade pip
-run_as_nfogen "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir "${INSTALL_DIR}[api]"
+# gapscan (httpx) : leger, installe par defaut -- GapScan reste inactif
+# (501) tant que NFOGEN_C411_API_KEY n'est pas configuree (voir GAPSCAN.md).
+run_as_nfogen "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir "${INSTALL_DIR}[api,gapscan]"
 
 echo "==> Build du frontend (npm ci && npm run build)"
 run_as_nfogen npm --prefix "${INSTALL_DIR}/frontend" ci
@@ -165,6 +167,23 @@ NFOGEN_FRONTEND_DIST=${INSTALL_DIR}/frontend/dist
 EOF
 else
     echo "    ${ENV_FILE} existe deja : conserve tel quel (token non regenere)"
+fi
+# Ajoute uniquement si absent (jamais si deja present, meme avec une autre
+# valeur) : contrairement a NFOGEN_DOMAIN/NFOGEN_LOCAL_TLS ci-dessous (mode
+# explicitement choisi a chaque execution), GapScan doit garder la valeur
+# de l'admin s'il l'a personnalisee -- fonctionne aussi bien sur une
+# premiere installation qu'une mise a jour d'un ${ENV_FILE} deja existant.
+if [[ -f "${ENV_FILE}" ]] && ! grep -q "^NFOGEN_GAPSCAN_CONFIG_FILE=" "${ENV_FILE}"; then
+    echo "" >> "${ENV_FILE}"
+    echo "# GapScan (voir GAPSCAN.md) : URLs/cles Sonarr/Radarr/C411 enregistrables" >> "${ENV_FILE}"
+    echo "# a chaud depuis la page \"Scan C411\" (PUT /gapscan/config)." >> "${ENV_FILE}"
+    echo "NFOGEN_GAPSCAN_CONFIG_FILE=${DATA_DIR}/gapscan_config.json" >> "${ENV_FILE}"
+fi
+# Meme principe : le dernier scan termine survit desormais a un redemarrage
+# du service (ex. cette meme commande update.sh) au lieu d'etre perdu et de
+# forcer un rescan complet -- retour utilisateur, 2026-08-26.
+if [[ -f "${ENV_FILE}" ]] && ! grep -q "^NFOGEN_GAPSCAN_RESULTS_FILE=" "${ENV_FILE}"; then
+    echo "NFOGEN_GAPSCAN_RESULTS_FILE=${DATA_DIR}/gapscan_results.json" >> "${ENV_FILE}"
 fi
 _set_env_var NFOGEN_DOMAIN "${NFOGEN_DOMAIN}" "${ENV_FILE}"
 _set_env_var NFOGEN_LOCAL_TLS "${NFOGEN_LOCAL_TLS}" "${ENV_FILE}"

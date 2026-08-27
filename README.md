@@ -455,6 +455,23 @@ préférez la gestion déclarative ci-dessus : voir
 Pour une catégorie hors de ces cinq, réutilisez le renderer d'une catégorie
 proche (comme fait le profil C411 fourni).
 
+## GapScan (optionnel)
+
+Compare ta bibliothèque Sonarr/Radarr au catalogue C411 pour repérer les
+films/séries que tu possèdes mais qui ne sont pas (ou pas dans ta qualité)
+sur le tracker — candidats à uploader avec `nfogen`. Installé par défaut
+sur le déploiement natif (`scripts/install.sh` installe l'extra `gapscan`
+et configure `NFOGEN_GAPSCAN_CONFIG_FILE=/var/lib/nfogen/gapscan_config.json`) ;
+ailleurs, extra pip dédié (`pip install -e ".[api,gapscan]"`). Reste
+inactif (`GapScan` renvoie `501`) tant qu'aucune clé C411 n'est
+enregistrée. Configuration (URLs + clés Sonarr/Radarr/C411) modifiable à
+chaud depuis la page « Scan C411 » du frontend (`NFOGEN_GAPSCAN_CONFIG_FILE`
+requis, déjà réglé par `install.sh`), ou par variables d'environnement en
+lecture seule sinon (`NFOGEN_C411_API_KEY`, `NFOGEN_SONARR_URL`/`_API_KEY`,
+`NFOGEN_RADARR_URL`/`_API_KEY` — voir `.env.example`). Endpoints
+`/gapscan/*` protégés comme `/profiles/store*`. Détail complet (API
+Torznab C411, politique anti-doublon, architecture) : [GAPSCAN.md](GAPSCAN.md).
+
 ## Tests
 
 ```bash

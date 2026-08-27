@@ -26,7 +26,9 @@ Routes :
 """
 from __future__ import annotations
 
+import csv
 import hmac
+import io
 import json
 import logging
 import os
@@ -34,6 +36,7 @@ import secrets
 import tempfile
 import threading
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, NamedTuple, Optional
 
@@ -46,6 +49,19 @@ from pydantic import BaseModel
 from . import accounts, engine, profile_store
 from .accounts import AccountsError
 from .profile_store import ProfileStoreError
+
+# GapScan : extra optionnel (pip install nfogen[gapscan]), pas une
+# dependance dure de l'API -- une install nfogen[api] seule (sans httpx)
+# doit continuer a demarrer normalement, /gapscan/* renvoie alors 501.
+try:
+    from . import gapscan_config_store, gapscan_runner
+    from .c411_client import C411Client, C411Error
+    from .radarr_client import RadarrClient, RadarrError
+    from .sonarr_client import SonarrClient, SonarrError
+
+    _GAPSCAN_AVAILABLE = True
+except ImportError:
+    _GAPSCAN_AVAILABLE = False
 
 logger = logging.getLogger("nfogen.api")
 
@@ -643,6 +659,156 @@ async def import_managed_profile(name: str, file: UploadFile = File(...)) -> dic
     content = b"".join(chunks)
     _run_store(profile_store.import_profile_zip, name, content)
     return {"status": "ok", "name": name}
+
+
+# --------------------------------------------------------------------------- #
+# GapScan (voir GAPSCAN.md) : compare la bibliotheque locale (Sonarr/Radarr)
+# au catalogue C411 pour identifier des candidats a l'upload. Protege comme
+# /profiles/store* (meme modele -- require_token). Configuration
+# (URLs + cles Sonarr/Radarr/C411) geree par gapscan_config_store.py :
+# fichier optionnel (NFOGEN_GAPSCAN_CONFIG_FILE, modifiable a chaud via
+# PUT /gapscan/config), repli sur les variables d'environnement historiques
+# sinon. Contrairement a NFOGEN_API_TOKEN (jamais de PUT, boot-time
+# uniquement), ce sont des identifiants SORTANTS vers des services tiers :
+# l'admin doit pouvoir les changer sans redemarrer nfogen. Un seul scan a
+# la fois (gapscan_runner.py), execute en tache de fond (peut prendre
+# plusieurs minutes sur une grosse bibliotheque).
+# --------------------------------------------------------------------------- #
+def _require_gapscan_available() -> None:
+    if not _GAPSCAN_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="GapScan necessite l'extra optionnel : pip install nfogen[gapscan]",
+        )
+
+
+@app.get("/gapscan/config", dependencies=[Depends(require_token)])
+def gapscan_config() -> dict[str, Any]:
+    """Jamais les cles elles-memes, seulement si chaque service est
+    configure (+ son URL, non sensible) -- meme principe que /auth/status
+    pour NFOGEN_API_TOKEN."""
+    _require_gapscan_available()
+    return gapscan_config_store.status()
+
+
+class GapscanConfigWriteRequest(BaseModel):
+    c411_api_key: Optional[str] = None
+    c411_base_url: Optional[str] = None
+    sonarr_url: Optional[str] = None
+    sonarr_api_key: Optional[str] = None
+    radarr_url: Optional[str] = None
+    radarr_api_key: Optional[str] = None
+
+
+@app.put("/gapscan/config", dependencies=[Depends(require_token)])
+def gapscan_config_write(req: GapscanConfigWriteRequest) -> dict[str, Any]:
+    """Met a jour uniquement les champs fournis (les autres restent
+    inchanges) -- voir gapscan_config_store.write()."""
+    _require_gapscan_available()
+    try:
+        gapscan_config_store.write(**req.model_dump())
+    except gapscan_config_store.GapscanConfigStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return gapscan_config_store.status()
+
+
+def _build_gapscan_clients() -> tuple[Any, Any, Any]:
+    """Construit les clients GapScan depuis gapscan_config_store (fichier ou
+    environnement). Leve ValueError (-> 400) si la configuration
+    necessaire manque."""
+    c411_config = gapscan_config_store.effective_c411()
+    if c411_config is None:
+        raise ValueError(
+            "Cle API C411 non configuree (NFOGEN_C411_API_KEY, ou PUT /gapscan/config) : "
+            "voir GAPSCAN.md."
+        )
+    c411_key, c411_base_url = c411_config
+    # Limites exactes de l'API C411 non documentees publiquement (cf.
+    # GAPSCAN.md). 0.5s a declenche un 429 en test manuel (2026-08-25) :
+    # 2s par defaut desormais, plus prudent. Ajustable si besoin.
+    min_interval = float(os.environ.get("NFOGEN_C411_MIN_INTERVAL_SECONDS", "2.0"))
+    c411 = C411Client(
+        c411_key, base_url=c411_base_url.rstrip("/") + "/api", min_interval_seconds=min_interval
+    )
+
+    sonarr_config = gapscan_config_store.effective_sonarr()
+    sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
+
+    radarr_config = gapscan_config_store.effective_radarr()
+    radarr = RadarrClient(*radarr_config) if radarr_config else None
+
+    if sonarr is None and radarr is None:
+        c411.close()
+        raise ValueError(
+            "Aucune instance Sonarr ni Radarr configuree "
+            "(NFOGEN_SONARR_URL/_API_KEY et/ou NFOGEN_RADARR_URL/_API_KEY, ou PUT /gapscan/config)."
+        )
+    return c411, sonarr, radarr
+
+
+@app.post("/gapscan/run", dependencies=[Depends(require_token)])
+def gapscan_run(incremental: bool = Query(False)) -> dict[str, str]:
+    """`incremental=true` : reutilise les resultats du dernier scan pour les
+    titres deja couverts et inchanges localement, au lieu de tout
+    reinterroger C411 -- voir gapscan_runner.start()."""
+    _require_gapscan_available()
+    try:
+        c411, sonarr, radarr = _build_gapscan_clients()
+    except (ValueError, C411Error, SonarrError, RadarrError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    started = gapscan_runner.start(c411, radarr=radarr, sonarr=sonarr, incremental=incremental)
+    if not started:
+        c411.close()
+        if sonarr is not None:
+            sonarr.close()
+        if radarr is not None:
+            radarr.close()
+        raise HTTPException(status_code=409, detail="Un scan GapScan est deja en cours.")
+    return {"status": "started"}
+
+
+@app.get("/gapscan/status", dependencies=[Depends(require_token)])
+def gapscan_status() -> dict[str, Any]:
+    _require_gapscan_available()
+    return gapscan_runner.status()
+
+
+@app.get("/gapscan/results", dependencies=[Depends(require_token)])
+def gapscan_results(status: Optional[str] = Query(None)) -> list[dict[str, Any]]:
+    _require_gapscan_available()
+    return [asdict(r) for r in gapscan_runner.results(status_filter=status)]
+
+
+_CSV_COLUMNS = [
+    "media_type", "title", "year", "season_number", "status",
+    "imdb_id", "tmdb_id", "tvdb_id",
+    "local_resolution", "local_source", "local_languages",
+    "has_freeleech_alternative", "has_double_upload_window", "error",
+]
+
+
+@app.get("/gapscan/results/export.csv", dependencies=[Depends(require_token)])
+def gapscan_results_export_csv(status: Optional[str] = Query(None)) -> Response:
+    _require_gapscan_available()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(_CSV_COLUMNS)
+    for r in gapscan_runner.results(status_filter=status):
+        writer.writerow(
+            [
+                r.media_type, r.title, r.year, r.season_number, r.status.value,
+                r.imdb_id, r.tmdb_id, r.tvdb_id,
+                r.local_quality.resolution, r.local_quality.source,
+                "+".join(r.local_quality.languages),
+                r.has_freeleech_alternative, r.has_double_upload_window, r.error or "",
+            ]
+        )
+    return Response(
+        buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="gapscan.csv"'},
+    )
 
 
 # Frontend builde, optionnel (NFOGEN_FRONTEND_DIST) : enregistre en dernier,
