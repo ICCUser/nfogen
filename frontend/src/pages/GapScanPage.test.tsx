@@ -174,7 +174,7 @@ describe("GapScanPage", () => {
     expect(screen.queryByText("Scan rapide")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
-    expect(gapscanRun).toHaveBeenCalledWith(false);
+    expect(gapscanRun).toHaveBeenCalledWith(false, undefined);
   });
 
   it("scan precedent disponible : case 'Scan rapide' cochee par defaut, scan lance en mode incremental", async () => {
@@ -189,7 +189,7 @@ describe("GapScanPage", () => {
     expect(checkbox).toBeChecked();
 
     await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
-    expect(gapscanRun).toHaveBeenCalledWith(true);
+    expect(gapscanRun).toHaveBeenCalledWith(true, undefined);
   });
 
   it("scan precedent disponible : decocher 'Scan rapide' force un scan complet", async () => {
@@ -204,6 +204,19 @@ describe("GapScanPage", () => {
     await user.click(checkbox);
     await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
 
-    expect(gapscanRun).toHaveBeenCalledWith(false);
+    expect(gapscanRun).toHaveBeenCalledWith(false, undefined);
+  });
+
+  it("selectionner 'Films seulement' passe only='movies' a gapscanRun", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });
+
+    renderPage();
+    await screen.findByRole("button", { name: "Lancer un scan" });
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Bibliothèque à scanner" }), "movies");
+    await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
+
+    expect(gapscanRun).toHaveBeenCalledWith(false, "movies");
   });
 });

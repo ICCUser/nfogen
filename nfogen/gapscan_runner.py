@@ -102,6 +102,8 @@ def _run(
     radarr: Optional[RadarrClient],
     sonarr: Optional[SonarrClient],
     previous_results: Optional[list[GapResult]],
+    only: Optional[str],
+    max_age_seconds: Optional[float],
 ) -> None:
     global _results
     try:
@@ -112,7 +114,7 @@ def _run(
 
         collected = run_gapscan(
             c411, radarr=radarr, sonarr=sonarr, on_progress=on_progress,
-            previous_results=previous_results,
+            previous_results=previous_results, only=only, max_age_seconds=max_age_seconds,
         )
         sorted_results = sort_by_priority(collected)
         with _lock:
@@ -138,6 +140,8 @@ def start(
     radarr: Optional[RadarrClient] = None,
     sonarr: Optional[SonarrClient] = None,
     incremental: bool = False,
+    only: Optional[str] = None,
+    max_age_seconds: Optional[float] = None,
 ) -> bool:
     """Lance un scan en tache de fond avec des clients deja construits.
     `False` si un scan est deja en cours (un seul a la fois) -- les clients
@@ -148,7 +152,13 @@ def start(
     persistes, voir _restore_persisted) pour les titres deja COVERED et
     dont la qualite locale n'a pas change -- evite de tout rescanner a
     chaque fois (retour utilisateur, 2026-08-26). `False` par defaut : scan
-    complet, comportement historique."""
+    complet, comportement historique. `max_age_seconds` : au-dela de cet
+    age, un COVERED est reverifie meme en mode incremental (retour
+    utilisateur, 2026-08-27 : C411 retire/ajoute des torrents assez
+    souvent) -- ignore si `incremental` est faux.
+
+    `only` ("movies"/"series"/None) : ne scanne qu'une des deux
+    bibliotheques -- pour repartir la charge sur plusieurs sessions."""
     with _lock:
         if _progress.state == ScanState.RUNNING:
             return False
@@ -160,7 +170,9 @@ def start(
         _progress.total = 0
         _progress.processed = 0
     thread = threading.Thread(
-        target=_run, args=(c411, radarr, sonarr, previous_results), daemon=True
+        target=_run,
+        args=(c411, radarr, sonarr, previous_results, only, max_age_seconds),
+        daemon=True,
     )
     thread.start()
     return True

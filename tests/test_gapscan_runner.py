@@ -17,6 +17,7 @@ import pytest
 from nfogen import gapscan_runner
 from nfogen.c411_client import C411Release
 from nfogen.radarr_client import RadarrMovieFile
+from nfogen.sonarr_client import SonarrSeasonFile
 
 
 @pytest.fixture(autouse=True)
@@ -53,11 +54,27 @@ class FakeRadarr:
     movies: list[RadarrMovieFile]
     closed: bool = False
     gate: Optional[threading.Event] = None  # si pose, bloque jusqu'au signal (test de concurrence)
+    called: bool = False
 
     def list_movie_files(self):
+        self.called = True
         if self.gate is not None:
             self.gate.wait(timeout=5)
         return self.movies
+
+    def close(self):
+        self.closed = True
+
+
+@dataclass
+class FakeSonarr:
+    seasons: list[SonarrSeasonFile]
+    closed: bool = False
+    called: bool = False
+
+    def list_season_files(self):
+        self.called = True
+        return self.seasons
 
     def close(self):
         self.closed = True
@@ -222,6 +239,31 @@ def test_start_with_incremental_reuses_covered_results_from_last_scan():
     assert gapscan_runner.results()[0].status.value == "covered"
 
 
+def test_start_with_only_movies_skips_sonarr_entirely():
+    """`only=` (retour utilisateur, 2026-08-27) : permet de scanner Radarr et
+    Sonarr separement, meme quand les deux sont configures."""
+    radarr = FakeRadarr(movies=[_movie()])
+    sonarr = FakeSonarr(seasons=[])
+
+    gapscan_runner.start(FakeC411(), radarr=radarr, sonarr=sonarr, only="movies")
+    _wait_until_not_running()
+
+    assert radarr.called is True
+    assert sonarr.called is False
+    assert sonarr.closed is True  # ferme quand meme, meme si jamais interroge
+
+
+def test_start_with_only_series_skips_radarr_entirely():
+    radarr = FakeRadarr(movies=[_movie()])
+    sonarr = FakeSonarr(seasons=[])
+
+    gapscan_runner.start(FakeC411(), radarr=radarr, sonarr=sonarr, only="series")
+    _wait_until_not_running()
+
+    assert radarr.called is False
+    assert sonarr.called is True
+
+
 def test_start_without_incremental_rescans_everything():
     """Vaut confirmation que `incremental` est bien un opt-in explicite (le
     scan complet, par defaut, reste le comportement historique)."""
@@ -240,3 +282,25 @@ def test_start_without_incremental_rescans_everything():
     _wait_until_not_running()
 
     assert gapscan_runner.results()[0].status.value == "absent"
+
+
+def test_start_with_incremental_and_max_age_reverifies_a_stale_covered_result():
+    """`max_age_seconds` (retour utilisateur, 2026-08-27 : C411 retire et
+    ajoute des torrents assez souvent) atteint via start() -- bout en bout."""
+    movie = RadarrMovieFile(
+        movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
+    )
+    c411_first = FakeC411(
+        movie_results=[C411Release(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+    )
+    gapscan_runner.start(c411_first, radarr=FakeRadarr(movies=[movie]))
+    _wait_until_not_running()
+    assert gapscan_runner.results()[0].status.value == "covered"
+
+    c411_second = FakeC411(movie_results=[])
+    gapscan_runner.start(
+        c411_second, radarr=FakeRadarr(movies=[movie]), incremental=True, max_age_seconds=0.0
+    )
+    _wait_until_not_running()
+
+    assert gapscan_runner.results()[0].status.value == "absent"  # reverifie, plus repris tel quel

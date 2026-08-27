@@ -89,6 +89,26 @@ def test_season_zero_specials_are_excluded():
     assert len(seasons) == 2  # S01/S02 uniquement, cf. test precedent
 
 
+def test_list_season_files_exposes_alternate_titles():
+    """C411 liste parfois une serie sous son titre de diffusion FR,
+    different de l'original (ex. "White Collar" -> "FBI, duo tres special")
+    -- utilise en repli par gapscan.py (retour utilisateur, 2026-08-27)."""
+    series_with_alt = [
+        {
+            **SERIES[0],
+            "alternateTitles": [{"title": "FBI, duo tres special"}, {"title": ""}, {"sceneOrigin": "x"}],
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=series_with_alt)
+        return httpx.Response(200, json=EPISODE_FILES)
+
+    seasons = _client(handler).list_season_files()
+    assert seasons[0].alternate_titles == ["FBI, duo tres special"]
+
+
 def test_series_without_episode_files_produces_no_season():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/series":
