@@ -37,7 +37,7 @@ api = [
     "uvicorn[standard]>=0.29",
     "python-multipart>=0.0.9",  # upload de fichiers via HTTP
 ]
-dev = ["pytest>=8.0", "ruff>=0.4", "httpx2"]  # httpx2 : requis par starlette.testclient (versions recentes)
+dev = ["pytest>=8.0", "ruff>=0.4", "httpx"]  # httpx : requis par starlette.testclient (versions recentes)
 
 [project.scripts]
 nfogen = "nfogen.cli:main"
