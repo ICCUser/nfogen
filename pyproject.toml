@@ -40,7 +40,8 @@ api = [
 gapscan = [
     "httpx>=0.27",  # c411_client.py / sonarr_client.py / radarr_client.py (voir GAPSCAN.md)
 ]
-dev = ["pytest>=8.0", "ruff>=0.4", "httpx"]  # httpx : requis par starlette.testclient (versions recentes)
+
+dev = ["pytest>=8.0", "ruff>=0.4", "httpx>=0.27"]
 
 [project.scripts]
 nfogen = "nfogen.cli:main"
