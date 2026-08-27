@@ -11,6 +11,40 @@ Ce fichier documente la conception du pipeline complet ; `GAPSCAN.md`
 documente la détection de gap elle-même (déjà livrée), ce fichier prend le
 relais pour tout ce qui vient après.
 
+## Principe directeur : agnostique du tracker (comme Prowlarr pour Radarr/Sonarr)
+
+Rappel explicite (utilisateur, 2026-08-27) : multi-tracker à terme, **sans
+sacrifier la fonctionnalité pour autant** — même logique que Radarr/Sonarr,
+qui ne parlent jamais directement à un tracker : c'est Prowlarr qui
+absorbe la diversité des indexeurs (définitions par indexeur) et n'expose
+à Radarr/Sonarr qu'une interface unique standardisée (Torznab). Seul le
+**profil** doit rester la pièce qui connaît un tracker en particulier —
+exactement le principe déjà appliqué à la génération de NFO (`rules.json`
++ templates par profil, cœur agnostique, voir README.md).
+
+**Où c'est déjà vrai aujourd'hui** : la recherche (`c411_client.py`) parle
+Torznab standard — le protocole que parlent déjà Prowlarr/Sonarr/Radarr/
+Jackett (voir GAPSCAN.md). Rien dans `_search()`/`search_movie()`/
+`search_tv()` n'est spécifique à C411 ; seul `base_url` (déjà configurable)
+distingue une instance C411 d'un autre indexeur Torznab. Le nommage
+(`C411Client`, `C411Release`, `c411_client.py`) est donc trompeur — il
+laisse penser à du code spécifique alors que ce n'est déjà pas le cas.
+Renommage en `TorznabClient` à envisager (change de nature aucun
+comportement, juste rend l'agnosticisme déjà réel explicite) — pas
+urgent, mais peu coûteux le jour où un deuxième tracker Torznab entre en
+jeu.
+
+**Où ça ne l'est PAS encore** : contrairement à la recherche, il n'existe
+**aucun standard équivalent à Torznab pour l'upload** — catégories,
+format de description, règles de taille de pièce, méthode d'auth
+(passkey vs clé API vs autre) varient d'un tracker à l'autre sans
+convention commune. C'est le vrai défi des sous-projets 3 (nommage) et 4
+(upload) : il faudra concevoir une extension déclarative du profil
+existant (catégories, gabarit de requête d'upload, contraintes de
+génération de torrent) plutôt que du code Python câblé par tracker — à
+traiter explicitement quand ces sous-projets seront détaillés, pas
+supposé résolu par analogie avec Prowlarr.
+
 ## Décomposition et ordre (2026-08-27)
 
 Projet trop large pour une seule conception : découpé en 7 sous-projets
