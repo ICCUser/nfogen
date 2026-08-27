@@ -290,6 +290,13 @@ Clôture des deux derniers constats de la revue technique.
   correspondant bien mis en échec dans les deux cas, code ensuite restauré
   à l'identique (`git diff` vide sur les deux fichiers de page).
 
+- **Pipeline d'automatisation upload (gap détecté → NFO → torrent → seed)**
+  : en conception, voir [AUTOMATION.md](AUTOMATION.md). Décomposé en 7
+  sous-projets (accès NAS, mise en scène + génération du `.torrent`,
+  nommage, upload C411, intégration qBittorrent, file d'attente/email/
+  règles auto, Lidarr en dernier) — sous-projet 1 (accès NAS) conçu au
+  2026-08-27, implémentation pas commencée.
+
 ## Revue technique + fonctionnelle du 2026-08-27
 
 Revue générale demandée explicitement (pas déclenchée par un incident) :
