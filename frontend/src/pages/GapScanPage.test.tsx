@@ -226,6 +226,29 @@ describe("GapScanPage", () => {
     );
   });
 
+  it("enregistre l'adresse d'annonce C411 et le dossier de mise en scene", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanConfigWrite).mockResolvedValue({
+      ...CONFIGURED,
+      c411_announce_url_configured: true,
+      staging_dir: "/data/staging",
+    });
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Configuration/ }));
+
+    await user.type(screen.getByLabelText("Adresse d'annonce C411"), "https://c411.org/announce/SECRET");
+    await user.type(screen.getByLabelText("Dossier de mise en scène"), "/data/staging");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(gapscanConfigWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        c411_announce_url: "https://c411.org/announce/SECRET",
+        staging_dir: "/data/staging",
+      }),
+    );
+  });
+
   it("pas de scan precedent : pas de case 'Scan rapide', et le scan lance est complet", async () => {
     const user = userEvent.setup();
     vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });

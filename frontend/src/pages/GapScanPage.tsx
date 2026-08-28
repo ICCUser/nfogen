@@ -84,6 +84,8 @@ export default function GapScanPage() {
   const [c411BaseUrl, setC411BaseUrl] = useState("");
   const [sonarrPathMappings, setSonarrPathMappings] = useState<Record<string, string>>({});
   const [radarrPathMappings, setRadarrPathMappings] = useState<Record<string, string>>({});
+  const [c411AnnounceUrl, setC411AnnounceUrl] = useState("");
+  const [stagingDir, setStagingDir] = useState("");
 
   useEffect(() => {
     gapscanConfig()
@@ -96,6 +98,7 @@ export default function GapScanPage() {
         setC411BaseUrl(c.c411_base_url ?? "");
         setSonarrPathMappings(c.sonarr_path_mappings);
         setRadarrPathMappings(c.radarr_path_mappings);
+        setStagingDir(c.staging_dir ?? "");
         if (!c.c411_configured || (!c.sonarr_configured && !c.radarr_configured)) {
           setShowConfigForm(true);
         }
@@ -184,6 +187,8 @@ export default function GapScanPage() {
       if (radarrApiKey.trim()) fields.radarr_api_key = radarrApiKey.trim();
       if (c411ApiKey.trim()) fields.c411_api_key = c411ApiKey.trim();
       if (c411BaseUrl.trim()) fields.c411_base_url = c411BaseUrl.trim();
+      if (c411AnnounceUrl.trim()) fields.c411_announce_url = c411AnnounceUrl.trim();
+      if (stagingDir.trim()) fields.staging_dir = stagingDir.trim();
       // Contrairement aux cles/URLs ci-dessus, un dictionnaire vide est une
       // valeur explicite valide ("aucun mapping") : toujours envoye.
       fields.sonarr_path_mappings = sonarrPathMappings;
@@ -194,6 +199,7 @@ export default function GapScanPage() {
       setSonarrApiKey("");
       setRadarrApiKey("");
       setC411ApiKey("");
+      setC411AnnounceUrl("");
       setConfigSaved(true);
       setTimeout(() => setConfigSaved(false), 2000);
     } catch (e) {
@@ -356,6 +362,25 @@ export default function GapScanPage() {
                   placeholder={config?.c411_configured ? "•••• (enregistrée)" : ""}
                   value={c411ApiKey}
                   onChange={(e) => setC411ApiKey(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink-dim">
+                Adresse d'annonce C411
+                <input
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
+                  type="password"
+                  placeholder={config?.c411_announce_url_configured ? "•••• (enregistrée)" : ""}
+                  value={c411AnnounceUrl}
+                  onChange={(e) => setC411AnnounceUrl(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink-dim">
+                Dossier de mise en scène
+                <input
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
+                  placeholder="/data/staging"
+                  value={stagingDir}
+                  onChange={(e) => setStagingDir(e.target.value)}
                 />
               </label>
             </div>
