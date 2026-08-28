@@ -54,7 +54,7 @@ Ordre confirmé par l'utilisateur :
 | # | Sous-projet | État |
 |---|---|---|
 | 1 | Accès NAS en lecture seule (résolution de chemins Sonarr/Radarr → chemin local) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md) |
-| 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | Conception ci-dessous |
+| 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-automation-staging-torrent.md) |
 | 3 | `.torrent` + `.nfo` nommés correctement selon le profil | À concevoir |
 | 4 | Upload vers C411 | À concevoir |
 | 5 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
@@ -233,6 +233,21 @@ l'upload).
 **Pas encore tranché / pour la suite** : structure de dossier exacte pour
 un pack multi-fichiers dans `staging_dir` (un sous-dossier par upload,
 nommé comment) — dépend du nommage réel, calculé au sous-projet 3.
+
+**Livré (2026-08-27)** — conforme à la conception, aucun écart notable.
+Point de vérification a posteriori : l'API réelle de `torf` a été
+vérifiée dans son code source avant d'écrire `torrent_builder.py`
+(`Torrent(path=, trackers=, private=, piece_size=)`, `piece_size`
+multiple de 16 Kio — toutes les valeurs du barème C411 le sont —,
+`path` accepte un fichier ou un dossier, `.generate()`/`.write()`/
+`.read()` classmethod) plutôt que supposée, pour éviter d'écrire un
+module contre une API imaginée. `file_staging.py`/`torrent_builder.py`
+sont testés et fonctionnels mais **pas encore appelés** depuis un flux
+utilisateur — ils attendent le sous-projet 3 (nommage réel) pour être
+orchestrés ensemble.
+
+Voir le plan d'implémentation complet (7 tâches TDD, code exact) :
+[docs/superpowers/plans/2026-08-27-automation-staging-torrent.md](docs/superpowers/plans/2026-08-27-automation-staging-torrent.md).
 
 ## Sous-projets 3 à 7 : non détaillés
 
