@@ -6,6 +6,8 @@ import {
   generateFromMetadata,
   generateUpload,
   listAllProfiles,
+  prepareUploadCommit,
+  prepareUploadPreview,
   previewGenerate,
   proposeReleaseName,
   writeManagedProfile,
@@ -207,5 +209,50 @@ describe("downloadAsFile", () => {
     expect(revokeUrl).toHaveBeenCalledWith("blob:fake-url");
 
     clickSpy.mockRestore();
+  });
+});
+
+describe("prepareUploadPreview / prepareUploadCommit", () => {
+  it("preview envoie local_paths et profile, renvoie la liste de groupes", async () => {
+    const groups = [
+      {
+        release_name: "Movie.2020.1080p.x264-TEAM",
+        files: [{ source_path: "/a.mkv", staged_name: "Movie.2020.1080p.x264-TEAM.mkv" }],
+        warnings: [],
+        blocked: false,
+      },
+    ];
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(groups));
+
+    const result = await prepareUploadPreview(["/a.mkv"]);
+
+    expect(result).toEqual(groups);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/prepare-upload/preview");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      local_paths: ["/a.mkv"],
+      profile: "c411",
+    });
+  });
+
+  it("commit envoie release_name/files/profile, renvoie le resultat", async () => {
+    const commitResult = {
+      release_name: "Movie.2020.1080p.x264-TEAM",
+      staged_path: "/staging/Movie.2020.1080p.x264-TEAM.mkv",
+      torrent_path: "/staging/Movie.2020.1080p.x264-TEAM.torrent",
+    };
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(commitResult));
+
+    const files = [{ source_path: "/a.mkv", staged_name: "Movie.2020.1080p.x264-TEAM.mkv" }];
+    const result = await prepareUploadCommit("Movie.2020.1080p.x264-TEAM", files);
+
+    expect(result).toEqual(commitResult);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/prepare-upload/commit");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      release_name: "Movie.2020.1080p.x264-TEAM",
+      files,
+      profile: "c411",
+    });
   });
 });

@@ -181,3 +181,27 @@ export interface GapscanConfigWrite {
   radarr_path_mappings?: Record<string, string>;
   staging_dir?: string;
 }
+
+// --------------------------------------------------------------------------- //
+// Preparation d'upload (AUTOMATION.md, sous-projet 4) : nommage -> mise en
+// scene + .torrent, a partir des chemins locaux deja resolus par GapScan.
+// --------------------------------------------------------------------------- //
+export interface UploadPrepFile {
+  source_path: string;
+  staged_name: string;
+}
+
+export interface UploadGroupProposal {
+  /** null si aucune proposition n'a pu etre calculee pour ce groupe. */
+  release_name: string | null;
+  files: UploadPrepFile[];
+  warnings: string[];
+  /** true : ce groupe ne peut pas etre confirme (voir warnings pour le detail). */
+  blocked: boolean;
+}
+
+export interface UploadCommitResult {
+  release_name: string;
+  staged_path: string;
+  torrent_path: string;
+}

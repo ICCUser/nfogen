@@ -10,6 +10,9 @@ import type {
   ProfilesByCategory,
   RulesDocument,
   TemplatesDocument,
+  UploadCommitResult,
+  UploadGroupProposal,
+  UploadPrepFile,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -321,4 +324,33 @@ export async function gapscanExportCsv(statusFilter?: string): Promise<Blob> {
   });
   if (!resp.ok) throw new ApiError(resp.status, resp.statusText);
   return resp.blob();
+}
+
+// --------------------------------------------------------------------------- //
+// Preparation d'upload (AUTOMATION.md, sous-projet 4)
+// --------------------------------------------------------------------------- //
+/** Aucune ecriture disque cote serveur -- calcule uniquement les noms
+ * proposes et les avertissements (voir nfogen/upload_prep.py:preview_upload). */
+export function prepareUploadPreview(
+  localPaths: string[],
+  profile = "c411",
+): Promise<UploadGroupProposal[]> {
+  return request<UploadGroupProposal[]>("/gapscan/prepare-upload/preview", {
+    method: "POST",
+    body: JSON.stringify({ local_paths: localPaths, profile }),
+  });
+}
+
+/** Met en scene (hardlink/copie) et genere le .torrent pour UN groupe deja
+ * renvoye par `prepareUploadPreview` -- renvoyer exactement ce que
+ * l'apercu a produit pour ce groupe (voir nfogen/upload_prep.py:commit_upload). */
+export function prepareUploadCommit(
+  releaseName: string,
+  files: UploadPrepFile[],
+  profile = "c411",
+): Promise<UploadCommitResult> {
+  return request<UploadCommitResult>("/gapscan/prepare-upload/commit", {
+    method: "POST",
+    body: JSON.stringify({ release_name: releaseName, files, profile }),
+  });
 }
