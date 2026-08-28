@@ -101,6 +101,44 @@ def test_write_without_config_file_env_var_raises(monkeypatch):
         store.write(c411_api_key="x")
 
 
+def test_path_mappings_default_to_empty_dict():
+    assert store.effective_sonarr_path_mappings() == {}
+    assert store.effective_radarr_path_mappings() == {}
+
+
+def test_write_then_read_sonarr_path_mappings():
+    store.write(sonarr_path_mappings={"/data/tv": "/mnt/nas/tv"})
+    assert store.effective_sonarr_path_mappings() == {"/data/tv": "/mnt/nas/tv"}
+
+
+def test_write_then_read_radarr_path_mappings():
+    store.write(radarr_path_mappings={"/data/movies": "/mnt/nas/movies"})
+    assert store.effective_radarr_path_mappings() == {"/data/movies": "/mnt/nas/movies"}
+
+
+def test_write_path_mappings_does_not_erase_other_fields():
+    store.write(c411_api_key="secret")
+    store.write(radarr_path_mappings={"/data/movies": "/mnt/nas/movies"})
+    assert store.effective_c411() == ("secret", "https://c411.org")
+    assert store.effective_radarr_path_mappings() == {"/data/movies": "/mnt/nas/movies"}
+
+
+def test_status_includes_path_mappings():
+    store.write(
+        sonarr_path_mappings={"/data/tv": "/mnt/nas/tv"},
+        radarr_path_mappings={"/data/movies": "/mnt/nas/movies"},
+    )
+    status = store.status()
+    assert status["sonarr_path_mappings"] == {"/data/tv": "/mnt/nas/tv"}
+    assert status["radarr_path_mappings"] == {"/data/movies": "/mnt/nas/movies"}
+
+
+def test_status_path_mappings_empty_by_default():
+    status = store.status()
+    assert status["sonarr_path_mappings"] == {}
+    assert status["radarr_path_mappings"] == {}
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="permissions POSIX non applicables sur Windows")
 def test_write_sets_restrictive_permissions(tmp_path):
     """Contrairement a nfogen.env (chmod 600 explicite dans install.sh), ce

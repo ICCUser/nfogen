@@ -65,6 +65,8 @@ def write(
     sonarr_api_key: Optional[str] = None,
     radarr_url: Optional[str] = None,
     radarr_api_key: Optional[str] = None,
+    sonarr_path_mappings: Optional[dict[str, str]] = None,
+    radarr_path_mappings: Optional[dict[str, str]] = None,
 ) -> None:
     """Met a jour uniquement les champs fournis (`None` = inchange) --
     jamais une reecriture complete, un PUT partiel ne doit pas effacer le
@@ -78,6 +80,8 @@ def write(
         "sonarr_api_key": sonarr_api_key,
         "radarr_url": radarr_url,
         "radarr_api_key": radarr_api_key,
+        "sonarr_path_mappings": sonarr_path_mappings,
+        "radarr_path_mappings": radarr_path_mappings,
     }
     for key, value in updates.items():
         if value is not None:
@@ -124,10 +128,24 @@ def effective_radarr() -> Optional[tuple[str, str]]:
     return (url, api_key) if url and api_key else None
 
 
+def effective_sonarr_path_mappings() -> dict[str, str]:
+    """Table de mapping {prefixe distant: prefixe local} pour Sonarr --
+    vide par defaut (deploiement a chemins identiques). Pas de repli sur
+    une variable d'environnement : uniquement configurable via le fichier
+    (pas de cas d'usage non interactif identifie pour l'instant, contrairement
+    aux cles/URLs)."""
+    return _load().get("sonarr_path_mappings") or {}
+
+
+def effective_radarr_path_mappings() -> dict[str, str]:
+    return _load().get("radarr_path_mappings") or {}
+
+
 def status() -> dict[str, Any]:
     """Etat effectif (fichier prioritaire, sinon variables d'environnement)
     -- jamais les cles elles-memes, seulement si chaque service est
-    configure et son URL (non sensible)."""
+    configure et son URL (non sensible). Les mappings de chemins ne sont
+    pas des secrets : renvoyes en entier."""
     c411 = effective_c411()
     sonarr = effective_sonarr()
     radarr = effective_radarr()
@@ -138,4 +156,6 @@ def status() -> dict[str, Any]:
         "sonarr_url": sonarr[0] if sonarr else None,
         "radarr_configured": radarr is not None,
         "radarr_url": radarr[0] if radarr else None,
+        "sonarr_path_mappings": effective_sonarr_path_mappings(),
+        "radarr_path_mappings": effective_radarr_path_mappings(),
     }
