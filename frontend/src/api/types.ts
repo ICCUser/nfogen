@@ -162,16 +162,22 @@ export interface GapscanConfig {
   radarr_url: string | null;
   sonarr_path_mappings: Record<string, string>;
   radarr_path_mappings: Record<string, string>;
+  /** true si une adresse d'annonce C411 est enregistree -- jamais la
+   * valeur elle-meme (contient le passkey du compte). */
+  c411_announce_url_configured: boolean;
+  staging_dir: string | null;
 }
 
 /** PUT /gapscan/config : chaque champ omis reste inchange cote serveur. */
 export interface GapscanConfigWrite {
   c411_api_key?: string;
   c411_base_url?: string;
+  c411_announce_url?: string;
   sonarr_url?: string;
   sonarr_api_key?: string;
   radarr_url?: string;
   radarr_api_key?: string;
   sonarr_path_mappings?: Record<string, string>;
   radarr_path_mappings?: Record<string, string>;
+  staging_dir?: string;
 }

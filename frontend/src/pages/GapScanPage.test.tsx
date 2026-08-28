@@ -33,6 +33,8 @@ const CONFIGURED: GapscanConfig = {
   radarr_url: "http://radarr.local:7878",
   sonarr_path_mappings: {},
   radarr_path_mappings: {},
+  c411_announce_url_configured: false,
+  staging_dir: null,
 };
 
 const IDLE_STATUS: GapscanStatus = {
@@ -156,6 +158,8 @@ describe("GapScanPage", () => {
       radarr_url: null,
       sonarr_path_mappings: {},
       radarr_path_mappings: {},
+      c411_announce_url_configured: false,
+      staging_dir: null,
     });
 
     renderPage();
