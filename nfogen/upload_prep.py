@@ -88,6 +88,38 @@ def _extraction_warning(filename: str) -> str:
     return f"[{filename}] Métadonnées illisibles : extraction MediaInfo échouée."
 
 
+# Codes de langue MediaInfo (piste audio reelle du fichier) -> code court
+# reconnu par les alias de langue du profil (rules.json -> language_aliases).
+# Volontairement limite aux langues deja couvertes par les combinaisons
+# existantes de la config C411 (FR+EN/EN+FR/FR+JA/JA+FR) -- jamais invente
+# au-dela, meme philosophie "ne jamais deviner" que le reste du projet.
+_AUDIO_LANGUAGE_CODE: dict[str, str] = {
+    "fr": "FR", "fre": "FR", "fra": "FR", "french": "FR",
+    "en": "EN", "eng": "EN", "english": "EN",
+    "ja": "JA", "jpn": "JA", "japanese": "JA",
+}
+
+
+def _language_hint_from_audio_tracks(audio_languages: list[str]) -> str:
+    """Construit un indice de langue a partir des VRAIES pistes audio du
+    fichier (`extract_video_metadata`), jamais du nom de fichier -- comble
+    un ecart reel (nom de fichier sans tag de langue, alors que le fichier a
+    bien des pistes FR/EN detectees). Plusieurs langues sont combinees avec
+    '+' (ex. 'FR+EN') pour que le profil detecte le prefixe MULTI attendu
+    par C411 sur les releases multi-langues (retour utilisateur explicite,
+    2026-08-28 : sans ca, deux pistes ne signaleraient jamais MULTI).
+    Chaine vide si rien de reconnu -- jamais de supposition au-dela des
+    combinaisons que le profil sait deja gerer."""
+    codes: list[str] = []
+    for lang in audio_languages:
+        if not lang:
+            continue
+        code = _AUDIO_LANGUAGE_CODE.get(lang.strip().lower())
+        if code and code not in codes:
+            codes.append(code)
+    return "+".join(codes)
+
+
 def preview_upload(local_paths: list[str], profile: str = "c411") -> list[GroupProposal]:
     """Sans aucune ecriture disque : extrait les metadonnees (best-effort --
     une extraction illisible devient un avertissement, jamais un
@@ -111,7 +143,12 @@ def preview_upload(local_paths: list[str], profile: str = "c411") -> list[GroupP
         meta["name"] = filenames[i]
         metas.append(meta)
 
-    hints: list[Optional[str]] = [m.get("general_title") or None for m in metas]
+    hints: list[Optional[str]] = []
+    for m in metas:
+        title_tag = m.get("general_title") or ""
+        audio_hint = _language_hint_from_audio_tracks(m.get("audio_languages") or [])
+        combined = " ".join(part for part in (title_tag, audio_hint) if part)
+        hints.append(combined or None)
     validator = get_validator(profile, "video")
 
     proposals: list[GroupProposal] = []

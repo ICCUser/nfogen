@@ -7,7 +7,14 @@ from unittest.mock import patch
 
 import pytest
 
-from nfogen.upload_prep import CommitResult, ProposedFile, commit_upload, group_by_team, preview_upload
+from nfogen.upload_prep import (
+    CommitResult,
+    ProposedFile,
+    _language_hint_from_audio_tracks,
+    commit_upload,
+    group_by_team,
+    preview_upload,
+)
 
 
 def test_files_with_same_team_form_one_group():
@@ -240,3 +247,46 @@ def test_commit_without_automation_extra_raises(monkeypatch):
     monkeypatch.setattr("nfogen.upload_prep._TORRENT_BUILDER_AVAILABLE", False)
     with pytest.raises(RuntimeError, match="automation"):
         commit_upload("X", [ProposedFile(source_path="/x.mkv", staged_name="X.mkv")])
+
+
+# --------------------------------------------------------------------------- #
+# Indice de langue derive des VRAIES pistes audio du fichier (jamais du nom
+# de fichier) : comble un ecart signale par l'utilisateur -- le nom de
+# fichier peut ne porter aucun tag de langue alors que le fichier a bien des
+# pistes FR/EN detectees par MediaInfo (donc connues de GapScan via Radarr,
+# mais invisibles jusqu'ici du moteur de nommage). Attention explicite de
+# l'utilisateur (2026-08-28) : plusieurs langues doivent produire un indice
+# qui declenche le prefixe MULTI attendu par C411, pas juste une langue.
+# --------------------------------------------------------------------------- #
+def test_language_hint_single_known_track():
+    assert _language_hint_from_audio_tracks(["fre"]) == "FR"
+
+
+def test_language_hint_combines_two_tracks_for_multi():
+    assert _language_hint_from_audio_tracks(["fre", "eng"]) == "FR+EN"
+
+
+def test_language_hint_deduplicates_repeated_language():
+    assert _language_hint_from_audio_tracks(["fre", "fre"]) == "FR"
+
+
+def test_language_hint_ignores_unrecognized_codes():
+    assert _language_hint_from_audio_tracks(["fre", "klingon"]) == "FR"
+
+
+def test_language_hint_empty_when_nothing_recognized():
+    assert _language_hint_from_audio_tracks([]) == ""
+    assert _language_hint_from_audio_tracks(["klingon"]) == ""
+
+
+def test_preview_upload_uses_real_audio_tracks_when_filename_has_no_language_tag():
+    """Cas reel signale par l'utilisateur (2026-08-28) : nom de fichier sans
+    tag de langue, mais deux pistes audio FR/EN reellement presentes dans le
+    fichier -- doit produire MULTI.VFF, pas 'LANGINCONNU'."""
+    meta = _fake_metadata(audio_languages=["fre", "eng"])
+    paths = ["/media/That.Awkward.Moment.2014.1080p.BluRay.AC3.5.1.x264-LOST.mkv"]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=meta):
+        proposals = preview_upload(paths)
+    assert len(proposals) == 1
+    assert "MULTI.VFF" in proposals[0].release_name
+    assert not any("langue" in w.lower() for w in proposals[0].warnings)
