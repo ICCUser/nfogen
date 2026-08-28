@@ -47,19 +47,22 @@ supposé résolu par analogie avec Prowlarr.
 
 ## Décomposition et ordre (2026-08-27)
 
-Projet trop large pour une seule conception : découpé en 7 sous-projets
+Projet trop large pour une seule conception : découpé en 8 sous-projets
 indépendants, chacun avec son propre cycle conception → implémentation.
-Ordre confirmé par l'utilisateur :
+Ordre confirmé par l'utilisateur (le sous-projet 3 a été ajouté le
+2026-08-27, en cours de route, quand `name_proposal.py` s'est révélé
+moins agnostique que supposé — voir sa section pour le contexte) :
 
 | # | Sous-projet | État |
 |---|---|---|
 | 1 | Accès NAS en lecture seule (résolution de chemins Sonarr/Radarr → chemin local) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md) |
 | 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-automation-staging-torrent.md) |
-| 3 | `.torrent` + `.nfo` nommés correctement selon le profil | À concevoir |
-| 4 | Upload vers C411 | À concevoir |
-| 5 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
-| 6 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
-| 7 | Lidarr (musique) | Facultatif, en dernier |
+| 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | Conception ci-dessous |
+| 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | À concevoir |
+| 5 | Upload vers C411 | À concevoir |
+| 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
+| 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
+| 8 | Lidarr (musique) | Facultatif, en dernier |
 
 ## Décisions déjà prises (2026-08-27)
 
@@ -249,7 +252,75 @@ orchestrés ensemble.
 Voir le plan d'implémentation complet (7 tâches TDD, code exact) :
 [docs/superpowers/plans/2026-08-27-automation-staging-torrent.md](docs/superpowers/plans/2026-08-27-automation-staging-torrent.md).
 
-## Sous-projets 3 à 7 : non détaillés
+## Sous-projet 3 : Rendre `name_proposal.py` agnostique du tracker
+
+**Contexte** : en préparant la conception du nommage pour l'automatisation
+(devenu le sous-projet 4), relecture de `nfogen/name_proposal.py` — déjà
+utilisé par la page "Générer" et la CLI (`nfogen --propose-name`), donc
+pas un module neuf pour l'automatisation, mais le cœur même de
+l'application de base. Retour utilisateur (2026-08-27) : "il a été fait
+sûrement à la va-vite... je te conseille de le reprendre et de faire en
+sorte qu'il soit le plus neutre possible." Vérifié en le lisant : exact.
+
+**Constat (déjà à moitié agnostique)** :
+- **Déjà déclaratif** (piloté par `rules.json -> video -> name_proposal`,
+  aucun code à toucher pour un nouveau tracker) : le gabarit final
+  (`template.format(**fields)`) et les alias de langue
+  (`language_aliases`).
+- **Câblé en dur en Python** (donc impossible à adapter sans toucher au
+  code pour un futur tracker) : la liste des sources reconnues ET leur
+  normalisation exacte dans le nom final (ex. `"bdremux"` → toujours
+  `"BluRay.REMUX"`, jamais autre chose), la casse imposée sur le codec
+  vidéo (toujours minuscule) et le codec audio (toujours majuscule).
+
+**Décision (2026-08-27)** — arbitrage entre agnosticisme et sur-ingénierie
+sans un second tracker réel pour valider une abstraction complète :
+
+- **Passe en config** (`rules.json`), même mécanisme que `language_aliases`
+  (le plus long alias qui correspond l'emporte, insensible à la casse) :
+  `source_aliases`, `video_codec_aliases`, `audio_codec_aliases`. Un
+  tracker différent de C411 peut vouloir une casse/orthographe/liste de
+  sources différente — c'est désormais un changement de `rules.json`, pas
+  de code.
+- **Reste câblé en Python** (conventions jugées quasi universelles dans
+  l'écosystème des trackers, confirmé par l'utilisateur — "si la plupart
+  des trackers utilisent ces deux conventions, vas-y, les hors piste on
+  s'en fout") : détection résolution (`1080p`), saison/épisode
+  (`S01E01`), année, et position du tag d'équipe (`-TEAM` en fin de nom).
+  Si un futur tracker casse vraiment l'une de ces deux hypothèses, à
+  sortir en config à ce moment-là — pas avant, deviner sans un cas réel
+  produirait une abstraction mal calibrée.
+
+**Conception** :
+
+1. **`nfogen/name_proposal.py`** : remplace `_SOURCE_RE`/`_SOURCE_ALIASES`,
+   `_VIDEO_CODEC_RE`, `_AUDIO_CODEC_RE` par un mécanisme générique unique
+   `_detect_via_aliases(text, aliases) -> str` (le plus long alias
+   présent dans `text`, insensible à la casse, sinon chaîne vide) —
+   réutilisé pour la langue (déjà existant, migré vers cette fonction
+   commune), la source, le codec vidéo, le codec audio. Réduit aussi la
+   duplication de code entre les quatre détections.
+2. **`nfogen/profiles/c411/rules.json`** : `name_proposal` gagne
+   `source_aliases`/`video_codec_aliases`/`audio_codec_aliases`, peuplés
+   pour reproduire **exactement** les sorties actuelles (aucun changement
+   de comportement pour C411 — seule la provenance du savoir change,
+   Python → JSON).
+3. **Tests** : `tests/test_name_proposal.py` migre son `CONFIG` de test
+   pour inclure les nouveaux alias (sinon la détection source/codec ne
+   trouve plus rien, ces champs dépendaient jusqu'ici du câblage Python
+   retiré).
+
+**Pas dans ce sous-projet** (delta volontairement laissé de côté, YAGNI) :
+- Détection résolution/saison-épisode/année/équipe rendue configurable —
+  voir "Décision" ci-dessus.
+- Un mécanisme de canonicalisation croisée entre orthographes de codec
+  différentes (ex. unifier `h264`/`avc`/`x264` vers une seule sortie) :
+  aucun test actuel ne l'exige, laissé en `passthrough` (chaque alias
+  reconnu se normalise vers lui-même, casse mise à part) — un profil
+  peut choisir d'unifier ça lui-même dans ses propres `*_aliases` s'il le
+  souhaite, sans changement de code.
+
+## Sous-projets 4 à 8 : non détaillés
 
 À concevoir un par un, dans l'ordre du tableau ci-dessus, une fois le
-sous-projet 2 implémenté.
+sous-projet 3 implémenté.
