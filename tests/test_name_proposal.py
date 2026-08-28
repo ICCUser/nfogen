@@ -206,3 +206,22 @@ def test_audio_codec_normalization_is_fully_configurable_per_profile():
     }
     proposal = propose_video_release_name(files, custom_config)
     assert proposal.fields["audio"] == "DOLBY-CUSTOM"
+
+
+# --------------------------------------------------------------------------- #
+# Fonctions publiques reutilisees par l'orchestration (AUTOMATION.md,
+# sous-projet 4) : group_by_team() a besoin de detecter le tag d'equipe
+# et de retirer l'extension d'un nom de fichier, independamment d'un
+# calcul complet de proposition.
+# --------------------------------------------------------------------------- #
+def test_extract_team_tag_is_public():
+    from nfogen.name_proposal import extract_team_tag
+
+    assert extract_team_tag("Mr.Robot.S01E01.1080p.WEB.H264-NTb") == "NTb"
+    assert extract_team_tag("aucune-equipe-ici.txt") is None or extract_team_tag("sans_suffixe") is None
+
+
+def test_strip_ext_is_public():
+    from nfogen.name_proposal import strip_ext
+
+    assert strip_ext("Movie.2020.1080p.mkv") == "Movie.2020.1080p"

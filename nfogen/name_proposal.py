@@ -35,7 +35,7 @@ class NameProposal:
     warnings: list[str] = field(default_factory=list)
 
 
-def _strip_ext(filename: str) -> str:
+def strip_ext(filename: str) -> str:
     return re.sub(r"\.[A-Za-z0-9]{1,4}$", "", filename)
 
 
@@ -49,7 +49,7 @@ def _clean_title(stem: str) -> str:
     return re.sub(r"\.+", ".", cleaned).strip(".")
 
 
-def _extract_team(text: str) -> str | None:
+def extract_team_tag(text: str) -> str | None:
     without_brackets = _BRACKETS_RE.sub("", text).strip()
     match = _TEAM_RE.search(without_brackets)
     return match.group(1) if match else None
@@ -146,7 +146,7 @@ def propose_video_release_name(
     }
 
     warnings: list[str] = []
-    stems = [_strip_ext(f) for f in filenames]
+    stems = [strip_ext(f) for f in filenames]
     raw_hints = title_hints if title_hints and len(title_hints) == len(filenames) else None
     hints: list[str] = [h or "" for h in (raw_hints or [None] * len(filenames))]
 
@@ -219,7 +219,7 @@ def propose_video_release_name(
 
     teams = set()
     for stem, hint in zip(stems, hints):
-        team = (_extract_team(hint) if hint else None) or _extract_team(stem)
+        team = (extract_team_tag(hint) if hint else None) or extract_team_tag(stem)
         if team:
             teams.add(team)
     if len(teams) > 1:
