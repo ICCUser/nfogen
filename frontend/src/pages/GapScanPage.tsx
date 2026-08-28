@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { KeyValueEditor } from "../components/ListEditor";
+import UploadPrepPanel from "../components/UploadPrepPanel";
 import {
   downloadBlob,
   gapscanConfig,
@@ -57,6 +58,7 @@ export default function GapScanPage() {
   const [results, setResults] = useState<GapResult[] | null>(null);
   const [filter, setFilter] = useState<GapStatus | "">("");
   const [error, setError] = useState<string | null>(null);
+  const [activeUpload, setActiveUpload] = useState<{ title: string; localPaths: string[] } | null>(null);
   const [starting, setStarting] = useState(false);
   // Scan rapide (mode incremental) : coche par defaut des qu'un scan
   // precedent existe (voir handleRun / GAPSCAN.md, "Persistance des
@@ -525,11 +527,28 @@ export default function GapScanPage() {
                   <Link to="/" className="text-sm text-accent-ink underline">
                     Générer
                   </Link>
+                  {r.path_resolved && r.local_paths.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveUpload({ title: r.title, localPaths: r.local_paths })}
+                      className="ml-3 text-sm text-accent-ink underline"
+                    >
+                      Préparer l'upload
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {activeUpload && (
+        <UploadPrepPanel
+          localPaths={activeUpload.localPaths}
+          title={activeUpload.title}
+          onClose={() => setActiveUpload(null)}
+        />
       )}
     </div>
   );

@@ -15,6 +15,15 @@ vi.mock("../api/client", () => ({
   gapscanStatus: vi.fn(),
 }));
 
+vi.mock("../components/UploadPrepPanel", () => ({
+  default: ({ title, onClose }: { title: string; onClose: () => void }) => (
+    <div>
+      <p>Panneau upload pour {title}</p>
+      <button onClick={onClose}>Fermer le panneau</button>
+    </div>
+  ),
+}));
+
 import {
   gapscanConfig,
   gapscanConfigWrite,
@@ -113,6 +122,31 @@ describe("GapScanPage", () => {
 
     await screen.findByText(/Matrix \(1999\)/);
     expect(screen.queryByText("⚠ chemin")).not.toBeInTheDocument();
+  });
+
+  it("affiche un bouton Préparer l'upload sur une ligne avec chemin résolu, ouvre le panneau", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanResults).mockResolvedValue([
+      { ...MATRIX_GAP, local_paths: ["/media/matrix.mkv"], path_resolved: true },
+    ]);
+
+    renderPage();
+
+    const button = await screen.findByRole("button", { name: /Préparer l'upload/i });
+    await user.click(button);
+
+    expect(await screen.findByText("Panneau upload pour Matrix")).toBeInTheDocument();
+  });
+
+  it("n'affiche pas de bouton Préparer l'upload si le chemin n'est pas résolu", async () => {
+    vi.mocked(gapscanResults).mockResolvedValue([
+      { ...MATRIX_GAP, local_paths: [], path_resolved: false },
+    ]);
+
+    renderPage();
+
+    await screen.findByText(/Matrix \(1999\)/);
+    expect(screen.queryByRole("button", { name: /Préparer l'upload/i })).not.toBeInTheDocument();
   });
 
   it("chemin heureux : lancer un scan (deja termine au premier appel de statut) affiche les resultats", async () => {
