@@ -29,8 +29,8 @@ jobs:
       # passaient jusqu'ici par coincidence (dev depend aussi de httpx),
       # sans lien explicite avec l'extra qu'ils testent reellement --
       # trouve en audit (2026-08-27).
-      - name: Installer nfogen (+ extras api, gapscan et dev)
-        run: pip install -e ".[api,gapscan,dev]"
+      - name: Installer nfogen (+ extras api, gapscan, automation et dev)
+        run: pip install -e ".[api,gapscan,automation,dev]"
 
       - name: Lint (ruff)
         run: ruff check .
