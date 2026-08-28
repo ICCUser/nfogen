@@ -42,6 +42,10 @@ class SonarrSeasonFile:
     # different de l'original, "White Collar" -> "FBI, duo tres special")
     # -- meme raison que RadarrMovieFile.alternate_titles, voir la-bas.
     alternate_titles: list[str] = field(default_factory=list)
+    # Chemins absolus de CHAQUE fichier episode de la saison (une saison
+    # est intrinsequement multi-fichiers, contrairement a un film) -- voir
+    # AUTOMATION.md, sous-projet 1.
+    remote_paths: list[str] = field(default_factory=list)
 
 
 class SonarrClient:
@@ -134,6 +138,7 @@ class SonarrClient:
                             for t in series.get("alternateTitles", [])
                             if t.get("title")
                         ],
+                        remote_paths=[f.get("path") for f in season_files if f.get("path")],
                     )
                 )
         return seasons

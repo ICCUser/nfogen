@@ -109,6 +109,39 @@ def test_list_season_files_exposes_alternate_titles():
     assert seasons[0].alternate_titles == ["FBI, duo tres special"]
 
 
+def test_list_season_files_exposes_remote_paths_for_every_episode_in_the_season():
+    files_with_paths = [
+        {**EPISODE_FILES[0], "path": "/data/tv/Breaking Bad/Season 01/E01.mkv"},
+        {**EPISODE_FILES[1], "path": "/data/tv/Breaking Bad/Season 01/E02.mkv"},
+        {**EPISODE_FILES[2], "path": "/data/tv/Breaking Bad/Season 02/E01.mkv"},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=SERIES)
+        return httpx.Response(200, json=files_with_paths)
+
+    seasons = _client(handler).list_season_files()
+
+    season1 = next(s for s in seasons if s.season_number == 1)
+    assert season1.remote_paths == [
+        "/data/tv/Breaking Bad/Season 01/E01.mkv",
+        "/data/tv/Breaking Bad/Season 01/E02.mkv",
+    ]
+    season2 = next(s for s in seasons if s.season_number == 2)
+    assert season2.remote_paths == ["/data/tv/Breaking Bad/Season 02/E01.mkv"]
+
+
+def test_list_season_files_remote_paths_empty_when_absent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=SERIES)
+        return httpx.Response(200, json=EPISODE_FILES)  # pas de cle "path"
+
+    seasons = _client(handler).list_season_files()
+    assert seasons[0].remote_paths == []
+
+
 def test_series_without_episode_files_produces_no_season():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/series":
