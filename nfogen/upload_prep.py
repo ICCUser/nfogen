@@ -13,7 +13,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from . import extract
+from .engine import propose_release_name
+from .models import RenderContext
 from .name_proposal import extract_team_tag, strip_ext
+from .registry import get_validator
 
 
 @dataclass
@@ -71,3 +75,78 @@ def group_by_team(filenames: list[str], hints: list[Optional[str]]) -> list[list
             order.append(team)
         groups[team].append(i)
     return [groups[team] for team in order]
+
+
+def _extraction_warning(filename: str) -> str:
+    return f"[{filename}] Métadonnées illisibles : extraction MediaInfo échouée."
+
+
+def preview_upload(local_paths: list[str], profile: str = "c411") -> list[GroupProposal]:
+    """Sans aucune ecriture disque : extrait les metadonnees (best-effort --
+    une extraction illisible devient un avertissement, jamais un
+    plantage), groupe par equipe (`group_by_team`), propose un nom de
+    pack + un nom par fichier pour chaque groupe, valide via le VRAI
+    validateur du profil (`registry.get_validator`) -- recupere
+    gratuitement `cross_checks`/`upscale_checks`/`track_language_checks`
+    sans dupliquer cette logique ici."""
+    if not local_paths:
+        return []
+
+    filenames = [Path(p).name for p in local_paths]
+    metas: list[dict] = []
+    extraction_warning_by_index: dict[int, str] = {}
+    for i, path in enumerate(local_paths):
+        try:
+            meta = extract.extract_video_metadata(Path(path))
+        except Exception:
+            meta = {}
+            extraction_warning_by_index[i] = _extraction_warning(filenames[i])
+        meta["name"] = filenames[i]
+        metas.append(meta)
+
+    hints: list[Optional[str]] = [m.get("general_title") or None for m in metas]
+    validator = get_validator(profile, "video")
+
+    proposals: list[GroupProposal] = []
+    for index_group in group_by_team(filenames, hints):
+        group_paths = [local_paths[i] for i in index_group]
+        group_filenames = [filenames[i] for i in index_group]
+        group_hints = [hints[i] for i in index_group]
+        group_metas = [metas[i] for i in index_group]
+        group_extraction_warnings = [
+            extraction_warning_by_index[i] for i in index_group if i in extraction_warning_by_index
+        ]
+
+        pack = propose_release_name(
+            category="video", profile=profile, filenames=group_filenames, title_hints=group_hints
+        )
+        warnings = group_extraction_warnings + list(pack.warnings)
+
+        if pack.name is None:
+            proposals.append(GroupProposal(release_name=None, files=[], warnings=warnings, blocked=True))
+            continue
+
+        files: list[ProposedFile] = []
+        for path, filename, hint in zip(group_paths, group_filenames, group_hints):
+            single = propose_release_name(
+                category="video", profile=profile, filenames=[filename], title_hints=[hint]
+            )
+            base_name = single.name or pack.name
+            files.append(ProposedFile(source_path=path, staged_name=base_name + Path(filename).suffix))
+
+        blocked = False
+        if validator is not None:
+            ctx = RenderContext(
+                profile=profile, category="video",
+                data={"release_name": pack.name, "video_metadata": group_metas},
+            )
+            try:
+                warnings = warnings + validator(ctx, "")
+            except ValueError as exc:
+                warnings = warnings + [str(exc)]
+                blocked = True
+
+        proposals.append(
+            GroupProposal(release_name=pack.name, files=files, warnings=warnings, blocked=blocked)
+        )
+    return proposals

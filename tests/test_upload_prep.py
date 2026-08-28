@@ -2,7 +2,9 @@
 (`nfogen/upload_prep.py`, AUTOMATION.md sous-projet 4)."""
 from __future__ import annotations
 
-from nfogen.upload_prep import group_by_team
+from unittest.mock import patch
+
+from nfogen.upload_prep import group_by_team, preview_upload
 
 
 def test_files_with_same_team_form_one_group():
@@ -46,3 +48,116 @@ def test_group_order_matches_first_appearance():
 
 def test_empty_input_returns_no_groups():
     assert group_by_team([], []) == []
+
+
+def _fake_metadata(**overrides):
+    base = {
+        "video_height": None, "video_width": None, "video_format": None,
+        "video_bit_rate": None, "frame_rate": None,
+        "audio_languages": [], "subtitle_languages": [], "general_title": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_single_movie_file_proposes_a_name_and_matching_staged_file():
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(["/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"])
+    assert len(proposals) == 1
+    group = proposals[0]
+    assert group.blocked is False
+    assert group.release_name is not None
+    assert group.release_name.startswith("Kaamelott")
+    assert len(group.files) == 1
+    assert group.files[0].source_path == "/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"
+    assert group.files[0].staged_name == f"{group.release_name}.mkv"
+
+
+def test_season_pack_same_team_produces_one_group_with_per_file_names():
+    paths = [
+        "/media/One.Piece.S01E01.MULTI.VFF.1080p.WEB.AC3.x264-NOTAG.mkv",
+        "/media/One.Piece.S01E02.MULTI.VFF.1080p.WEB.AC3.x264-NOTAG.mkv",
+    ]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(paths)
+    assert len(proposals) == 1
+    group = proposals[0]
+    assert group.release_name is not None
+    assert ".S01." in group.release_name  # identifiant de pack, pas par-episode
+    assert len(group.files) == 2
+    assert "S01E01" in group.files[0].staged_name
+    assert "S01E02" in group.files[1].staged_name
+    # Le nom de pack sert de prefixe coherent sur chaque fichier individuel.
+    assert group.files[0].staged_name.startswith("One.Piece")
+
+
+def test_multi_team_pack_splits_into_separate_groups():
+    paths = [
+        "/media/Show.S01E01.1080p.WEB.x264-TeamA.mkv",
+        "/media/Show.S01E02.1080p.WEB.x264-TeamB.mkv",
+    ]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(paths)
+    assert len(proposals) == 2
+    release_names = {p.release_name for p in proposals}
+    assert any(name and name.endswith("-TeamA") for name in release_names)
+    assert any(name and name.endswith("-TeamB") for name in release_names)
+
+
+def test_ambiguous_group_is_blocked_with_no_files():
+    """Deux saisons differentes AVEC le meme tag d'equipe : group_by_team ne
+    les separe pas (meme equipe), mais name_proposal refuse toujours ce cas
+    (saisons incoherentes) -- le groupe est marque bloque plutot que de
+    deviner laquelle utiliser."""
+    paths = ["/media/Show.S01E01.1080p.WEB.x264-TEAM.mkv", "/media/Show.S02E01.1080p.WEB.x264-TEAM.mkv"]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(paths)
+    assert len(proposals) == 1
+    assert proposals[0].blocked is True
+    assert proposals[0].release_name is None
+    assert proposals[0].files == []
+    assert any("saisons" in w for w in proposals[0].warnings)
+
+
+def test_extraction_failure_for_one_file_does_not_crash():
+    def fake_extract(source):
+        if "corrupt" in str(source):
+            raise RuntimeError("libmediainfo: fichier illisible")
+        return _fake_metadata()
+
+    paths = ["/media/corrupt.S01E01.1080p.WEB.x264-TEAM.mkv"]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", side_effect=fake_extract):
+        proposals = preview_upload(paths)
+    assert len(proposals) == 1
+    assert any("illisible" in w.lower() or "métadonnées" in w.lower() for w in proposals[0].warnings)
+    assert proposals[0].release_name is not None  # l'echec d'extraction n'empeche pas le nommage
+
+
+def test_upscale_warning_surfaces_through_real_c411_validator():
+    """Preuve du cablage complet : preview_upload() reutilise le VRAI
+    validateur du profil C411 (cross_checks + upscale_checks), sans aucune
+    logique dupliquee ici."""
+    meta = _fake_metadata(
+        video_height=1080, video_width=1920, video_bit_rate=1_500_000, frame_rate=24.0,
+    )
+    paths = ["/media/Movie.2020.VFF.1080p.BluRay.AC3.x264-TEAM.mkv"]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=meta):
+        proposals = preview_upload(paths)
+    assert len(proposals) == 1
+    assert any("upscale" in w.lower() for w in proposals[0].warnings)
+    assert proposals[0].blocked is False  # avertissement, jamais bloquant
+
+
+def test_name_with_no_detectable_codec_is_blocked_by_real_validator():
+    """Le nom propose ne respecte pas la convention C411 (codec video
+    obligatoire absent) -- le vrai validateur du profil le refuse, le
+    groupe est bloque plutot que mis en scene avec un nom invalide."""
+    paths = ["/media/nom_totalement_generique.mkv"]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(paths)
+    assert len(proposals) == 1
+    assert proposals[0].blocked is True
+
+
+def test_empty_local_paths_returns_empty_list():
+    assert preview_upload([]) == []
