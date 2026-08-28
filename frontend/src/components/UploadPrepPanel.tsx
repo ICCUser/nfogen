@@ -1,0 +1,117 @@
+import { useEffect, useState } from "react";
+import { prepareUploadCommit, prepareUploadPreview } from "../api/client";
+import { ApiError } from "../api/types";
+import type { UploadCommitResult, UploadGroupProposal } from "../api/types";
+
+/** Apercu (sans ecriture disque) puis confirmation par groupe de la mise
+ * en scene + generation de .torrent (AUTOMATION.md, sous-projet 4). Un
+ * groupe = un tag d'equipe detecte -- un pack assemble depuis plusieurs
+ * releases devient plusieurs groupes independants (voir
+ * nfogen/upload_prep.py:group_by_team). Jamais de "tout confirmer" :
+ * chaque groupe se confirme individuellement, coherent avec la decision
+ * "upload un par un" (AUTOMATION.md, "Decisions deja prises"). */
+export default function UploadPrepPanel({
+  localPaths,
+  title,
+  onClose,
+}: {
+  localPaths: string[];
+  title: string;
+  onClose: () => void;
+}) {
+  const [groups, setGroups] = useState<UploadGroupProposal[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [committing, setCommitting] = useState<number | null>(null);
+  const [commitResults, setCommitResults] = useState<Record<number, UploadCommitResult>>({});
+  const [commitErrors, setCommitErrors] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    prepareUploadPreview(localPaths)
+      .then((g) => {
+        if (!cancelled) setGroups(g);
+      })
+      .catch((e) => {
+        if (!cancelled) setLoadError(e instanceof ApiError ? e.message : "Aperçu indisponible.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [localPaths]);
+
+  async function handleConfirm(index: number, group: UploadGroupProposal) {
+    if (!group.release_name) return;
+    setCommitting(index);
+    setCommitErrors((prev) => ({ ...prev, [index]: "" }));
+    try {
+      const result = await prepareUploadCommit(group.release_name, group.files);
+      setCommitResults((prev) => ({ ...prev, [index]: result }));
+    } catch (e) {
+      setCommitErrors((prev) => ({
+        ...prev,
+        [index]: e instanceof ApiError ? e.message : "Confirmation impossible.",
+      }));
+    } finally {
+      setCommitting(null);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-line bg-surface p-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-sm font-semibold text-ink">Préparer l'upload — {title}</h2>
+        <button type="button" onClick={onClose} className="text-sm text-ink-faint hover:text-ink">
+          Fermer
+        </button>
+      </div>
+
+      {loadError && <p className="text-sm text-crit">{loadError}</p>}
+      {!groups && !loadError && <p className="text-sm text-ink-faint">Calcul de l'aperçu…</p>}
+
+      {groups && groups.length === 0 && (
+        <p className="text-sm text-ink-faint">Aucun fichier à préparer.</p>
+      )}
+
+      {groups?.map((group, index) => (
+        <div key={index} className="space-y-2 rounded-md border border-line-strong p-3">
+          <p className="font-mono text-sm font-medium text-ink">
+            {group.release_name ?? "(nom impossible à calculer)"}
+          </p>
+          <ul className="space-y-0.5 text-xs text-ink-dim">
+            {group.files.map((f) => (
+              <li key={f.source_path} className="font-mono">
+                {f.source_path.split(/[/\\]/).pop()} → {f.staged_name}
+              </li>
+            ))}
+          </ul>
+          {group.warnings.length > 0 && (
+            <ul className="space-y-0.5 text-xs text-warn">
+              {group.warnings.map((w, i) => (
+                <li key={i}>⚠ {w}</li>
+              ))}
+            </ul>
+          )}
+
+          {!group.blocked && group.release_name && !commitResults[index] && (
+            <button
+              type="button"
+              onClick={() => handleConfirm(index, group)}
+              disabled={committing === index}
+              className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-surface hover:opacity-90 disabled:opacity-50"
+            >
+              {committing === index ? "Confirmation…" : "Confirmer"}
+            </button>
+          )}
+          {commitErrors[index] && <p className="text-xs text-crit">{commitErrors[index]}</p>}
+          {commitResults[index] && (
+            <p className="text-xs text-good">
+              Mis en scène : <span className="font-mono">{commitResults[index].staged_path}</span>
+              <br />
+              Torrent : <span className="font-mono">{commitResults[index].torrent_path}</span>
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
