@@ -104,6 +104,8 @@ def _run(
     previous_results: Optional[list[GapResult]],
     only: Optional[str],
     max_age_seconds: Optional[float],
+    sonarr_path_mappings: Optional[dict[str, str]],
+    radarr_path_mappings: Optional[dict[str, str]],
 ) -> None:
     global _results
     try:
@@ -115,6 +117,7 @@ def _run(
         collected = run_gapscan(
             c411, radarr=radarr, sonarr=sonarr, on_progress=on_progress,
             previous_results=previous_results, only=only, max_age_seconds=max_age_seconds,
+            sonarr_path_mappings=sonarr_path_mappings, radarr_path_mappings=radarr_path_mappings,
         )
         sorted_results = sort_by_priority(collected)
         with _lock:
@@ -142,6 +145,8 @@ def start(
     incremental: bool = False,
     only: Optional[str] = None,
     max_age_seconds: Optional[float] = None,
+    sonarr_path_mappings: Optional[dict[str, str]] = None,
+    radarr_path_mappings: Optional[dict[str, str]] = None,
 ) -> bool:
     """Lance un scan en tache de fond avec des clients deja construits.
     `False` si un scan est deja en cours (un seul a la fois) -- les clients
@@ -158,7 +163,10 @@ def start(
     souvent) -- ignore si `incremental` est faux.
 
     `only` ("movies"/"series"/None) : ne scanne qu'une des deux
-    bibliotheques -- pour repartir la charge sur plusieurs sessions."""
+    bibliotheques -- pour repartir la charge sur plusieurs sessions.
+
+    `sonarr_path_mappings`/`radarr_path_mappings` : voir AUTOMATION.md,
+    sous-projet 1."""
     with _lock:
         if _progress.state == ScanState.RUNNING:
             return False
@@ -171,7 +179,10 @@ def start(
         _progress.processed = 0
     thread = threading.Thread(
         target=_run,
-        args=(c411, radarr, sonarr, previous_results, only, max_age_seconds),
+        args=(
+            c411, radarr, sonarr, previous_results, only, max_age_seconds,
+            sonarr_path_mappings, radarr_path_mappings,
+        ),
         daemon=True,
     )
     thread.start()

@@ -263,6 +263,8 @@ def run_gapscan(
     previous_results: Optional[list[GapResult]] = None,
     only: Optional[str] = None,
     max_age_seconds: Optional[float] = None,
+    sonarr_path_mappings: Optional[dict[str, str]] = None,
+    radarr_path_mappings: Optional[dict[str, str]] = None,
 ) -> list[GapResult]:
     """Lance un scan. `radarr`/`sonarr` optionnels (l'un ou l'autre, ou les
     deux). `on_progress(traites, total)`, appele apres chaque item -- utilise
@@ -276,7 +278,11 @@ def run_gapscan(
 
     `only` ("movies"/"series"/None) : ne scanne qu'une des deux bibliotheques
     -- pour repartir la charge sur plusieurs sessions (limite C411 confirmee :
-    15 requetes/min). Retour utilisateur, 2026-08-27."""
+    15 requetes/min). Retour utilisateur, 2026-08-27.
+
+    `sonarr_path_mappings`/`radarr_path_mappings` : tables de resolution de
+    chemin distant -> local, une par connexion (voir AUTOMATION.md,
+    sous-projet 1)."""
     items: list[tuple[str, object]] = []
     if radarr is not None and only != "series":
         items.extend(("movie", movie) for movie in radarr.list_movie_files())
@@ -296,14 +302,16 @@ def run_gapscan(
             key = ("movie", item.imdb_id or tmdb_id or item.title, item.year)  # type: ignore[attr-defined]
             results.append(
                 scan_movie(
-                    item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds
+                    item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
+                    path_mappings=radarr_path_mappings,
                 )
             )  # type: ignore[arg-type]
         else:
             key = ("series", item.tvdb_id or item.imdb_id or item.title, item.season_number)  # type: ignore[attr-defined]
             results.append(
                 scan_series_season(
-                    item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds
+                    item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
+                    path_mappings=sonarr_path_mappings,
                 )
             )  # type: ignore[arg-type]
         if on_progress is not None:

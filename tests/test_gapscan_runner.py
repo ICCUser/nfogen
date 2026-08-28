@@ -304,3 +304,21 @@ def test_start_with_incremental_and_max_age_reverifies_a_stale_covered_result():
     _wait_until_not_running()
 
     assert gapscan_runner.results()[0].status.value == "absent"  # reverifie, plus repris tel quel
+
+
+def test_start_passes_path_mappings_through(tmp_path):
+    f = tmp_path / "Matrix.mkv"
+    f.write_text("x")
+    movie = RadarrMovieFile(
+        movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
+        remote_path="/remote/Matrix.mkv",
+    )
+    c411 = FakeC411(movie_results=[])
+
+    gapscan_runner.start(
+        c411, radarr=FakeRadarr(movies=[movie]),
+        radarr_path_mappings={"/remote": str(tmp_path)},
+    )
+    _wait_until_not_running()
+
+    assert gapscan_runner.results()[0].path_resolved is True

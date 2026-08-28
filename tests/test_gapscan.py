@@ -620,6 +620,32 @@ def test_run_gapscan_reuses_previous_results_for_unchanged_covered_items():
     assert ("tv", None, "tt0903747", 1) in c411_second.calls
 
 
+def test_run_gapscan_passes_path_mappings_to_movies_and_series(tmp_path):
+    movie_file = tmp_path / "Matrix.mkv"
+    movie_file.write_text("x")
+    season_file = tmp_path / "E01.mkv"
+    season_file.write_text("x")
+
+    class _RadarrWithPath:
+        def list_movie_files(self):
+            return [_movie(remote_path="/remote/Matrix.mkv")]
+
+    class _SonarrWithPath:
+        def list_season_files(self):
+            return [_season(remote_paths=["/remote/E01.mkv"])]
+
+    c411 = FakeC411(movie_results=[], tv_results=[])
+    results = run_gapscan(
+        c411, radarr=_RadarrWithPath(), sonarr=_SonarrWithPath(),
+        radarr_path_mappings={"/remote": str(tmp_path)},
+        sonarr_path_mappings={"/remote": str(tmp_path)},
+    )
+    movie_result = next(r for r in results if r.media_type == "movie")
+    series_result = next(r for r in results if r.media_type == "series")
+    assert movie_result.path_resolved is True
+    assert series_result.path_resolved is True
+
+
 def test_sort_by_priority_orders_gaps_before_covered():
     c411 = FakeC411()
     absent = scan_movie(_movie(title="Z Absent"), c411)
