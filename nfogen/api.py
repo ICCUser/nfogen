@@ -694,12 +694,14 @@ def gapscan_config() -> dict[str, Any]:
 class GapscanConfigWriteRequest(BaseModel):
     c411_api_key: Optional[str] = None
     c411_base_url: Optional[str] = None
+    c411_announce_url: Optional[str] = None
     sonarr_url: Optional[str] = None
     sonarr_api_key: Optional[str] = None
     radarr_url: Optional[str] = None
     radarr_api_key: Optional[str] = None
     sonarr_path_mappings: Optional[dict[str, str]] = None
     radarr_path_mappings: Optional[dict[str, str]] = None
+    staging_dir: Optional[str] = None
 
 
 @app.put("/gapscan/config", dependencies=[Depends(require_token)])

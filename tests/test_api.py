@@ -1242,6 +1242,30 @@ def test_gapscan_config_write_then_read_back_path_mappings(reload_api, tmp_path)
     assert status["sonarr_path_mappings"] == {}
 
 
+def test_gapscan_config_write_then_read_back_announce_url_and_staging_dir(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+
+    put = client.put(
+        "/gapscan/config",
+        json={
+            "c411_announce_url": "https://c411.org/announce/SECRET",
+            "staging_dir": "/data/staging",
+        },
+    )
+    assert put.status_code == 200
+    assert put.json()["c411_announce_url_configured"] is True
+    assert put.json()["staging_dir"] == "/data/staging"
+    assert "SECRET" not in put.text  # jamais l'URL en clair, meme dans la reponse du PUT
+
+    status = client.get("/gapscan/config").json()
+    assert status["c411_announce_url_configured"] is True
+    assert status["staging_dir"] == "/data/staging"
+
+
 def test_gapscan_run_rejects_when_c411_not_configured(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY=None)
     client = TestClient(mod.app)
