@@ -6,6 +6,7 @@ comparaison est visee ici, `test_c411_client.py`/`test_sonarr_client.py`/
 """
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -199,6 +200,49 @@ def test_scan_movie_flags_double_upload_window():
 
 
 # --------------------------------------------------------------------------- #
+# Resolution de chemin (AUTOMATION.md, sous-projet 1) : etant donne un
+# chemin distant Sonarr/Radarr, obtenir et valider un chemin local reel.
+# --------------------------------------------------------------------------- #
+def test_scan_movie_resolves_and_validates_the_local_path(tmp_path):
+    f = tmp_path / "Matrix.mkv"
+    f.write_text("x")
+    c411 = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")])
+    result = scan_movie(_movie(remote_path=str(f)), c411, path_mappings={})
+    assert result.local_paths == [str(f)]
+    assert result.path_resolved is True
+    assert result.path_error is None
+
+
+def test_scan_movie_reports_when_the_local_path_is_missing():
+    c411 = FakeC411(movie_results=[])
+    result = scan_movie(_movie(remote_path="/nope/absent.mkv"), c411, path_mappings={})
+    assert result.path_resolved is False
+    assert "introuvable" in result.path_error
+
+
+def test_scan_movie_without_a_remote_path_reports_unresolved():
+    c411 = FakeC411(movie_results=[])
+    result = scan_movie(_movie(remote_path=None), c411)
+    assert result.path_resolved is False
+    assert result.local_paths == []
+
+
+def test_scan_movie_applies_the_configured_path_mapping(tmp_path):
+    f = tmp_path / "Matrix.mkv"
+    f.write_text("x")
+    c411 = FakeC411(movie_results=[])
+    result = scan_movie(
+        _movie(remote_path="/data/media/Matrix.mkv"), c411,
+        path_mappings={"/data/media": str(tmp_path)},
+    )
+    # normpath : le prefixe distant litteral (style Linux, "/") mixe avec
+    # tmp_path (separateurs natifs de la machine de dev) ne doit pas faire
+    # dependre ce test de l'OS qui l'execute (voir test_path_mapping.py).
+    assert os.path.normpath(result.local_paths[0]) == os.path.normpath(str(f))
+    assert result.path_resolved is True
+
+
+# --------------------------------------------------------------------------- #
 # Mode incremental (`previous=`) : retour utilisateur du 2026-08-26, "je vais
 # pas tout rescanner a chaque fois" -- un titre deja COVERED au scan
 # precedent, dont la qualite locale n'a pas change depuis, doit etre repris
@@ -212,7 +256,12 @@ def test_scan_movie_reuses_previous_result_when_covered_and_quality_unchanged():
     c411_second = FakeC411()  # si appele a tort, renverrait ABSENT (revelateur)
     result = scan_movie(_movie(), c411_second, previous=previous)
 
-    assert result is previous
+    # Le verdict C411 est repris tel quel (checked_at non rafraichi = pas
+    # de reinterrogation reelle) -- mais plus le MEME objet Python : les
+    # champs de chemin sont toujours recalcules a neuf (replace()), voir
+    # test_scan_movie_reuse_still_refreshes_path_validation.
+    assert result.status == previous.status
+    assert result.checked_at == previous.checked_at
     assert c411_second.calls == []
 
 
@@ -272,7 +321,8 @@ def test_scan_movie_reuses_a_fresh_covered_result_within_max_age():
     result = scan_movie(_movie(), c411_second, previous=previous, max_age_seconds=1000)
 
     assert c411_second.calls == []
-    assert result is previous
+    assert result.status == previous.status
+    assert result.checked_at == previous.checked_at
 
 
 def test_scan_movie_without_max_age_seconds_never_expires():
@@ -287,7 +337,8 @@ def test_scan_movie_without_max_age_seconds_never_expires():
     result = scan_movie(_movie(), c411_second, previous=previous)
 
     assert c411_second.calls == []
-    assert result is previous
+    assert result.status == previous.status
+    assert result.checked_at == previous.checked_at
 
 
 def test_scan_movie_missing_checked_at_is_treated_as_stale():
@@ -342,6 +393,27 @@ def test_scan_movie_alternate_title_still_filtered_by_year():
     assert result.status == GapStatus.ABSENT  # le "Joker" 2019 (DC) ne compte pas pour "Wild Card" 2015
 
 
+def test_scan_movie_reuse_still_refreshes_path_validation(tmp_path):
+    """Le mode incremental reprend le verdict C411, mais PAS le statut de
+    chemin -- celui-ci doit toujours refleter l'etat reel du disque a
+    l'instant du scan (AUTOMATION.md, sous-projet 1 : "valide a chaque
+    scan"), meme quand le verdict C411 est repris tel quel."""
+    f = tmp_path / "Matrix.mkv"
+    f.write_text("x")
+    c411_first = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")])
+    previous = scan_movie(_movie(remote_path=str(f)), c411_first, path_mappings={})
+    assert previous.path_resolved is True
+
+    f.unlink()  # le fichier disparait entre les deux scans
+    c411_second = FakeC411()  # ne doit pas etre appele (reuse du verdict C411)
+    result = scan_movie(_movie(remote_path=str(f)), c411_second, previous=previous, path_mappings={})
+
+    assert c411_second.calls == []  # verdict C411 bien repris (COVERED)
+    assert result.status == GapStatus.COVERED
+    assert result.path_resolved is False  # mais le chemin est bien revalide
+    assert "introuvable" in result.path_error
+
+
 def test_scan_series_season_reuses_previous_result_when_covered_and_unchanged():
     c411_first = FakeC411(tv_results=[_release("Breaking.Bad.S01.MULTI.VFF.2160p.WEBRip.x265-SQUEEZE")])
     previous = scan_series_season(_season(), c411_first)
@@ -350,7 +422,8 @@ def test_scan_series_season_reuses_previous_result_when_covered_and_unchanged():
     c411_second = FakeC411()
     result = scan_series_season(_season(), c411_second, previous=previous)
 
-    assert result is previous
+    assert result.status == previous.status
+    assert result.checked_at == previous.checked_at
     assert c411_second.calls == []
 
 
@@ -380,6 +453,25 @@ def test_scan_series_season_covered():
     c411 = FakeC411(tv_results=[_release("Breaking.Bad.S01.MULTI.VFF.2160p.WEBRip.x265-SQUEEZE")])
     result = scan_series_season(_season(), c411)
     assert result.status == GapStatus.COVERED
+
+
+def test_scan_series_season_resolves_and_validates_local_paths(tmp_path):
+    f = tmp_path / "E01.mkv"
+    f.write_text("x")
+    c411 = FakeC411(tv_results=[_release("Breaking.Bad.S01.MULTI.VFF.2160p.WEBRip.x265-SQUEEZE")])
+    result = scan_series_season(_season(remote_paths=[str(f)]), c411, path_mappings={})
+    assert result.local_paths == [str(f)]
+    assert result.path_resolved is True
+
+
+def test_scan_series_season_reports_when_any_episode_path_is_missing(tmp_path):
+    f = tmp_path / "E01.mkv"
+    f.write_text("x")
+    missing = str(tmp_path / "E02.mkv")
+    c411 = FakeC411(tv_results=[])
+    result = scan_series_season(_season(remote_paths=[str(f), missing]), c411, path_mappings={})
+    assert result.path_resolved is False
+    assert missing in result.path_error
 
 
 def test_scan_series_season_falls_back_to_alternate_titles_when_primary_title_finds_nothing():

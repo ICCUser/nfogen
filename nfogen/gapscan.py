@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Callable, Iterable, Optional
 
 from .c411_client import C411Client, C411Error, C411Release
+from .path_mapping import resolve_and_validate
 from .quality import ReleaseQuality, build_quality, is_language_gap, is_quality_upgrade
 from .radarr_client import RadarrClient, RadarrMovieFile
 from .sonarr_client import SonarrClient, SonarrSeasonFile
@@ -51,6 +52,14 @@ class GapResult:
     # reinterroger C411 (mode incremental), pour que `_can_reuse` puisse
     # juger de sa fraicheur reelle. Voir `max_age_seconds`.
     checked_at: Optional[float] = None
+    # Chemin(s) local(aux) reels apres resolution du mapping distant/local
+    # (voir path_mapping.py) -- vide/False si non resolu (aucun chemin
+    # connu, fichier introuvable, ou non lisible). Toujours revalide a
+    # chaque scan, meme quand le verdict C411 est repris tel quel en mode
+    # incremental (voir scan_movie/scan_series_season).
+    local_paths: list[str] = field(default_factory=list)
+    path_resolved: bool = False
+    path_error: Optional[str] = None
 
 
 _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
@@ -127,6 +136,7 @@ def scan_movie(
     c411: C411Client,
     previous: Optional[GapResult] = None,
     max_age_seconds: Optional[float] = None,
+    path_mappings: Optional[dict[str, str]] = None,
 ) -> GapResult:
     tmdb_id = str(movie.tmdb_id) if movie.tmdb_id else None
     local_quality = build_quality(
@@ -134,11 +144,18 @@ def scan_movie(
         fallback_resolution=movie.best_resolution,
         fallback_language_names=movie.language_names,
     )
+    remote_paths = [movie.remote_path] if movie.remote_path else []
+    local_paths, path_resolved, path_error = resolve_and_validate(remote_paths, path_mappings or {})
     if _can_reuse(previous, local_quality, max_age_seconds):
-        return previous  # type: ignore[return-value]
+        # Le verdict C411 est repris tel quel, mais la validation de
+        # chemin doit toujours etre fraiche (AUTOMATION.md, sous-projet 1).
+        return replace(
+            previous, local_paths=local_paths, path_resolved=path_resolved, path_error=path_error
+        )
     base = dict(
         media_type="movie", title=movie.title, year=movie.year, season_number=None,
         imdb_id=movie.imdb_id, tmdb_id=tmdb_id, tvdb_id=None, local_quality=local_quality,
+        local_paths=local_paths, path_resolved=path_resolved, path_error=path_error,
     )
     # Une erreur C411 (429, 520, timeout...) sur CE titre ne doit pas
     # empecher de savoir ce qu'on connait deja localement, ni interrompre
@@ -183,18 +200,25 @@ def scan_series_season(
     c411: C411Client,
     previous: Optional[GapResult] = None,
     max_age_seconds: Optional[float] = None,
+    path_mappings: Optional[dict[str, str]] = None,
 ) -> GapResult:
     local_quality = build_quality(
         season.scene_name or season.title,
         fallback_resolution=season.best_resolution,
         fallback_language_names=season.language_names,
     )
+    local_paths, path_resolved, path_error = resolve_and_validate(
+        season.remote_paths, path_mappings or {}
+    )
     if _can_reuse(previous, local_quality, max_age_seconds):
-        return previous  # type: ignore[return-value]
+        return replace(
+            previous, local_paths=local_paths, path_resolved=path_resolved, path_error=path_error
+        )
     base = dict(
         media_type="series", title=season.title, year=season.year,
         season_number=season.season_number, imdb_id=season.imdb_id, tmdb_id=None,
         tvdb_id=season.tvdb_id, local_quality=local_quality,
+        local_paths=local_paths, path_resolved=path_resolved, path_error=path_error,
     )
     try:
         matches = c411.search_tv(imdb_id=season.imdb_id, season=season.season_number)
