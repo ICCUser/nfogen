@@ -1501,6 +1501,14 @@ it("enregistre un mapping de chemin Radarr via le formulaire de configuration", 
   renderPage();
   await user.click(await screen.findByRole("button", { name: /Configuration/ }));
 
+  // KeyValueEditor part d'une liste vide : il faut d'abord ajouter une
+  // ligne avant que ses champs existent. Deux editeurs (Sonarr puis
+  // Radarr, dans cet ordre dans le JSX) partagent le meme libelle de
+  // bouton "+ Ajouter" (KeyValueEditor ne permet pas de le personnaliser)
+  // -- le second correspond a Radarr.
+  const addButtons = screen.getAllByRole("button", { name: "+ Ajouter" });
+  await user.click(addButtons[1]);
+
   await user.type(screen.getByPlaceholderText("Chemin distant (Radarr)"), "/data/movies");
   await user.type(screen.getByPlaceholderText("Chemin local (nfogen)"), "/mnt/nas/movies");
   await user.click(screen.getByRole("button", { name: "Enregistrer" }));
