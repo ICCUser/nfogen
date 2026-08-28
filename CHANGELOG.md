@@ -26,6 +26,13 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   codec annoncé dans le `release_name`, indice de source ré-encodée en une
   résolution supérieure sans vrai gain de détail. Seuils configurables par
   profil, jamais bloquant.
+- **Orchestration nommage → mise en scène + `.torrent`**
+  (`nfogen/upload_prep.py`) : à partir de chemins locaux résolus, calcule
+  un nom de release par groupe (groupement automatique par tag d'équipe
+  détecté — un pack assemblé depuis plusieurs releases devient plusieurs
+  uploads distincts), avec un aperçu sans écriture disque avant toute mise
+  en scène. Bouton "Préparer l'upload" sur la page GapScan. Quatrième
+  brique du pipeline d'automatisation.
 
 ## [2.0.0] - 2026-08-27
 

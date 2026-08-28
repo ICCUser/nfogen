@@ -58,7 +58,7 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 | 1 | Accès NAS en lecture seule (résolution de chemins Sonarr/Radarr → chemin local) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md) |
 | 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-automation-staging-torrent.md) |
 | 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md) |
-| 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | Conçu (2026-08-28), voir sa section |
+| 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | **Livré (2026-08-28)**, voir [le plan](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md) |
 | 5 | Upload vers C411 | À concevoir |
 | 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
 | 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
@@ -436,4 +436,11 @@ sans jamais rien committer sur disque avant confirmation explicite.
 - Déclenchement automatique (file d'attente, email) — ici uniquement un
   bouton manuel dans GapScan.
 
-À implémenter.
+**Livré (2026-08-28)** — conforme à la conception ci-dessus, aucun écart
+notable. `extract_team_tag`/`strip_ext` (ex-`_extract_team`/`_strip_ext`)
+rendues publiques dans `name_proposal.py` sans changement de comportement
+(renommage pur). Le bouton "Préparer l'upload" n'apparaît sur une ligne
+GapScan que si `path_resolved` est vrai et `local_paths` non vide.
+
+Voir le plan d'implémentation complet (code exact) :
+[docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md).
