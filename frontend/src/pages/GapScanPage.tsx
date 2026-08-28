@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { KeyValueEditor } from "../components/ListEditor";
 import {
   downloadBlob,
   gapscanConfig,
@@ -10,7 +11,7 @@ import {
   gapscanStatus,
 } from "../api/client";
 import { ApiError } from "../api/types";
-import type { GapResult, GapscanConfig, GapscanStatus, GapStatus } from "../api/types";
+import type { GapResult, GapscanConfig, GapscanConfigWrite, GapscanStatus, GapStatus } from "../api/types";
 
 const STATUS_LABEL: Record<GapStatus, string> = {
   absent: "Absent de C411",
@@ -81,6 +82,8 @@ export default function GapScanPage() {
   const [radarrApiKey, setRadarrApiKey] = useState("");
   const [c411ApiKey, setC411ApiKey] = useState("");
   const [c411BaseUrl, setC411BaseUrl] = useState("");
+  const [sonarrPathMappings, setSonarrPathMappings] = useState<Record<string, string>>({});
+  const [radarrPathMappings, setRadarrPathMappings] = useState<Record<string, string>>({});
 
   useEffect(() => {
     gapscanConfig()
@@ -91,6 +94,8 @@ export default function GapScanPage() {
         setSonarrUrl(c.sonarr_url ?? "");
         setRadarrUrl(c.radarr_url ?? "");
         setC411BaseUrl(c.c411_base_url ?? "");
+        setSonarrPathMappings(c.sonarr_path_mappings);
+        setRadarrPathMappings(c.radarr_path_mappings);
         if (!c.c411_configured || (!c.sonarr_configured && !c.radarr_configured)) {
           setShowConfigForm(true);
         }
@@ -172,13 +177,17 @@ export default function GapScanPage() {
       // Seuls les champs non vides sont envoyes : un champ cle laisse vide
       // ne doit pas effacer une valeur deja enregistree (PUT partiel cote
       // serveur, voir gapscan_config_store.write()).
-      const fields: Record<string, string> = {};
+      const fields: GapscanConfigWrite = {};
       if (sonarrUrl.trim()) fields.sonarr_url = sonarrUrl.trim();
       if (sonarrApiKey.trim()) fields.sonarr_api_key = sonarrApiKey.trim();
       if (radarrUrl.trim()) fields.radarr_url = radarrUrl.trim();
       if (radarrApiKey.trim()) fields.radarr_api_key = radarrApiKey.trim();
       if (c411ApiKey.trim()) fields.c411_api_key = c411ApiKey.trim();
       if (c411BaseUrl.trim()) fields.c411_base_url = c411BaseUrl.trim();
+      // Contrairement aux cles/URLs ci-dessus, un dictionnaire vide est une
+      // valeur explicite valide ("aucun mapping") : toujours envoye.
+      fields.sonarr_path_mappings = sonarrPathMappings;
+      fields.radarr_path_mappings = radarrPathMappings;
 
       const updated = await gapscanConfigWrite(fields);
       setConfig(updated);
@@ -349,6 +358,29 @@ export default function GapScanPage() {
                   onChange={(e) => setC411ApiKey(e.target.value)}
                 />
               </label>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-ink-dim">
+                Mapping de chemins Sonarr (si nfogen ne voit pas les mêmes chemins que Sonarr)
+              </p>
+              <KeyValueEditor
+                value={sonarrPathMappings}
+                onChange={setSonarrPathMappings}
+                keyPlaceholder="Chemin distant (Sonarr)"
+                valuePlaceholder="Chemin local (nfogen)"
+              />
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-ink-dim">
+                Mapping de chemins Radarr (si nfogen ne voit pas les mêmes chemins que Radarr)
+              </p>
+              <KeyValueEditor
+                value={radarrPathMappings}
+                onChange={setRadarrPathMappings}
+                keyPlaceholder="Chemin distant (Radarr)"
+                valuePlaceholder="Chemin local (nfogen)"
+              />
             </div>
 
             {configError && <p className="text-sm text-crit">{configError}</p>}

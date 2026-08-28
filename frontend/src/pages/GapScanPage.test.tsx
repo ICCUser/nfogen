@@ -167,8 +167,39 @@ describe("GapScanPage", () => {
       // deja remplis depuis CONFIGURED (URL/base non sensibles), renvoyes tels quels
       radarr_url: "http://radarr.local:7878",
       c411_base_url: "https://c411.org",
+      sonarr_path_mappings: {},
+      radarr_path_mappings: {},
     });
     expect(await screen.findByText("Enregistré.")).toBeInTheDocument();
+  });
+
+  it("enregistre un mapping de chemin Radarr via le formulaire de configuration", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanConfigWrite).mockResolvedValue({
+      ...CONFIGURED,
+      radarr_path_mappings: { "/data/movies": "/mnt/nas/movies" },
+    });
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Configuration/ }));
+
+    // KeyValueEditor part d'une liste vide : il faut d'abord ajouter une
+    // ligne avant que ses champs existent. Deux editeurs (Sonarr puis
+    // Radarr, dans cet ordre dans le JSX) partagent le meme libelle de
+    // bouton "+ Ajouter" (KeyValueEditor ne permet pas de le personnaliser)
+    // -- le second correspond a Radarr.
+    const addButtons = screen.getAllByRole("button", { name: "+ Ajouter" });
+    await user.click(addButtons[1]);
+
+    await user.type(screen.getByPlaceholderText("Chemin distant (Radarr)"), "/data/movies");
+    await user.type(screen.getByPlaceholderText("Chemin local (nfogen)"), "/mnt/nas/movies");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(gapscanConfigWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        radarr_path_mappings: { "/data/movies": "/mnt/nas/movies" },
+      }),
+    );
   });
 
   it("pas de scan precedent : pas de case 'Scan rapide', et le scan lance est complet", async () => {
