@@ -1221,6 +1221,25 @@ def test_gapscan_config_partial_write_preserves_other_fields(reload_api, tmp_pat
     assert status["sonarr_configured"] is True
 
 
+def test_gapscan_config_write_then_read_back_path_mappings(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+
+    put = client.put(
+        "/gapscan/config",
+        json={"radarr_path_mappings": {"/data/movies": "/mnt/nas/movies"}},
+    )
+    assert put.status_code == 200
+    assert put.json()["radarr_path_mappings"] == {"/data/movies": "/mnt/nas/movies"}
+
+    status = client.get("/gapscan/config").json()
+    assert status["radarr_path_mappings"] == {"/data/movies": "/mnt/nas/movies"}
+    assert status["sonarr_path_mappings"] == {}
+
+
 def test_gapscan_run_rejects_when_c411_not_configured(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY=None)
     client = TestClient(mod.app)
@@ -1351,7 +1370,10 @@ def test_gapscan_run_reads_the_incremental_max_age_env_var(reload_api, monkeypat
     incremental=true."""
     captured: dict = {}
 
-    def fake_start(c411, radarr=None, sonarr=None, incremental=False, only=None, max_age_seconds=None):
+    def fake_start(
+        c411, radarr=None, sonarr=None, incremental=False, only=None, max_age_seconds=None,
+        sonarr_path_mappings=None, radarr_path_mappings=None,
+    ):
         captured["max_age_seconds"] = max_age_seconds
         return True
 
@@ -1367,6 +1389,34 @@ def test_gapscan_run_reads_the_incremental_max_age_env_var(reload_api, monkeypat
     resp = client.post("/gapscan/run", params={"incremental": "true"})
     assert resp.status_code == 200
     assert captured["max_age_seconds"] == 3 * 86400
+
+
+def test_gapscan_run_passes_configured_path_mappings_to_the_runner(reload_api, monkeypatch, tmp_path):
+    captured: dict = {}
+
+    def fake_start(
+        c411, radarr=None, sonarr=None, incremental=False, only=None, max_age_seconds=None,
+        sonarr_path_mappings=None, radarr_path_mappings=None,
+    ):
+        captured["radarr_path_mappings"] = radarr_path_mappings
+        captured["sonarr_path_mappings"] = sonarr_path_mappings
+        return True
+
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+    client.put("/gapscan/config", json={"radarr_path_mappings": {"/data/movies": "/mnt/nas/movies"}})
+    _patch_gapscan_clients(monkeypatch, mod)
+    monkeypatch.setattr(mod.gapscan_runner, "start", fake_start)
+
+    resp = client.post("/gapscan/run")
+
+    assert resp.status_code == 200
+    assert captured["radarr_path_mappings"] == {"/data/movies": "/mnt/nas/movies"}
+    assert captured["sonarr_path_mappings"] == {}
 
 
 def test_gapscan_run_incremental_reuses_covered_results(reload_api, monkeypatch):

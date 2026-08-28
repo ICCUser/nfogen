@@ -698,6 +698,8 @@ class GapscanConfigWriteRequest(BaseModel):
     sonarr_api_key: Optional[str] = None
     radarr_url: Optional[str] = None
     radarr_api_key: Optional[str] = None
+    sonarr_path_mappings: Optional[dict[str, str]] = None
+    radarr_path_mappings: Optional[dict[str, str]] = None
 
 
 @app.put("/gapscan/config", dependencies=[Depends(require_token)])
@@ -712,10 +714,10 @@ def gapscan_config_write(req: GapscanConfigWriteRequest) -> dict[str, Any]:
     return gapscan_config_store.status()
 
 
-def _build_gapscan_clients() -> tuple[Any, Any, Any]:
+def _build_gapscan_clients() -> tuple[Any, Any, Any, dict[str, str], dict[str, str]]:
     """Construit les clients GapScan depuis gapscan_config_store (fichier ou
-    environnement). Leve ValueError (-> 400) si la configuration
-    necessaire manque."""
+    environnement), plus les mappings de chemins configures. Leve
+    ValueError (-> 400) si la configuration necessaire manque."""
     c411_config = gapscan_config_store.effective_c411()
     if c411_config is None:
         raise ValueError(
@@ -745,7 +747,11 @@ def _build_gapscan_clients() -> tuple[Any, Any, Any]:
             "Aucune instance Sonarr ni Radarr configuree "
             "(NFOGEN_SONARR_URL/_API_KEY et/ou NFOGEN_RADARR_URL/_API_KEY, ou PUT /gapscan/config)."
         )
-    return c411, sonarr, radarr
+    return (
+        c411, sonarr, radarr,
+        gapscan_config_store.effective_sonarr_path_mappings(),
+        gapscan_config_store.effective_radarr_path_mappings(),
+    )
 
 
 @app.post("/gapscan/run", dependencies=[Depends(require_token)])
@@ -763,7 +769,7 @@ def gapscan_run(
     if only not in (None, "movies", "series"):
         raise HTTPException(status_code=400, detail="only doit valoir 'movies' ou 'series'.")
     try:
-        c411, sonarr, radarr = _build_gapscan_clients()
+        c411, sonarr, radarr, sonarr_path_mappings, radarr_path_mappings = _build_gapscan_clients()
     except (ValueError, C411Error, SonarrError, RadarrError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -793,6 +799,7 @@ def gapscan_run(
     started = gapscan_runner.start(
         c411, radarr=radarr, sonarr=sonarr, incremental=incremental,
         only=only, max_age_seconds=max_age_seconds,
+        sonarr_path_mappings=sonarr_path_mappings, radarr_path_mappings=radarr_path_mappings,
     )
     if not started:
         c411.close()
