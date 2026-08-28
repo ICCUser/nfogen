@@ -38,6 +38,30 @@ def test_source_rank_orders_remux_above_webrip():
     assert remux.source_rank < webrip.source_rank  # rang plus bas = meilleur
 
 
+def test_source_rank_treats_webdl_webrip_and_web_as_equivalent():
+    """C411 normalise WEBDL/WEB-DL/WEBRip vers le meme tag 'WEB' a l'upload
+    (voir rules.json -> video -> name_proposal -> source_aliases) -- les
+    distinguer ici comparerait a tort une release locale scene ('WEB-DL') a
+    une release C411 ('WEB') comme si l'une valait mieux que l'autre.
+    Incident reel : Van Wilder 3 (2009) classe a tort "quality_gap" alors
+    qu'une release C411 equivalente existait deja (2026-08-28)."""
+    webdl = parse_release_name("Film.2020.MULTI.VFF.1080p.WEB-DL.AC3.5.1.x264-TEAM")
+    web = parse_release_name("Film.2020.MULTI.VFF.1080p.WEB.AC3.5.1.x264-TEAM")
+    webrip = parse_release_name("Film.2020.MULTI.VFF.1080p.WEBRip.AC3.5.1.x264-TEAM")
+    assert webdl.source_rank == web.source_rank == webrip.source_rank
+
+
+def test_is_quality_upgrade_false_for_local_webdl_vs_remote_web_equivalent_release():
+    """Cas reel (Van Wilder 3, 2026-08-28) : ta version scene 'WEB-DL' et la
+    release C411 'WEB' designent la meme source -- aucune des deux ne doit
+    etre jugee "meilleure" que l'autre."""
+    local = parse_release_name("Van.Wilder.Freshman.Year.2009.MULTI.1080p.WEB-DL.H264.AC3-LCDS")
+    remote = parse_release_name(
+        "Van.Wilder.3.La.Premiere.Annee.De.Fac.2009.MULTI.VFF.1080p.WEB.AC3.2.0.H264-LCDS"
+    )
+    assert is_quality_upgrade(local, remote) is False
+
+
 def test_is_quality_upgrade_by_source():
     local = parse_release_name("Film.2020.MULTI.VFF.1080p.REMUX.DTS.5.1.x264-TEAM")
     remote = parse_release_name("Film.2020.MULTI.VFF.1080p.WEBRip.AAC.5.1.x264-TEAM")

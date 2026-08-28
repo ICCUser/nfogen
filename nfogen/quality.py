@@ -43,23 +43,31 @@ import re
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-# Ordre du meilleur au moins bon ; un rang plus bas (index) = meilleure source.
+# Ordre du meilleur au moins bon ; un rang plus bas = meilleure source.
 # REMUX reste distingue de BDMV/ISO ici (tous trois sont "purs", cf. `pure`
 # ci-dessous, qui prime sur ce rang) uniquement pour departager REMUX vs
 # BDMV/ISO entre eux si jamais necessaire.
-SOURCE_RANK: list[str] = [
-    "REMUX",
-    "BLURAY",
-    "BDRIP",
-    "WEB-DL",
-    "WEBDL",
-    "WEBRIP",
-    "WEB",
-    "HDTV",
-    "DVDRIP",
-    "DVD",
-    "SDTV",
-]
+# WEB-DL/WEBDL/WEBRip partagent le MEME rang que WEB : C411 ne distingue pas
+# ces variantes a l'upload (voir rules.json -> video -> name_proposal ->
+# source_aliases, qui normalise deja les trois vers "WEB"). Les distinguer
+# ici comparerait a tort une release locale scene ("WEB-DL") a une release
+# C411 ("WEB") comme si l'une valait mieux que l'autre, alors qu'elles
+# designent la meme chose. Incident reel : Van Wilder 3 (2009) classe a
+# tort "quality_gap" alors qu'une release C411 equivalente existait deja
+# (retour utilisateur, 2026-08-28).
+SOURCE_RANK: dict[str, int] = {
+    "REMUX": 0,
+    "BLURAY": 1,
+    "BDRIP": 2,
+    "WEB-DL": 3,
+    "WEBDL": 3,
+    "WEBRIP": 3,
+    "WEB": 3,
+    "HDTV": 4,
+    "DVDRIP": 5,
+    "DVD": 6,
+    "SDTV": 7,
+}
 
 # Rang de langue (plus haut = mieux), section "Priorite des langues" de la
 # politique C411 : MULTI.VF2 (VO+VFF+VFQ) > VF2 (VFF+VFQ sans VO) > un seul
@@ -159,10 +167,7 @@ class ReleaseQuality:
         """Plus bas = meilleure source. `None` si source non reconnue."""
         if self.source is None:
             return None
-        try:
-            return SOURCE_RANK.index(self.source.upper())
-        except ValueError:
-            return None
+        return SOURCE_RANK.get(self.source.upper())
 
     @property
     def language_tier(self) -> int:
