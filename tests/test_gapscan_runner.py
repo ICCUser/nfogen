@@ -129,6 +129,35 @@ def test_start_closes_clients_after_completion():
     assert radarr.closed is True
 
 
+def test_persists_to_disk_before_the_state_becomes_visible_as_done(tmp_path, monkeypatch):
+    """Course reelle trouvee en CI (2026-08-27) : si l'ecriture disque du
+    persist se produit APRES le passage a l'etat 'done', un lecteur externe
+    (ex. un redemarrage reel juste apres la fin d'un scan, ou -- comme en
+    CI -- un `importlib.reload` en test) peut observer 'done' sans que le
+    fichier existe encore : resultats perdus au redemarrage suivant malgre
+    un scan reussi. save() doit toujours avoir termine AVANT que l'etat
+    devienne visible comme 'done'."""
+    monkeypatch.setenv("NFOGEN_GAPSCAN_RESULTS_FILE", str(tmp_path / "results.json"))
+    importlib.reload(gapscan_runner)
+
+    order: list[str] = []
+    real_save = gapscan_runner.gapscan_results_store.save
+
+    def spy_save(results):
+        assert gapscan_runner.status()["state"] != "done"  # pas encore visible comme termine
+        order.append("save")
+        real_save(results)
+
+    monkeypatch.setattr(gapscan_runner.gapscan_results_store, "save", spy_save)
+
+    c411 = FakeC411(movie_results=[])
+    radarr = FakeRadarr(movies=[_movie()])
+    gapscan_runner.start(c411, radarr=radarr)
+    _wait_until_not_running()
+
+    assert order == ["save"]
+
+
 def test_results_filterable_by_status():
     c411 = FakeC411(movie_results=[])  # aucun match -> ABSENT pour tous
     radarr = FakeRadarr(movies=[_movie("A"), _movie("B")])

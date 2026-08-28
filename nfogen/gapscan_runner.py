@@ -120,11 +120,15 @@ def _run(
             sonarr_path_mappings=sonarr_path_mappings, radarr_path_mappings=radarr_path_mappings,
         )
         sorted_results = sort_by_priority(collected)
+        # Persiste AVANT de signaler "termine" : incident CI reel
+        # (2026-08-27) -- si l'ecriture disque survenait apres le passage a
+        # DONE, un lecteur externe (redemarrage reel, ou reload en test)
+        # pouvait observer DONE sans que le fichier existe encore.
+        gapscan_results_store.save(sorted_results)
         with _lock:
             _results = sorted_results
             _progress.state = ScanState.DONE
             _progress.finished_at = time.time()
-        gapscan_results_store.save(sorted_results)
     except Exception as exc:  # noqa: BLE001 -- toute erreur client -> statut "error", jamais une exception non geree dans le thread
         with _lock:
             _progress.state = ScanState.ERROR
