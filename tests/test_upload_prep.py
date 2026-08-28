@@ -23,14 +23,15 @@ def test_files_with_different_teams_form_separate_groups():
 
 
 def test_hint_takes_priority_over_filename_for_grouping():
-    filenames = ["Show.S01E01.1080p.WEB.x264-FromFilename.mkv"]
-    hints = ["Show S01E01 1080p WebDl x264 - FromHint"]
-    groups = group_by_team(filenames, hints)
     # Le hint donne "FromHint", different du nom de fichier -- ne doit pas
     # se retrouver mélangé avec un fichier qui, lui, n'a que "FromFilename".
-    other = ["Show.S01E02.1080p.WEB.x264-FromFilename.mkv"]
-    combined = group_by_team(filenames + other, hints + [None])
-    assert combined == [[0], [1]]
+    filenames = [
+        "Show.S01E01.1080p.WEB.x264-FromFilename.mkv",
+        "Show.S01E02.1080p.WEB.x264-FromFilename.mkv",
+    ]
+    hints = ["Show S01E01 1080p WebDl x264 - FromHint", None]
+    groups = group_by_team(filenames, hints)
+    assert groups == [[0], [1]]
 
 
 def test_files_with_no_detectable_team_form_their_own_group():

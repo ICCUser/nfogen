@@ -1266,6 +1266,103 @@ def test_gapscan_config_write_then_read_back_announce_url_and_staging_dir(reload
     assert status["staging_dir"] == "/data/staging"
 
 
+# --------------------------------------------------------------------------- #
+# Preparation d'upload (POST /gapscan/prepare-upload/preview, /commit --
+# AUTOMATION.md sous-projet 4)
+# --------------------------------------------------------------------------- #
+def test_prepare_upload_routes_require_gapscan_available(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod, "_GAPSCAN_AVAILABLE", False)
+    client = TestClient(mod.app)
+    assert client.post("/gapscan/prepare-upload/preview", json={"local_paths": []}).status_code == 501
+    assert (
+        client.post("/gapscan/prepare-upload/commit", json={"release_name": "x", "files": []}).status_code
+        == 501
+    )
+
+
+def test_prepare_upload_routes_require_auth_when_token_configured(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    client = TestClient(mod.app)
+    assert client.post("/gapscan/prepare-upload/preview", json={"local_paths": []}).status_code == 401
+    assert (
+        client.post("/gapscan/prepare-upload/commit", json={"release_name": "x", "files": []}).status_code
+        == 401
+    )
+
+
+def test_prepare_upload_preview_empty_paths_returns_empty_list(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post("/gapscan/prepare-upload/preview", json={"local_paths": []})
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_prepare_upload_preview_real_c411_profile(reload_api):
+    """Bout-en-bout via l'API : pas de fichier reel necessaire, MediaInfo
+    echouera sur un chemin inexistant (extraction best-effort, voir
+    upload_prep.preview_upload) mais le nommage/groupement fonctionnent
+    quand meme sur le nom de fichier seul."""
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post(
+        "/gapscan/prepare-upload/preview",
+        json={"local_paths": ["/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["release_name"].startswith("Kaamelott")
+    assert body[0]["files"][0]["source_path"] == "/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"
+
+
+def test_prepare_upload_commit_without_staging_dir_is_400(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
+    )
+    client = TestClient(mod.app)
+    resp = client.post(
+        "/gapscan/prepare-upload/commit",
+        json={"release_name": "X", "files": [{"source_path": "/x.mkv", "staged_name": "X.mkv"}]},
+    )
+    assert resp.status_code == 400
+    assert "scène" in resp.json()["detail"] or "scene" in resp.json()["detail"].lower()
+
+
+def test_prepare_upload_commit_real_flow(reload_api, tmp_path):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    source = tmp_path / "source.mkv"
+    source.write_bytes(b"contenu de test")
+
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
+    )
+    client = TestClient(mod.app)
+    put = client.put(
+        "/gapscan/config",
+        json={
+            "c411_announce_url": "https://c411.example/announce/abc123",
+            "staging_dir": str(staging_dir),
+        },
+    )
+    assert put.status_code == 200
+
+    resp = client.post(
+        "/gapscan/prepare-upload/commit",
+        json={
+            "release_name": "Movie.2020.1080p.x264-TEAM",
+            "files": [{"source_path": str(source), "staged_name": "Movie.2020.1080p.x264-TEAM.mkv"}],
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["release_name"] == "Movie.2020.1080p.x264-TEAM"
+    assert body["staged_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.mkv")
+    assert body["torrent_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.torrent")
+
+
 def test_gapscan_run_rejects_when_c411_not_configured(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY=None)
     client = TestClient(mod.app)

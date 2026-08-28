@@ -54,7 +54,7 @@ from .profile_store import ProfileStoreError
 # dependance dure de l'API -- une install nfogen[api] seule (sans httpx)
 # doit continuer a demarrer normalement, /gapscan/* renvoie alors 501.
 try:
-    from . import gapscan_config_store, gapscan_runner
+    from . import gapscan_config_store, gapscan_runner, upload_prep
     from .c411_client import C411Client, C411Error
     from .radarr_client import RadarrClient, RadarrError
     from .sonarr_client import SonarrClient, SonarrError
@@ -854,6 +854,56 @@ def gapscan_results_export_csv(status: Optional[str] = Query(None)) -> Response:
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="gapscan.csv"'},
     )
+
+
+# --------------------------------------------------------------------------- #
+# Preparation d'upload (AUTOMATION.md, sous-projet 4) : nommage -> mise en
+# scene + .torrent, a partir de chemins locaux deja resolus (voir
+# GapResult.local_paths, sous-projet 1). Le frontend a deja ces chemins en
+# memoire depuis GET /gapscan/results -- pas besoin d'un identifiant
+# GapResult, ce module reste decouple du modele de donnees GapScan.
+# --------------------------------------------------------------------------- #
+def _run_upload_prep(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    try:
+        return fn(*args, **kwargs)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Erreur inattendue pendant la préparation d'upload")
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.") from exc
+
+
+class PrepareUploadPreviewRequest(BaseModel):
+    local_paths: list[str] = []
+    profile: str = "c411"
+
+
+@app.post("/gapscan/prepare-upload/preview", dependencies=[Depends(require_token)])
+def gapscan_prepare_upload_preview(req: PrepareUploadPreviewRequest) -> list[dict[str, Any]]:
+    _require_gapscan_available()
+    proposals = _run_upload_prep(upload_prep.preview_upload, req.local_paths, profile=req.profile)
+    return [asdict(p) for p in proposals]
+
+
+class PrepareUploadFile(BaseModel):
+    source_path: str
+    staged_name: str
+
+
+class PrepareUploadCommitRequest(BaseModel):
+    release_name: str
+    files: list[PrepareUploadFile]
+    profile: str = "c411"
+
+
+@app.post("/gapscan/prepare-upload/commit", dependencies=[Depends(require_token)])
+def gapscan_prepare_upload_commit(req: PrepareUploadCommitRequest) -> dict[str, Any]:
+    _require_gapscan_available()
+    files = [
+        upload_prep.ProposedFile(source_path=f.source_path, staged_name=f.staged_name) for f in req.files
+    ]
+    result = _run_upload_prep(upload_prep.commit_upload, req.release_name, files, profile=req.profile)
+    return asdict(result)
 
 
 # Frontend builde, optionnel (NFOGEN_FRONTEND_DIST) : enregistre en dernier,
