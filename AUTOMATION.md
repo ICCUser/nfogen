@@ -54,7 +54,7 @@ Ordre confirmé par l'utilisateur :
 | # | Sous-projet | État |
 |---|---|---|
 | 1 | Accès NAS en lecture seule (résolution de chemins Sonarr/Radarr → chemin local) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md) |
-| 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | À concevoir |
+| 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | Conception ci-dessous |
 | 3 | `.torrent` + `.nfo` nommés correctement selon le profil | À concevoir |
 | 4 | Upload vers C411 | À concevoir |
 | 5 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
@@ -170,7 +170,71 @@ découverts pendant la planification/implémentation :
 Voir le plan d'implémentation complet (10 tâches TDD, code exact) :
 [docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md](docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md).
 
-## Sous-projets 2 à 7 : non détaillés
+## Sous-projet 2 : Mise en scène du fichier (hardlink/copie) + génération du `.torrent`
+
+**But** : étant donné les chemins locaux résolus par le sous-projet 1
+(`GapResult.local_paths`) et un nom de sortie voulu, préparer le(s)
+fichier(s) sans jamais toucher à l'original, puis produire un `.torrent`
+conforme aux règles C411 (barème de taille de pièce, flag privé, adresse
+d'annonce).
+
+**Décisions (2026-08-27)** :
+
+- **Bibliothèque** : [`torf`](https://github.com/rndusr/torf) (pure
+  Python). Écarté `libtorrent` (bindings C++ de qBittorrent — plus
+  "authentique" mais lourd à installer/compiler sur le swizzin, le genre
+  de friction déjà rencontrée avec npm/pip sur ce serveur) et un encodeur
+  bencode maison (risque de bugs subtils). API vérifiée directement dans
+  le code source de `torf` : `Torrent(path=, trackers=, private=,
+  piece_size=)`, `piece_size` doit être un multiple de 16 Kio (toutes les
+  valeurs du barème C411 le sont), `path` accepte un fichier OU un
+  dossier (donc un pack de plusieurs épisodes fonctionne en pointant sur
+  un sous-dossier), `.generate()` calcule les hashs, `.write(chemin)`
+  écrit le fichier.
+- **Secret séparé de la clé API** : le "passkey" C411 (lié au compte, un
+  seul existe, le régénérer casse TOUS les seeds en cours — donc à
+  manipuler avec la même prudence qu'un secret à fort impact) est stocké
+  comme `c411_announce_url` : l'**URL d'annonce privée complète**, copiée
+  telle quelle depuis le profil C411, pas juste le passkey brut — nfogen
+  n'a pas besoin de connaître/reconstruire le format d'URL du tracker.
+  Mêmes principes que le reste de `gapscan_config_store.py` (jamais
+  renvoyé en clair par `GET`, `chmod 600`).
+- **Dossier de mise en scène** : un seul `staging_dir` configuré une fois
+  (pas par connexion Sonarr/Radarr comme les mappings de chemins — c'est
+  un dossier propre à nfogen, pas une bibliothèque tierce), sur le même
+  système de fichiers que les médias (nécessaire pour le hardlink).
+- **Nommage différé au sous-projet 3** : ce sous-projet accepte le nom de
+  sortie voulu en paramètre explicite (fourni par l'appelant) plutôt que
+  de le calculer — reste testable dès maintenant sans dépendre du
+  sous-projet 3.
+- **Hardlink avec repli automatique sur copie** : réutilise exactement la
+  détection déjà décidée (tente `os.link()`, capture `EXDEV`, bascule sur
+  une copie) — voir "Décisions déjà prises" plus haut.
+
+**Conception** :
+
+1. **`nfogen/file_staging.py`** (nouveau, pur filesystem) :
+   `stage_file(source_path, target_path)` (un hardlink ou une copie) et
+   `stage_files(source_paths, target_dir, names)` (plusieurs fichiers d'un
+   coup, pour un pack de saison — un nom par source, même ordre).
+2. **`nfogen/torrent_builder.py`** (nouveau, utilise `torf`) :
+   `piece_size_for(total_bytes) -> int` (barème C411, fonction pure,
+   testable sans I/O) et `build_torrent(staged_path, announce_url,
+   output_path)` qui construit et écrit le `.torrent` (privé, piece_size
+   du barème, un seul tracker).
+3. **Config** : `gapscan_config_store.py` gagne `c411_announce_url` et
+   `staging_dir` (mêmes principes que l'existant).
+
+**Nouvelle dépendance** : `torf`, dans un extra pip dédié `automation`
+(pas `gapscan` — GapScan seul n'en a pas besoin, garde son empreinte
+minimale pour qui veut juste détecter des gaps sans automatiser
+l'upload).
+
+**Pas encore tranché / pour la suite** : structure de dossier exacte pour
+un pack multi-fichiers dans `staging_dir` (un sous-dossier par upload,
+nommé comment) — dépend du nommage réel, calculé au sous-projet 3.
+
+## Sous-projets 3 à 7 : non détaillés
 
 À concevoir un par un, dans l'ordre du tableau ci-dessus, une fois le
-sous-projet 1 implémenté.
+sous-projet 2 implémenté.
