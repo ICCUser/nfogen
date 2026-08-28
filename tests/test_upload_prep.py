@@ -2,9 +2,12 @@
 (`nfogen/upload_prep.py`, AUTOMATION.md sous-projet 4)."""
 from __future__ import annotations
 
+from pathlib import Path as _Path
 from unittest.mock import patch
 
-from nfogen.upload_prep import group_by_team, preview_upload
+import pytest
+
+from nfogen.upload_prep import CommitResult, ProposedFile, commit_upload, group_by_team, preview_upload
 
 
 def test_files_with_same_team_form_one_group():
@@ -161,3 +164,78 @@ def test_name_with_no_detectable_codec_is_blocked_by_real_validator():
 
 def test_empty_local_paths_returns_empty_list():
     assert preview_upload([]) == []
+
+
+def _make_source(tmp_path, name: str, content: bytes = b"contenu de test") -> str:
+    p = tmp_path / name
+    p.write_bytes(content)
+    return str(p)
+
+
+def test_commit_single_file_stages_and_builds_torrent(tmp_path, monkeypatch):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_c411_announce_url",
+        lambda: "https://c411.example/announce/abc123",
+    )
+    source = _make_source(tmp_path, "source.mkv")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+
+    result = commit_upload("Movie.2020.1080p.x264-TEAM", files)
+
+    assert isinstance(result, CommitResult)
+    assert result.staged_path == str(staging_dir / "Movie.2020.1080p.x264-TEAM.mkv")
+    assert _Path(result.staged_path).is_file()
+    assert result.torrent_path == str(staging_dir / "Movie.2020.1080p.x264-TEAM.torrent")
+    assert _Path(result.torrent_path).is_file()
+
+
+def test_commit_multi_file_group_stages_into_a_folder(tmp_path, monkeypatch):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_c411_announce_url",
+        lambda: "https://c411.example/announce/abc123",
+    )
+    files = [
+        ProposedFile(source_path=_make_source(tmp_path, "e01.mkv"), staged_name="Show.S01E01-TEAM.mkv"),
+        ProposedFile(source_path=_make_source(tmp_path, "e02.mkv"), staged_name="Show.S01E02-TEAM.mkv"),
+    ]
+
+    result = commit_upload("Show.S01-TEAM", files)
+
+    pack_dir = staging_dir / "Show.S01-TEAM"
+    assert result.staged_path == str(pack_dir)
+    assert (pack_dir / "Show.S01E01-TEAM.mkv").is_file()
+    assert (pack_dir / "Show.S01E02-TEAM.mkv").is_file()
+    assert _Path(result.torrent_path).is_file()
+
+
+def test_commit_without_staging_dir_configured_raises(monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: None)
+    with pytest.raises(ValueError, match="scène"):
+        commit_upload("X", [ProposedFile(source_path="/x.mkv", staged_name="X.mkv")])
+
+
+def test_commit_without_announce_url_configured_raises(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(tmp_path)
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_c411_announce_url", lambda: None
+    )
+    with pytest.raises(ValueError, match="annonce"):
+        commit_upload("X", [ProposedFile(source_path="/x.mkv", staged_name="X.mkv")])
+
+
+def test_commit_without_automation_extra_raises(monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep._TORRENT_BUILDER_AVAILABLE", False)
+    with pytest.raises(RuntimeError, match="automation"):
+        commit_upload("X", [ProposedFile(source_path="/x.mkv", staged_name="X.mkv")])

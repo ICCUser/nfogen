@@ -13,11 +13,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import extract
+from . import extract, file_staging, gapscan_config_store
 from .engine import propose_release_name
 from .models import RenderContext
 from .name_proposal import extract_team_tag, strip_ext
 from .registry import get_validator
+
+try:
+    from . import torrent_builder
+
+    _TORRENT_BUILDER_AVAILABLE = True
+except ImportError:
+    _TORRENT_BUILDER_AVAILABLE = False
 
 
 @dataclass
@@ -150,3 +157,40 @@ def preview_upload(local_paths: list[str], profile: str = "c411") -> list[GroupP
             GroupProposal(release_name=pack.name, files=files, warnings=warnings, blocked=blocked)
         )
     return proposals
+
+
+def commit_upload(release_name: str, files: list[ProposedFile], profile: str = "c411") -> CommitResult:
+    """Met en scene (hardlink/copie, `file_staging.py`) et genere le
+    `.torrent` (`torrent_builder.py`) pour UN groupe deja propose par
+    `preview_upload()` -- le frontend renvoie exactement ce qu'il a recu
+    pour ce groupe, aucun etat serveur entre les deux appels. Fichier
+    unique mis en scene directement (`<release_name><ext>`), groupe
+    multi-fichiers dans un dossier (`<release_name>/<nom par fichier>`)."""
+    if not _TORRENT_BUILDER_AVAILABLE:
+        raise RuntimeError(
+            "Génération de .torrent indisponible : pip install nfogen[automation]"
+        )
+    staging_dir = gapscan_config_store.effective_staging_dir()
+    if not staging_dir:
+        raise ValueError(
+            "Dossier de mise en scène non configuré (PUT /gapscan/config, champ staging_dir)."
+        )
+    announce_url = gapscan_config_store.effective_c411_announce_url()
+    if not announce_url:
+        raise ValueError(
+            "Adresse d'annonce C411 non configurée (PUT /gapscan/config, champ c411_announce_url)."
+        )
+
+    if len(files) == 1:
+        staged_path = str(Path(staging_dir) / files[0].staged_name)
+        file_staging.stage_file(files[0].source_path, staged_path)
+    else:
+        target_dir = str(Path(staging_dir) / release_name)
+        file_staging.stage_files(
+            [f.source_path for f in files], target_dir, [f.staged_name for f in files]
+        )
+        staged_path = target_dir
+
+    torrent_path = str(Path(staging_dir) / f"{release_name}.torrent")
+    torrent_builder.build_torrent(staged_path, announce_url, torrent_path)
+    return CommitResult(release_name=release_name, staged_path=staged_path, torrent_path=torrent_path)
