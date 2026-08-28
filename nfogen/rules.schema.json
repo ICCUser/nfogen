@@ -32,6 +32,7 @@
           "type": "array",
           "items": { "$ref": "#/$defs/cross_check" }
         },
+        "upscale_checks": { "$ref": "#/$defs/upscale_checks" },
         "track_language_checks": {
           "type": "array",
           "items": { "$ref": "#/$defs/track_language_check" }
@@ -61,6 +62,20 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         }
+      },
+      "additionalProperties": false
+    },
+    "upscale_checks": {
+      "type": "object",
+      "description": "Heuristique bits-par-pixel (bitrate / (largeur x hauteur x framerate)) : avertit quand le debit reel est anormalement bas pour le codec annonce dans le release_name, indice d'upscale. Jamais bloquant ; seuils ajustables par profil sans toucher au code (nfogen/rules.py:upscale_warnings).",
+      "properties": {
+        "resolution_capture": { "type": "string" },
+        "video_codec_capture": { "type": "string" },
+        "min_bits_per_pixel": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "message": { "type": "string" }
       },
       "additionalProperties": false
     },

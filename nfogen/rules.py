@@ -228,6 +228,60 @@ def track_language_warnings(
     return found
 
 
+def upscale_warnings(
+    capture_values: dict[str, str], metadata: dict[str, Any], schema: dict[str, Any]
+) -> list[str]:
+    """Avertit quand le debit reel est anormalement bas pour le codec annonce
+    dans le release_name (indice d'upscale, ex: source 720p reencodee en
+    1920x1080 sans vrai detail supplementaire). Heuristique bits-par-pixel
+    (bitrate / (largeur x hauteur x framerate)) : s'auto-ajuste a la
+    resolution/au framerate, un seul seuil par codec suffit (pas de table
+    croisee resolution x codec). Jamais bloquant, et silencieuse des que
+    l'info necessaire manque (seuil non configure pour ce codec, metadonnee
+    absente...) -- mieux vaut se taire que deviner."""
+    check = schema.get("upscale_checks")
+    if not check:
+        return []
+
+    codec_val = capture_values.get(check.get("video_codec_capture", "video_codec"))
+    if not codec_val:
+        return []
+    threshold = check.get("min_bits_per_pixel", {}).get(codec_val.lower().replace(".", ""))
+    if threshold is None:
+        return []
+
+    width = metadata.get("video_width")
+    height = metadata.get("video_height")
+    bit_rate = metadata.get("video_bit_rate")
+    frame_rate = metadata.get("frame_rate")
+    if not width or not height or not bit_rate or not frame_rate:
+        return []
+
+    try:
+        bpp = float(bit_rate) / (float(width) * float(height) * float(frame_rate))
+    except (TypeError, ValueError, ZeroDivisionError):
+        return []
+
+    if bpp >= threshold:
+        return []
+
+    message = check.get(
+        "message",
+        "Débit ({bitrate} kb/s) anormalement bas pour du {codec} en {resolution}p "
+        "({bpp} bit/pixel, seuil {threshold}) : upscale possible, à vérifier visuellement.",
+    )
+    resolution_val = capture_values.get(check.get("resolution_capture", "resolution"), "")
+    return [
+        message.format(
+            codec=codec_val,
+            resolution=resolution_val,
+            bitrate=int(float(bit_rate) // 1000),
+            bpp=f"{bpp:.3f}",
+            threshold=threshold,
+        )
+    ]
+
+
 def render_filename(data: dict[str, Any], schema: dict[str, Any]) -> str:
     template = schema.get("filename_template")
     if not template:

@@ -55,9 +55,21 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
     mi = MediaInfo.parse(str(source))
     video = next((t for t in mi.tracks if t.track_type == "Video"), None)
     general = next((t for t in mi.tracks if t.track_type == "General"), None)
+    frame_rate = None
+    if video is not None and video.frame_rate:
+        try:
+            frame_rate = float(video.frame_rate)
+        except (TypeError, ValueError):
+            frame_rate = None
     return {
         "video_height": video.height if video is not None else None,
+        "video_width": video.width if video is not None else None,
         "video_format": video.format if video is not None else None,
+        # Debit de la piste video seule (pas le debit global General, qui
+        # inclut l'audio et fausserait l'heuristique upscale bits-par-pixel).
+        # Absent sur certains conteneurs -- reste None plutot que devine.
+        "video_bit_rate": video.bit_rate if video is not None else None,
+        "frame_rate": frame_rate,
         "audio_languages": [t.language for t in mi.tracks if t.track_type == "Audio"],
         "subtitle_languages": [t.language for t in mi.tracks if t.track_type == "Text"],
         "general_title": getattr(general, "title", None) if general is not None else None,

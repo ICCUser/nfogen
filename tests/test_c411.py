@@ -196,6 +196,73 @@ def test_cross_check_works_without_source_file_via_video_metadata():
     assert any("1080p" in w and "720p" in w for w in warnings)
 
 
+def test_upscale_warning_flags_abnormally_low_bitrate_for_real_c411_profile():
+    """Cas reel signale par un utilisateur : un upload annonce 1080p/x264 mais
+    le debit reel est trop bas pour que ce soit un vrai 1080p -- probable
+    upscale. Prouve le cablage complet (rules.json -> declarative_profile ->
+    rules.upscale_warnings), pas seulement la fonction isolee."""
+    warnings: list[str] = []
+    nfogen.generate(
+        category="video",
+        data={
+            "raw_text": "General\nFormat : Matroska",
+            "release_name": VALID_RELEASE_NAME,  # annonce 1080p/x264
+            "video_metadata": {
+                "video_height": 1080,
+                "video_width": 1920,
+                "video_format": "AVC",
+                "video_bit_rate": 1_500_000,  # tres bas pour du vrai 1080p x264
+                "frame_rate": 24.0,
+                "audio_languages": [],
+                "subtitle_languages": [],
+            },
+        },
+        warnings=warnings,
+    )
+    assert any("upscale" in w.lower() for w in warnings)
+
+
+def test_no_upscale_warning_for_a_comfortable_bitrate():
+    warnings: list[str] = []
+    nfogen.generate(
+        category="video",
+        data={
+            "raw_text": "General\nFormat : Matroska",
+            "release_name": VALID_RELEASE_NAME,
+            "video_metadata": {
+                "video_height": 1080,
+                "video_width": 1920,
+                "video_format": "AVC",
+                "video_bit_rate": 6_000_000,
+                "frame_rate": 24.0,
+                "audio_languages": [],
+                "subtitle_languages": [],
+            },
+        },
+        warnings=warnings,
+    )
+    assert not any("upscale" in w.lower() for w in warnings)
+
+
+@pytest.mark.skipif(not (HAS_FFMPEG and HAS_MEDIAINFO), reason="ffmpeg/libmediainfo requis")
+def test_extract_video_metadata_includes_bitrate_width_and_framerate(tmp_path: Path):
+    """Champs necessaires a l'heuristique upscale (rules.upscale_warnings) :
+    prouve sur un vrai fichier encode par ffmpeg, pas seulement la forme du dict."""
+    from nfogen import extract
+
+    mkv = tmp_path / "sample.mkv"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc=duration=1:size=320x240:rate=24", "-c:v", "libx264",
+         "-pix_fmt", "yuv420p", str(mkv)], check=True,
+    )
+    meta = extract.extract_video_metadata(mkv)
+    assert meta["video_width"] == 320
+    assert meta["video_height"] == 240
+    assert meta["video_bit_rate"] and meta["video_bit_rate"] > 0
+    assert meta["frame_rate"] == pytest.approx(24.0, abs=0.1)
+
+
 @pytest.mark.skipif(not (HAS_FFMPEG and HAS_MEDIAINFO), reason="ffmpeg/libmediainfo requis")
 def test_video_warns_on_missing_audio_language(tmp_path: Path):
     """Une piste audio sans tag de langue declenche un avertissement (non bloquant)."""

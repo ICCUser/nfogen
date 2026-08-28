@@ -106,9 +106,11 @@ def _make_validator(category: str, schema: dict[str, Any]) -> Callable[[RenderCo
             metas = []
         for meta in metas:
             prefix = f"[{meta['name']}] " if "name" in meta else ""
-            meta_warnings = rules_engine.cross_check_warnings(
-                capture_values, meta, schema
-            ) + rules_engine.track_language_warnings(meta, schema, capture_values)
+            meta_warnings = (
+                rules_engine.cross_check_warnings(capture_values, meta, schema)
+                + rules_engine.upscale_warnings(capture_values, meta, schema)
+                + rules_engine.track_language_warnings(meta, schema, capture_values)
+            )
             warnings.extend(f"{prefix}{w}" for w in meta_warnings)
         return warnings
 

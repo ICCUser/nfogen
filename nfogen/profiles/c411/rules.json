@@ -44,6 +44,16 @@
       "identifier": "aucune annee (AAAA), tag de saison (SXX[EXX]) ni COLLECTION/INTEGRALE trouve"
     },
     "filename_template": "{release_name}.nfo",
+    "upscale_checks": {
+      "resolution_capture": "resolution",
+      "video_codec_capture": "video_codec",
+      "min_bits_per_pixel": {
+        "x264": 0.05, "h264": 0.05, "avc": 0.05,
+        "x265": 0.03, "h265": 0.03, "hevc": 0.03,
+        "mpeg2": 0.08
+      },
+      "message": "Débit ({bitrate} kb/s) anormalement bas pour du {codec} en {resolution}p ({bpp} bit/pixel, seuil {threshold}) : upscale possible, à vérifier visuellement."
+    },
     "cross_checks": [
       {
         "capture": "resolution",

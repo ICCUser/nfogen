@@ -9,6 +9,24 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ## [Non publié]
 
+### Ajouté
+
+- **Mise en scène de fichiers + création de `.torrent`**
+  (`nfogen/file_staging.py`, `nfogen/torrent_builder.py`) : hardlink avec
+  repli copie si périphérique différent (jamais de modification du fichier
+  source), création de torrent conforme C411 via `torf` — deuxième brique
+  du pipeline d'automatisation upload (voir [AUTOMATION.md](AUTOMATION.md)).
+- **Proposition de `release_name` agnostique du tracker** : normalisation de
+  la source et des codecs vidéo/audio entièrement pilotée par profil
+  (`rules.json` — `source_aliases`/`video_codec_aliases`/
+  `audio_codec_aliases`), plus aucun câblage spécifique à C411 dans
+  `name_proposal.py` — troisième brique du pipeline.
+- **Détection heuristique d'upscale** (`rules.py:upscale_warnings`) :
+  avertit quand le débit réel (bits-par-pixel) est anormalement bas pour le
+  codec annoncé dans le `release_name`, indice de source ré-encodée en une
+  résolution supérieure sans vrai gain de détail. Seuils configurables par
+  profil, jamais bloquant.
+
 ## [2.0.0] - 2026-08-27
 
 Première version réellement suivie : capture l'état complet du projet à
