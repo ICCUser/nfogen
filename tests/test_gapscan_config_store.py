@@ -139,6 +139,44 @@ def test_status_path_mappings_empty_by_default():
     assert status["radarr_path_mappings"] == {}
 
 
+def test_c411_announce_url_defaults_to_none():
+    assert store.effective_c411_announce_url() is None
+
+
+def test_write_then_read_c411_announce_url():
+    store.write(c411_announce_url="https://c411.org/announce/SECRET")
+    assert store.effective_c411_announce_url() == "https://c411.org/announce/SECRET"
+
+
+def test_staging_dir_defaults_to_none():
+    assert store.effective_staging_dir() is None
+
+
+def test_write_then_read_staging_dir():
+    store.write(staging_dir="/data/staging")
+    assert store.effective_staging_dir() == "/data/staging"
+
+
+def test_status_exposes_announce_url_as_a_flag_not_the_secret_itself():
+    store.write(c411_announce_url="https://c411.org/announce/SECRET")
+    status = store.status()
+    assert status["c411_announce_url_configured"] is True
+    assert "SECRET" not in str(status)
+
+
+def test_status_announce_url_flag_false_by_default():
+    assert store.status()["c411_announce_url_configured"] is False
+
+
+def test_status_includes_staging_dir():
+    store.write(staging_dir="/data/staging")
+    assert store.status()["staging_dir"] == "/data/staging"
+
+
+def test_status_staging_dir_none_by_default():
+    assert store.status()["staging_dir"] is None
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="permissions POSIX non applicables sur Windows")
 def test_write_sets_restrictive_permissions(tmp_path):
     """Contrairement a nfogen.env (chmod 600 explicite dans install.sh), ce

@@ -1174,6 +1174,8 @@ def test_gapscan_config_reports_which_services_are_configured(reload_api):
         "radarr_url": "http://radarr.local",
         "sonarr_path_mappings": {},
         "radarr_path_mappings": {},
+        "c411_announce_url_configured": False,
+        "staging_dir": None,
     }
     # jamais la cle elle-meme dans la reponse, meme par accident.
     assert "x" not in resp.text and "y" not in resp.text

@@ -61,12 +61,14 @@ def write(
     *,
     c411_api_key: Optional[str] = None,
     c411_base_url: Optional[str] = None,
+    c411_announce_url: Optional[str] = None,
     sonarr_url: Optional[str] = None,
     sonarr_api_key: Optional[str] = None,
     radarr_url: Optional[str] = None,
     radarr_api_key: Optional[str] = None,
     sonarr_path_mappings: Optional[dict[str, str]] = None,
     radarr_path_mappings: Optional[dict[str, str]] = None,
+    staging_dir: Optional[str] = None,
 ) -> None:
     """Met a jour uniquement les champs fournis (`None` = inchange) --
     jamais une reecriture complete, un PUT partiel ne doit pas effacer le
@@ -76,12 +78,14 @@ def write(
     updates = {
         "c411_api_key": c411_api_key,
         "c411_base_url": c411_base_url,
+        "c411_announce_url": c411_announce_url,
         "sonarr_url": sonarr_url,
         "sonarr_api_key": sonarr_api_key,
         "radarr_url": radarr_url,
         "radarr_api_key": radarr_api_key,
         "sonarr_path_mappings": sonarr_path_mappings,
         "radarr_path_mappings": radarr_path_mappings,
+        "staging_dir": staging_dir,
     }
     for key, value in updates.items():
         if value is not None:
@@ -141,11 +145,25 @@ def effective_radarr_path_mappings() -> dict[str, str]:
     return _load().get("radarr_path_mappings") or {}
 
 
+def effective_c411_announce_url() -> Optional[str]:
+    """URL d'annonce privee complete (passkey inclus) -- secret au meme
+    titre que c411_api_key, jamais renvoyee en clair par status(). `None`
+    si non configuree. Pas de repli sur une variable d'environnement :
+    uniquement configurable via le fichier."""
+    return _load().get("c411_announce_url") or None
+
+
+def effective_staging_dir() -> Optional[str]:
+    """Dossier ou nfogen met en scene les fichiers avant creation d'un
+    .torrent -- pas un secret, `None` si non configure."""
+    return _load().get("staging_dir") or None
+
+
 def status() -> dict[str, Any]:
     """Etat effectif (fichier prioritaire, sinon variables d'environnement)
-    -- jamais les cles elles-memes, seulement si chaque service est
-    configure et son URL (non sensible). Les mappings de chemins ne sont
-    pas des secrets : renvoyes en entier."""
+    -- jamais les cles/secrets eux-memes, seulement si chaque service est
+    configure et son URL (non sensible). Les mappings de chemins et
+    staging_dir ne sont pas des secrets : renvoyes en entier."""
     c411 = effective_c411()
     sonarr = effective_sonarr()
     radarr = effective_radarr()
@@ -158,4 +176,6 @@ def status() -> dict[str, Any]:
         "radarr_url": radarr[0] if radarr else None,
         "sonarr_path_mappings": effective_sonarr_path_mappings(),
         "radarr_path_mappings": effective_radarr_path_mappings(),
+        "c411_announce_url_configured": effective_c411_announce_url() is not None,
+        "staging_dir": effective_staging_dir(),
     }
