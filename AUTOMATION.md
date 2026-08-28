@@ -53,7 +53,7 @@ Ordre confirmé par l'utilisateur :
 
 | # | Sous-projet | État |
 |---|---|---|
-| 1 | Accès NAS en lecture seule (résolution de chemins Sonarr/Radarr → chemin local) | Conception ci-dessous |
+| 1 | Accès NAS en lecture seule (résolution de chemins Sonarr/Radarr → chemin local) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md) |
 | 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | À concevoir |
 | 3 | `.torrent` + `.nfo` nommés correctement selon le profil | À concevoir |
 | 4 | Upload vers C411 | À concevoir |
@@ -142,6 +142,33 @@ champ.
 (ouverture, streaming pour le hash de pièces) appartient au sous-projet 2,
 pas à celui-ci — le sous-projet 1 se limite à "obtenir et valider un
 chemin local exploitable".
+
+**Livré (2026-08-27)** — écarts par rapport à la conception ci-dessus,
+découverts pendant la planification/implémentation :
+
+- La table de mapping est un simple `dict[str, str]` (`{prefixe_distant:
+  prefixe_local}`), pas une liste de `{remote_prefix, local_prefix}` —
+  plus simple, et réutilise directement `KeyValueEditor` (déjà générique)
+  côté frontend sans transformation.
+- `SonarrSeasonFile` expose `remote_paths: list[str]` (pluriel — une
+  saison est intrinsèquement multi-fichiers), pas un `remote_path`
+  singulier comme pour `RadarrMovieFile`. `GapResult` reflète ça
+  uniformément avec `local_paths: list[str]` (une entrée pour un film,
+  N pour une saison).
+- Résolution/validation implémentées dans un module dédié
+  `nfogen/path_mapping.py` (`resolve_path`/`resolve_and_validate`), pas
+  directement dans `gapscan.py` — logique pure, testable sans mock
+  filesystem lourd.
+- La validation "à chaque scan" s'applique aussi aux titres dont le
+  verdict C411 est repris tel quel en mode incrémental : `scan_movie`/
+  `scan_series_season` recalculent toujours `local_paths`/`path_resolved`/
+  `path_error` avant de décider s'il faut réinterroger C411, et
+  utilisent `dataclasses.replace()` pour ne rafraîchir QUE ces 3 champs
+  sur un résultat par ailleurs repris — un scan incrémental ne raccourcit
+  donc jamais la vérification de chemin, seulement l'appel réseau à C411.
+
+Voir le plan d'implémentation complet (10 tâches TDD, code exact) :
+[docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md](docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md).
 
 ## Sous-projets 2 à 7 : non détaillés
 
