@@ -469,6 +469,14 @@ export default function GapScanPage() {
               <tr key={`${r.imdb_id ?? r.tvdb_id ?? r.title}-${r.season_number ?? i}`} className="border-t border-line">
                 <td className="px-4 py-2 font-mono font-medium text-ink">
                   {r.title} {r.year ? `(${r.year})` : ""}
+                  {!r.path_resolved && (
+                    <span
+                      className="ml-1 rounded-full bg-warn-bg px-2 py-0.5 text-xs text-warn"
+                      title={r.path_error ?? "Chemin local non résolu"}
+                    >
+                      ⚠ chemin
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-2 text-ink-dim">
                   {r.media_type === "movie" ? "Film" : `Série S${String(r.season_number).padStart(2, "0")}`}

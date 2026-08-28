@@ -93,6 +93,26 @@ describe("GapScanPage", () => {
     expect(table.getByText(/2160p.*BLURAY.*VFF/)).toBeInTheDocument();
   });
 
+  it("signale un chemin local non resolu par un badge, avec le detail en infobulle", async () => {
+    vi.mocked(gapscanResults).mockResolvedValue([
+      { ...MATRIX_GAP, path_resolved: false, path_error: "Fichier introuvable apres resolution : /mnt/nas/Matrix.mkv" },
+    ]);
+
+    renderPage();
+
+    const badge = await screen.findByTitle("Fichier introuvable apres resolution : /mnt/nas/Matrix.mkv");
+    expect(badge).toBeInTheDocument();
+  });
+
+  it("n'affiche pas de badge de chemin quand le chemin est resolu", async () => {
+    vi.mocked(gapscanResults).mockResolvedValue([{ ...MATRIX_GAP, path_resolved: true, path_error: null }]);
+
+    renderPage();
+
+    await screen.findByText(/Matrix \(1999\)/);
+    expect(screen.queryByText("⚠ chemin")).not.toBeInTheDocument();
+  });
+
   it("chemin heureux : lancer un scan (deja termine au premier appel de statut) affiche les resultats", async () => {
     const user = userEvent.setup();
     vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });
