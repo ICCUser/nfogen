@@ -6,7 +6,46 @@ from __future__ import annotations
 from nfogen.name_proposal import propose_video_release_name
 
 TEMPLATE = "{title}.{identifier}.{language}.{resolution}p.{source}.{audio}.{video_codec}-{team}"
-CONFIG = {"template": TEMPLATE, "language_aliases": {"FR+JA": "MULTI.VFF", "FR": "VFF"}}
+CONFIG = {
+    "template": TEMPLATE,
+    "language_aliases": {"FR+JA": "MULTI.VFF", "FR": "VFF"},
+    "source_aliases": {
+        "WEBDL": "WEB",
+        "WEB-DL": "WEB",
+        "WEBRip": "WEB",
+        "BDRip": "BDRip",
+        "BDRemux": "BluRay.REMUX",
+        "BluRay": "BluRay",
+        "HDTV": "HDTV",
+        "DVDRip": "DVDRip",
+        "DSNP": "WEB.DSNP",
+        "NF": "WEB.NF",
+        "AMZN": "WEB.AMZN",
+    },
+    "video_codec_aliases": {
+        "x264": "x264",
+        "x265": "x265",
+        "H.264": "h.264",
+        "H264": "h264",
+        "H.265": "h.265",
+        "H265": "h265",
+        "HEVC": "hevc",
+        "AVC": "avc",
+        "MPEG-2": "mpeg-2",
+        "MPEG2": "mpeg2",
+    },
+    "audio_codec_aliases": {
+        "AC3": "AC3",
+        "EAC3": "EAC3",
+        "AAC": "AAC",
+        "DTS-HD": "DTS-HD",
+        "DTS": "DTS",
+        "FLAC": "FLAC",
+        "MP3": "MP3",
+        "OPUS": "OPUS",
+        "TRUEHD": "TRUEHD",
+    },
+}
 
 ONE_PIECE_FILES = [
     "One Piece (1999) - S01E01 - 001 - Im Luffy! [WEBDL-1080p][AC3 2.0][FR+JA][x264 8bit].mkv",
@@ -132,3 +171,38 @@ def test_title_hint_takes_priority_over_filename_when_both_present():
 def test_title_hints_wrong_length_is_ignored_silently():
     proposal = propose_video_release_name(ONE_PIECE_FILES, CONFIG, title_hints=["only one"])
     assert proposal.name == "One.Piece.S01.MULTI.VFF.1080p.WEB.AC3.2.0.x264-NOTAG"
+
+
+# --------------------------------------------------------------------------- #
+# Agnosticisme du tracker (AUTOMATION.md, sous-projet 3) : la source et les
+# codecs ne sont plus cables en dur -- un profil different de C411 peut
+# choisir une autre normalisation sans toucher au code.
+# --------------------------------------------------------------------------- #
+def test_source_normalization_is_fully_configurable_per_profile():
+    files = ["Movie.2020.WEBDL.1080p.mkv"]
+    custom_config = {
+        "template": "{title}.{identifier}.{resolution}p.{source}",
+        "source_aliases": {"WEBDL": "WEB-CUSTOM"},
+    }
+    proposal = propose_video_release_name(files, custom_config)
+    assert proposal.fields["source"] == "WEB-CUSTOM"
+
+
+def test_video_codec_normalization_is_fully_configurable_per_profile():
+    files = ["Movie.2020.1080p.x264.mkv"]
+    custom_config = {
+        "template": "{title}.{identifier}.{resolution}p.{video_codec}",
+        "video_codec_aliases": {"x264": "H264-CUSTOM"},
+    }
+    proposal = propose_video_release_name(files, custom_config)
+    assert proposal.fields["video_codec"] == "H264-CUSTOM"
+
+
+def test_audio_codec_normalization_is_fully_configurable_per_profile():
+    files = ["Movie.2020.1080p.AC3.mkv"]
+    custom_config = {
+        "template": "{title}.{identifier}.{resolution}p.{audio}",
+        "audio_codec_aliases": {"AC3": "DOLBY-CUSTOM"},
+    }
+    proposal = propose_video_release_name(files, custom_config)
+    assert proposal.fields["audio"] == "DOLBY-CUSTOM"

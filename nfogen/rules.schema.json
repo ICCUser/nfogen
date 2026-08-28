@@ -48,6 +48,18 @@
         "language_aliases": {
           "type": "object",
           "additionalProperties": { "type": "string" }
+        },
+        "source_aliases": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "video_codec_aliases": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "audio_codec_aliases": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
         }
       },
       "additionalProperties": false

@@ -17,18 +17,13 @@ _SEASON_EP_RE = re.compile(r"[Ss](\d{2})[Ee](\d{2})")
 _SEASON_ONLY_RE = re.compile(r"[Ss](\d{2})(?![Ee\d])")
 _BRACKETS_RE = re.compile(r"\[([^\]]+)\]")
 _RESOLUTION_RE = re.compile(r"\b(\d{3,4})p\b", re.IGNORECASE)
-_VIDEO_CODEC_RE = re.compile(r"\b([xX]26[45]|HEVC|AVC|MPEG-?2|[Hh]\.?26[45])\b")
-_AUDIO_CODEC_RE = re.compile(r"\b(AC3|EAC3|AAC|DTS(?:-HD)?|FLAC|MP3|OPUS|TRUEHD)\b", re.IGNORECASE)
 _CHANNELS_RE = re.compile(r"\b(\d(?:\.\d))\b")
 _TEAM_RE = re.compile(r"-\s*([A-Za-z0-9]+)\s*$")
-_SOURCE_RE = re.compile(
-    r"\b(WEB-?DL|WEBRip|BDRip|BDRemux|BluRay|HDTV|DVDRip|DSNP|NF|AMZN)\b", re.IGNORECASE
-)
-_SOURCE_ALIASES = {
-    "webdl": "WEB", "web-dl": "WEB", "webrip": "WEB",
-    "bdrip": "BDRip", "bdremux": "BluRay.REMUX", "bluray": "BluRay",
-    "hdtv": "HDTV", "dvdrip": "DVDRip", "dsnp": "WEB.DSNP", "nf": "WEB.NF", "amzn": "WEB.AMZN",
-}
+# Resolution/saison-episode/annee/position du tag d'equipe : conventions
+# jugees quasi universelles dans l'ecosysteme des trackers, restent cablees
+# ici. Vocabulaire/normalisation des sources et codecs, eux, varient d'un
+# tracker a l'autre : entierement pilotes par le profil (voir
+# _detect_via_aliases, AUTOMATION.md sous-projet 3).
 
 
 @dataclass
@@ -71,35 +66,46 @@ def _find_season(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def _extract_release_info(text: str, language_aliases: dict[str, str]) -> dict[str, str]:
-    """Cherche resolution/codec video/audio/source/langue n'importe ou dans `text`."""
+def _detect_via_aliases(text: str, aliases: dict[str, str]) -> str:
+    """Cherche le plus long alias (cle) de `aliases` present dans `text`
+    (insensible a la casse), renvoie sa forme normalisee (valeur associee).
+    Chaine vide si aucun alias ne correspond. Mecanisme generique reutilise
+    pour la langue, la source et les codecs video/audio (voir
+    AUTOMATION.md, sous-projet 3) -- vocabulaire ET normalisation
+    entierement pilotes par le profil, aucun cablage specifique a un
+    tracker dans ce module."""
+    lowered = text.lower()
+    for alias, normalized in sorted(aliases.items(), key=lambda kv: -len(kv[0])):
+        if alias and alias.lower() in lowered:
+            return normalized
+    return ""
+
+
+def _extract_release_info(text: str, alias_groups: dict[str, dict[str, str]]) -> dict[str, str]:
+    """Cherche resolution/codec video/audio/source/langue n'importe ou dans
+    `text`. `alias_groups` : {"language": {...}, "source": {...},
+    "video_codec": {...}, "audio_codec": {...}} -- vocabulaire et
+    normalisation entierement pilotes par le profil."""
     info = {"language": "", "resolution": "", "video_codec": "", "audio": "", "source": ""}
     if not text:
         return info
 
-    for alias, normalized in sorted(language_aliases.items(), key=lambda kv: -len(kv[0])):
-        if alias and alias in text:
-            info["language"] = normalized
-            break
+    info["language"] = _detect_via_aliases(text, alias_groups["language"])
 
     match = _RESOLUTION_RE.search(text)
     if match:
         info["resolution"] = match.group(1)
 
-    match = _VIDEO_CODEC_RE.search(text)
-    if match:
-        info["video_codec"] = match.group(1).lower()
+    info["video_codec"] = _detect_via_aliases(text, alias_groups["video_codec"])
 
-    match = _AUDIO_CODEC_RE.search(text)
-    if match:
-        info["audio"] = match.group(1).upper()
+    audio_codec = _detect_via_aliases(text, alias_groups["audio_codec"])
+    if audio_codec:
+        info["audio"] = audio_codec
         channels_match = _CHANNELS_RE.search(text)
         if channels_match:
             info["audio"] += f".{channels_match.group(1)}"
 
-    match = _SOURCE_RE.search(text)
-    if match:
-        info["source"] = _SOURCE_ALIASES.get(match.group(1).lower(), match.group(1))
+    info["source"] = _detect_via_aliases(text, alias_groups["source"])
 
     return info
 
@@ -132,7 +138,12 @@ def propose_video_release_name(
                 "(rules.json -> video -> name_proposal.template)."
             ],
         )
-    language_aliases: dict[str, str] = config.get("language_aliases", {})
+    alias_groups: dict[str, dict[str, str]] = {
+        "language": config.get("language_aliases", {}),
+        "source": config.get("source_aliases", {}),
+        "video_codec": config.get("video_codec_aliases", {}),
+        "audio_codec": config.get("audio_codec_aliases", {}),
+    }
 
     warnings: list[str] = []
     stems = [_strip_ext(f) for f in filenames]
@@ -187,8 +198,8 @@ def propose_video_release_name(
         identifier = "IDENTIFIANT"
         warnings.append("Aucune année ni tag de saison détecté : identifiant à compléter manuellement.")
 
-    info_from_filename = _extract_release_info(stems[0], language_aliases)
-    info_from_hint = _extract_release_info(hints[0], language_aliases)
+    info_from_filename = _extract_release_info(stems[0], alias_groups)
+    info_from_hint = _extract_release_info(hints[0], alias_groups)
     info = _merge_release_info(info_from_hint, info_from_filename)
 
     if not info["language"]:

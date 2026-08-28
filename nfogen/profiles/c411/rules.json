@@ -88,6 +88,42 @@
         "VO": "VO",
         "VOSTFR": "VOSTFR",
         "EN+VOSTFR": "VOSTFR"
+      },
+      "source_aliases": {
+        "WEBDL": "WEB",
+        "WEB-DL": "WEB",
+        "WEBRip": "WEB",
+        "BDRip": "BDRip",
+        "BDRemux": "BluRay.REMUX",
+        "BluRay": "BluRay",
+        "HDTV": "HDTV",
+        "DVDRip": "DVDRip",
+        "DSNP": "WEB.DSNP",
+        "NF": "WEB.NF",
+        "AMZN": "WEB.AMZN"
+      },
+      "video_codec_aliases": {
+        "x264": "x264",
+        "x265": "x265",
+        "H.264": "h.264",
+        "H264": "h264",
+        "H.265": "h.265",
+        "H265": "h265",
+        "HEVC": "hevc",
+        "AVC": "avc",
+        "MPEG-2": "mpeg-2",
+        "MPEG2": "mpeg2"
+      },
+      "audio_codec_aliases": {
+        "AC3": "AC3",
+        "EAC3": "EAC3",
+        "AAC": "AAC",
+        "DTS-HD": "DTS-HD",
+        "DTS": "DTS",
+        "FLAC": "FLAC",
+        "MP3": "MP3",
+        "OPUS": "OPUS",
+        "TRUEHD": "TRUEHD"
       }
     }
   }
