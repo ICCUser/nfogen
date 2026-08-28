@@ -31,6 +31,8 @@ const CONFIGURED: GapscanConfig = {
   sonarr_url: null,
   radarr_configured: true,
   radarr_url: "http://radarr.local:7878",
+  sonarr_path_mappings: {},
+  radarr_path_mappings: {},
 };
 
 const IDLE_STATUS: GapscanStatus = {
@@ -56,6 +58,9 @@ const MATRIX_GAP: GapResult = {
   has_freeleech_alternative: false,
   has_double_upload_window: false,
   error: null,
+  local_paths: [],
+  path_resolved: true,
+  path_error: null,
 };
 
 function renderPage() {
@@ -129,6 +134,8 @@ describe("GapScanPage", () => {
       sonarr_url: null,
       radarr_configured: false,
       radarr_url: null,
+      sonarr_path_mappings: {},
+      radarr_path_mappings: {},
     });
 
     renderPage();

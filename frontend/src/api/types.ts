@@ -135,6 +135,11 @@ export interface GapResult {
   has_double_upload_window: boolean;
   /** Detail si status === "error" (C411 injoignable pour ce titre), sinon null. */
   error: string | null;
+  /** Chemin(s) local(aux) reels apres resolution du mapping distant/local
+   * (voir AUTOMATION.md, sous-projet 1). Vide/false si non resolu. */
+  local_paths: string[];
+  path_resolved: boolean;
+  path_error: string | null;
 }
 
 export type GapscanState = "idle" | "running" | "done" | "error";
@@ -155,6 +160,8 @@ export interface GapscanConfig {
   sonarr_url: string | null;
   radarr_configured: boolean;
   radarr_url: string | null;
+  sonarr_path_mappings: Record<string, string>;
+  radarr_path_mappings: Record<string, string>;
 }
 
 /** PUT /gapscan/config : chaque champ omis reste inchange cote serveur. */
@@ -165,4 +172,6 @@ export interface GapscanConfigWrite {
   sonarr_api_key?: string;
   radarr_url?: string;
   radarr_api_key?: string;
+  sonarr_path_mappings?: Record<string, string>;
+  radarr_path_mappings?: Record<string, string>;
 }
