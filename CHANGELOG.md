@@ -44,6 +44,17 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   WEBDL/WEB-DL/WEBRip vers `WEB` à l'upload (voir `source_aliases`).
   Incident réel : Van Wilder 3 (2009), déjà uploadé par l'utilisateur
   lui-même, signalé comme gap.
+- **Nom proposé sans tag de langue malgré des pistes FR/EN réelles dans le
+  fichier** (`upload_prep.py`) : `preview_upload` déduit maintenant un
+  indice de langue depuis les vraies pistes audio détectées par MediaInfo
+  quand le nom de fichier n'en porte aucun (plusieurs langues → indice
+  combiné pour déclencher le préfixe `MULTI` attendu par C411).
+
+### Modifié
+
+- **Mise en page plus large** : le conteneur principal (toutes les pages)
+  passe de 1024px à 1280px de large — évite les badges/actions qui
+  retombaient à la ligne sur le tableau GapScan.
 
 ## [2.0.0] - 2026-08-27
 
