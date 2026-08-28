@@ -34,6 +34,17 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   en scène. Bouton "Préparer l'upload" sur la page GapScan. Quatrième
   brique du pipeline d'automatisation.
 
+### Corrigé
+
+- **GapScan classait à tort des titres en "Qualité supérieure
+  disponible"** quand une release C411 strictement équivalente existait
+  déjà (`quality.py:SOURCE_RANK`) : une version locale scene taguée
+  `WEB-DL` était comparée à une release C411 taguée `WEB` comme si
+  c'étaient deux sources différentes — alors que C411 normalise
+  WEBDL/WEB-DL/WEBRip vers `WEB` à l'upload (voir `source_aliases`).
+  Incident réel : Van Wilder 3 (2009), déjà uploadé par l'utilisateur
+  lui-même, signalé comme gap.
+
 ## [2.0.0] - 2026-08-27
 
 Première version réellement suivie : capture l'état complet du projet à
