@@ -58,7 +58,7 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 | 1 | Accès NAS en lecture seule (résolution de chemins Sonarr/Radarr → chemin local) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md) |
 | 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-automation-staging-torrent.md) |
 | 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md) |
-| 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | À concevoir |
+| 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | Conçu (2026-08-28), voir sa section |
 | 5 | Upload vers C411 | À concevoir |
 | 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
 | 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
@@ -334,7 +334,106 @@ en plus de la suite de tests existante, inchangée dans ses assertions.
 Voir le plan d'implémentation complet (code exact, alias reproduits un
 par un) : [docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md).
 
-## Sous-projets 4 à 8 : non détaillés
+## Sous-projet 4 : Orchestration du nommage → mise en scène + `.torrent`
 
-À concevoir un par un, dans l'ordre du tableau ci-dessus, une fois le
-sous-projet 3 implémenté.
+**But** : étant donné des chemins locaux déjà résolus (sous-projet 1,
+`GapResult.local_paths`), calculer le(s) nom(s) de release (sous-projet 3),
+mettre en scène les fichiers et générer le(s) `.torrent` (sous-projet 2) —
+sans jamais rien committer sur disque avant confirmation explicite.
+
+**Décisions (2026-08-28)** :
+
+- **Deux étapes séparées, jamais fusionnées** : `preview_upload()` (lecture
+  seule — extraction MediaInfo + calcul des noms + avertissements, aucune
+  écriture disque) puis `commit_upload()` (mise en scène + `.torrent`, un
+  groupe à la fois). Nécessaire parce que la mise en scène crée de vrais
+  fichiers et que la génération de `.torrent` hash tout le contenu
+  (potentiellement lent) — l'utilisateur doit pouvoir voir le résultat
+  avant d'engager quoi que ce soit. Correspond aussi au principe déjà
+  établi de `name_proposal.py` : une proposition à relire, jamais appliquée
+  à l'aveugle.
+- **Indice de titre automatique** : contrairement à la page "Générer" où
+  l'utilisateur colle le tag `Title` embarqué à la main, l'orchestration le
+  lit elle-même via `extract.extract_video_metadata()` (`general_title`,
+  déjà extrait) et le fournit comme `title_hints` — automatise un geste que
+  l'utilisateur fait déjà manuellement, pas une nouvelle logique de
+  détection.
+- **Nommage par fichier dans un pack** : `propose_video_release_name`
+  n'a besoin d'aucune modification. Appelé une fois avec **tous** les
+  fichiers du groupe → nom de pack (dossier + `.torrent`, identifiant
+  `S01`). Appelé une deuxième fois **par fichier** (liste à un seul
+  élément) → nom individuel avec son propre identifiant `S01E0X` (déjà le
+  comportement de la fonction pour une liste de longueur 1, voir
+  `test_single_episode_keeps_episode_number`) — aucune fonction nouvelle
+  requise dans `name_proposal.py`.
+- **Groupement automatique par tag d'équipe (résout un cas réel rencontré
+  par l'utilisateur — packs assemblés à partir de plusieurs releases)** :
+  aujourd'hui, des tags d'équipe différents dans un pack font échouer
+  `propose_video_release_name` en bloc (`None`, un seul message d'erreur).
+  L'orchestration groupe D'ABORD les fichiers par tag d'équipe détecté
+  (même priorité indice > nom de fichier que la détection existante ;
+  aucun tag détecté = son propre groupe, jamais fusionné par supposition)
+  puis calcule **une proposition + un `.torrent` par groupe**. Un pack
+  `S01E01-05` (TeamA) + `S01E06-12` (TeamB) devient deux uploads distincts
+  au lieu d'un refus complet. `name_proposal._extract_team` devient public
+  (`extract_team_tag`, comportement inchangé) pour être réutilisé ici.
+- **Validation réutilisée telle quelle, aucune duplication** : une fois un
+  nom de groupe proposé, l'orchestration appelle le **vrai** validateur du
+  profil (`registry.get_validator(profile, "video")`, celui qui tourne
+  déjà pour `nfogen.generate()`) via un `RenderContext` construit à la
+  volée (`data={"release_name": ..., "video_metadata": [...]}`) — récupère
+  gratuitement `cross_checks`, `upscale_checks` (sous-projet précédent) et
+  `track_language_checks` sans réimplémenter quoi que ce soit. Une
+  `ValueError` (nom non conforme, ex. codec vidéo introuvable donc token
+  requis absent) transforme le groupe en "bloqué" (aucune mise en scène
+  possible) plutôt que de laisser planter l'appel.
+- **Disposition du fichier mis en scène** : un groupe à un seul fichier
+  (film, ou épisode isolé) est mis en scène comme fichier unique
+  (`staging_dir/<release_name>.<ext>`) ; un groupe à plusieurs fichiers
+  (pack) comme dossier (`staging_dir/<release_name>/<nom par fichier>`) —
+  convention scene standard (torrent fichier unique pour un film, torrent
+  dossier pour un pack). Le `.torrent` est écrit à côté
+  (`staging_dir/<release_name>.torrent`).
+- **API sans nouvel identifiant** : pas besoin d'ajouter un `id` à
+  `GapResult` — le frontend a déjà `local_paths` en mémoire depuis
+  `GET /gapscan/results` et les repasse directement en entrée de
+  `POST /gapscan/prepare-upload/preview`. Garde `upload_prep.py` découplé
+  du modèle de données GapScan (ne connaît que des chemins), réutilisable
+  si un futur déclencheur (sous-projet 7) ne vient pas de GapScan.
+
+**Conception** :
+
+1. **`nfogen/upload_prep.py`** (nouveau) :
+   - `group_by_team(filenames, hints) -> list[list[int]]` : pur, groupe des
+     index par tag d'équipe détecté (`None` compris comme groupe à part).
+   - `preview_upload(local_paths, profile="c411") -> list[GroupProposal]` :
+     extraction MediaInfo par fichier (best-effort : une extraction
+     illisible devient un avertissement, jamais un plantage), groupement,
+     proposition de pack + par fichier, validation via le vrai validateur
+     du profil. Aucune écriture disque.
+   - `commit_upload(release_name, files, profile="c411") -> CommitResult` :
+     mise en scène (`file_staging`) + `.torrent` (`torrent_builder`, taille
+     de pièce du barème C411) dans `gapscan_config_store.effective_staging_dir()`
+     avec `gapscan_config_store.effective_c411_announce_url()`. Nécessite
+     l'extra `automation` (torf) — comportement 501 identique au reste si
+     absent.
+2. **API** (`nfogen/api.py`, sous `/gapscan/prepare-upload/*`, même garde
+   `_require_gapscan_available()` que le reste de GapScan) :
+   - `POST /gapscan/prepare-upload/preview` — `{local_paths, profile}` →
+     liste de groupes (nom de pack, fichiers avec nom individuel,
+     avertissements, bloqué ou non).
+   - `POST /gapscan/prepare-upload/commit` — `{release_name, files, profile}`
+     (le frontend renvoie exactement ce que `preview` a produit pour CE
+     groupe) → dossier/fichier mis en scène + chemin du `.torrent`.
+3. **Frontend** : bouton "Préparer l'upload" sur une ligne GapScan → appelle
+   `preview`, affiche chaque groupe (nom proposé, fichiers, avertissements)
+   dans une carte avec un bouton "Confirmer" **par groupe** (jamais un
+   "tout confirmer" — cohérent avec la décision "upload un par un").
+
+**Pas dans ce sous-projet** (laissé au sous-projet 7, YAGNI) :
+- Correction manuelle d'un nom refusé/bloqué (forcer un `release_name`) —
+  l'utilisateur doit repasser par la page "Générer" existante pour l'instant.
+- Déclenchement automatique (file d'attente, email) — ici uniquement un
+  bouton manuel dans GapScan.
+
+À implémenter.
