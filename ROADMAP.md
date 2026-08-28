@@ -13,6 +13,7 @@ C411. Historique détaillé des changements : `git log`.
 | Authentification | Token API partagé (`NFOGEN_API_TOKEN`) et/ou comptes nommés (`NFOGEN_ACCOUNTS_FILE`, rôle admin unique, `nfogen/accounts.py`). `POST /login` pose un cookie httpOnly ; `require_token` accepte ce cookie ou l'en-tête `Authorization`. Protège toujours `/profiles/store*`/`/accounts*` ; protège `/generate*` seulement si `NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1`. Pas de base de données : comptes en JSON (PBKDF2-HMAC-SHA256), sessions en mémoire, throttle anti-bruteforce (5 essais/30s). |
 | Stack frontend | React + Vite (SPA), consomme l'API FastAPI existante. |
 | Déploiement | Repo unique (front + back) ; script natif Debian/Ubuntu (`scripts/install.sh`) en priorité, image Docker en option. |
+| Versionnage | SemVer (`MAJOR.MINOR.PATCH`) depuis `2.0.0` (2026-08-27) — `v0.1.0` avait été taggé une fois (2026-06-28) puis jamais tenu à jour, `2.0.0` marque le vrai début du suivi. `pyproject.toml`/`frontend/package.json` synchronisés, tag git `vX.Y.Z` + entrée `CHANGELOG.md` à chaque changement notable mergé sur `main`. |
 
 ## Idées / prochaines pistes
 

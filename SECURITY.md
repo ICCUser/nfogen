@@ -2,13 +2,15 @@
 
 ## Supported versions
 
-Seule la derniere version de `main` recoit des correctifs de securite (pas
-encore de releases etiquetees).
+Seule la derniere version de `main` recoit des correctifs de securite.
+Versionnage SemVer depuis `2.0.0` (2026-08-27, voir `CHANGELOG.md`) : pas
+de maintenance retroactive sur une version anterieure taggee, un correctif
+de securite arrive toujours sur `main` d'abord.
 
 | Version          | Supported          |
 | ---------------- | ------------------ |
 | `main` (HEAD)    | :white_check_mark: |
-| Versions ant.    | :x:                |
+| Versions taggees anterieures | :x: |
 
 ## Reporting a Vulnerability
 
