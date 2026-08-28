@@ -40,6 +40,10 @@ class RadarrMovieFile:
     # francophone, qui liste souvent sous le titre de diffusion FR (ex.
     # "Wild Card" -> "Joker"), pas l'original (retour utilisateur, 2026-08-27).
     alternate_titles: list[str] = field(default_factory=list)
+    # Chemin absolu du fichier tel que rapporte par Radarr -- peut differer
+    # du chemin que nfogen doit reellement ouvrir si nfogen tourne ailleurs
+    # que Radarr (voir AUTOMATION.md, sous-projet 1 : mapping de chemins).
+    remote_path: Optional[str] = None
 
 
 class RadarrClient:
@@ -108,6 +112,7 @@ class RadarrClient:
                     alternate_titles=[
                         t.get("title", "") for t in movie.get("alternateTitles", []) if t.get("title")
                     ],
+                    remote_path=movie_file.get("path"),
                 )
             )
         return movies

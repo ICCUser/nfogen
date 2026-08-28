@@ -79,6 +79,29 @@ def test_list_movie_files_defaults_alternate_titles_to_empty_list():
     assert movies[0].alternate_titles == []
 
 
+def test_list_movie_files_exposes_the_remote_path():
+    movies_with_path = [
+        {
+            **MOVIES[0],
+            "movieFile": {**MOVIES[0]["movieFile"], "path": "/data/media/Matrix (1999)/Matrix.mkv"},
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=movies_with_path)
+
+    movies = _client(handler).list_movie_files()
+    assert movies[0].remote_path == "/data/media/Matrix (1999)/Matrix.mkv"
+
+
+def test_list_movie_files_defaults_remote_path_to_none_when_absent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=MOVIES)  # pas de cle "path" dans movieFile
+
+    movies = _client(handler).list_movie_files()
+    assert movies[0].remote_path is None
+
+
 def test_requires_base_url_and_api_key():
     with pytest.raises(RadarrError):
         RadarrClient(base_url="", api_key="x")
