@@ -57,7 +57,7 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 |---|---|---|
 | 1 | Accès NAS en lecture seule (résolution de chemins Sonarr/Radarr → chemin local) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-gapscan-nas-path-resolution.md) |
 | 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-automation-staging-torrent.md) |
-| 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | Conception ci-dessous |
+| 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md) |
 | 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | À concevoir |
 | 5 | Upload vers C411 | À concevoir |
 | 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
@@ -319,6 +319,20 @@ sans un second tracker réel pour valider une abstraction complète :
   reconnu se normalise vers lui-même, casse mise à part) — un profil
   peut choisir d'unifier ça lui-même dans ses propres `*_aliases` s'il le
   souhaite, sans changement de code.
+
+**Livré (2026-08-27)** — un écart par rapport au plan initial : livré en
+**un seul commit**, pas deux comme prévu. Trouvé à l'exécution que
+`tests/test_api.py` (`POST /propose-name`) exerce le **vrai** profil C411
+de bout en bout, pas seulement le `CONFIG` isolé de
+`tests/test_name_proposal.py` — le refactor seul (avant de peupler
+`rules.json`) cassait donc réellement 2 tests existants, pas juste
+temporairement "en attente" d'une deuxième tâche. Jamais commité dans cet
+état intermédiaire. Comportement final vérifié identique à l'ancien via un
+check de bout en bout (même sortie exacte sur un cas réel, One Piece S01)
+en plus de la suite de tests existante, inchangée dans ses assertions.
+
+Voir le plan d'implémentation complet (code exact, alias reproduits un
+par un) : [docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md).
 
 ## Sous-projets 4 à 8 : non détaillés
 
