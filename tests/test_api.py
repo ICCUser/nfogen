@@ -1361,6 +1361,8 @@ def test_prepare_upload_commit_real_flow(reload_api, tmp_path):
     assert body["release_name"] == "Movie.2020.1080p.x264-TEAM"
     assert body["staged_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.mkv")
     assert body["torrent_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.torrent")
+    assert body["nfo_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.nfo")
+    assert (staging_dir / "Movie.2020.1080p.x264-TEAM.nfo").is_file()
 
 
 def test_gapscan_run_rejects_when_c411_not_configured(reload_api):

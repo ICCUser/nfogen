@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import extract, file_staging, gapscan_config_store
+from . import engine, extract, file_staging, gapscan_config_store
 from .engine import propose_release_name
 from .models import RenderContext
 from .name_proposal import extract_team_tag, strip_ext
@@ -55,12 +55,14 @@ class GroupProposal:
 @dataclass
 class CommitResult:
     """Resultat de `commit_upload()` : ou le contenu a ete mis en scene
-    (fichier unique ou dossier selon la taille du groupe) et ou le
-    `.torrent` correspondant a ete ecrit."""
+    (fichier unique ou dossier selon la taille du groupe), ou le `.torrent`
+    correspondant a ete ecrit, et ou le `.nfo` (un seul, meme pour un pack
+    multi-fichiers) a ete ecrit."""
 
     release_name: str
     staged_path: str
     torrent_path: str
+    nfo_path: str
 
 
 def group_by_team(filenames: list[str], hints: list[Optional[str]]) -> list[list[int]]:
@@ -221,13 +223,32 @@ def commit_upload(release_name: str, files: list[ProposedFile], profile: str = "
     if len(files) == 1:
         staged_path = str(Path(staging_dir) / files[0].staged_name)
         file_staging.stage_file(files[0].source_path, staged_path)
+        raw_text = extract.extract_video_text(Path(staged_path))
     else:
         target_dir = str(Path(staging_dir) / release_name)
         file_staging.stage_files(
             [f.source_path for f in files], target_dir, [f.staged_name for f in files]
         )
         staged_path = target_dir
+        # Un seul .nfo pour tout le pack (pas un par episode) : coherent
+        # avec un seul release_name / .torrent par groupe (confirme par
+        # l'utilisateur, 2026-08-28).
+        raw_text = extract.extract_video_dir_text(Path(staged_path))
+
+    # Lu depuis le chemin MIS EN SCENE (pas l'original) : "Complete name"
+    # dans le .nfo reflete alors le nom de release final, pas le nom de
+    # telechargement d'origine.
+    nfo_filename: list[str] = []
+    nfo = engine.generate(
+        category="video", profile=profile,
+        data={"release_name": release_name, "raw_text": raw_text},
+        filename=nfo_filename,
+    )
+    nfo_path = str(Path(staging_dir) / (nfo_filename[0] if nfo_filename else f"{release_name}.nfo"))
+    Path(nfo_path).write_text(nfo, encoding="utf-8")
 
     torrent_path = str(Path(staging_dir) / f"{release_name}.torrent")
     torrent_builder.build_torrent(staged_path, announce_url, torrent_path)
-    return CommitResult(release_name=release_name, staged_path=staged_path, torrent_path=torrent_path)
+    return CommitResult(
+        release_name=release_name, staged_path=staged_path, torrent_path=torrent_path, nfo_path=nfo_path
+    )

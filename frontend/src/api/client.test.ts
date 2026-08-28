@@ -240,6 +240,7 @@ describe("prepareUploadPreview / prepareUploadCommit", () => {
       release_name: "Movie.2020.1080p.x264-TEAM",
       staged_path: "/staging/Movie.2020.1080p.x264-TEAM.mkv",
       torrent_path: "/staging/Movie.2020.1080p.x264-TEAM.torrent",
+      nfo_path: "/staging/Movie.2020.1080p.x264-TEAM.nfo",
     };
     vi.mocked(fetch).mockResolvedValue(jsonResponse(commitResult));
 

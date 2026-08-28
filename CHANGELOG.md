@@ -33,6 +33,11 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   uploads distincts), avec un aperçu sans écriture disque avant toute mise
   en scène. Bouton "Préparer l'upload" sur la page GapScan. Quatrième
   brique du pipeline d'automatisation.
+- **Génération du `.nfo` intégrée à "Préparer l'upload"** : `commit_upload`
+  génère et met en scène un `.nfo` (un seul par groupe, même pour un pack
+  multi-fichiers) à côté du média et du `.torrent`, en réutilisant le
+  moteur `nfogen.generate()` existant — aucune génération manuelle
+  séparée nécessaire.
 
 ### Corrigé
 

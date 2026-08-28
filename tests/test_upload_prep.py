@@ -190,6 +190,9 @@ def test_commit_single_file_stages_and_builds_torrent(tmp_path, monkeypatch):
         "nfogen.upload_prep.gapscan_config_store.effective_c411_announce_url",
         lambda: "https://c411.example/announce/abc123",
     )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.extract.extract_video_text", lambda path: "General\nFormat : Matroska\n"
+    )
     source = _make_source(tmp_path, "source.mkv")
     files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
 
@@ -200,6 +203,8 @@ def test_commit_single_file_stages_and_builds_torrent(tmp_path, monkeypatch):
     assert _Path(result.staged_path).is_file()
     assert result.torrent_path == str(staging_dir / "Movie.2020.1080p.x264-TEAM.torrent")
     assert _Path(result.torrent_path).is_file()
+    assert result.nfo_path == str(staging_dir / "Movie.2020.1080p.x264-TEAM.nfo")
+    assert "General" in _Path(result.nfo_path).read_text(encoding="utf-8")
 
 
 def test_commit_multi_file_group_stages_into_a_folder(tmp_path, monkeypatch):
@@ -212,18 +217,32 @@ def test_commit_multi_file_group_stages_into_a_folder(tmp_path, monkeypatch):
         "nfogen.upload_prep.gapscan_config_store.effective_c411_announce_url",
         lambda: "https://c411.example/announce/abc123",
     )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.extract.extract_video_dir_text",
+        lambda path: "General\nFormat : Matroska (pack)\n",
+    )
     files = [
-        ProposedFile(source_path=_make_source(tmp_path, "e01.mkv"), staged_name="Show.S01E01-TEAM.mkv"),
-        ProposedFile(source_path=_make_source(tmp_path, "e02.mkv"), staged_name="Show.S01E02-TEAM.mkv"),
+        ProposedFile(
+            source_path=_make_source(tmp_path, "e01.mkv"),
+            staged_name="Show.S01E01.1080p.WEB.x264-TEAM.mkv",
+        ),
+        ProposedFile(
+            source_path=_make_source(tmp_path, "e02.mkv"),
+            staged_name="Show.S01E02.1080p.WEB.x264-TEAM.mkv",
+        ),
     ]
 
-    result = commit_upload("Show.S01-TEAM", files)
+    result = commit_upload("Show.S01.1080p.WEB.x264-TEAM", files)
 
-    pack_dir = staging_dir / "Show.S01-TEAM"
+    pack_dir = staging_dir / "Show.S01.1080p.WEB.x264-TEAM"
     assert result.staged_path == str(pack_dir)
-    assert (pack_dir / "Show.S01E01-TEAM.mkv").is_file()
-    assert (pack_dir / "Show.S01E02-TEAM.mkv").is_file()
+    assert (pack_dir / "Show.S01E01.1080p.WEB.x264-TEAM.mkv").is_file()
+    assert (pack_dir / "Show.S01E02.1080p.WEB.x264-TEAM.mkv").is_file()
     assert _Path(result.torrent_path).is_file()
+    # Un seul .nfo pour tout le pack, pas un par episode.
+    assert result.nfo_path == str(staging_dir / "Show.S01.1080p.WEB.x264-TEAM.nfo")
+    assert _Path(result.nfo_path).is_file()
+    assert "pack" in _Path(result.nfo_path).read_text(encoding="utf-8")
 
 
 def test_commit_without_staging_dir_configured_raises(monkeypatch):

@@ -204,4 +204,5 @@ export interface UploadCommitResult {
   release_name: string;
   staged_path: string;
   torrent_path: string;
+  nfo_path: string;
 }

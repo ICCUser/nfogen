@@ -442,5 +442,26 @@ rendues publiques dans `name_proposal.py` sans changement de comportement
 (renommage pur). Le bouton "Préparer l'upload" n'apparaît sur une ligne
 GapScan que si `path_resolved` est vrai et `local_paths` non vide.
 
+**Extension (2026-08-28, retour utilisateur après test réel)** —
+`commit_upload()` génère et met aussi en scène le `.nfo` (moteur
+`nfogen.generate()` existant, aucune duplication), en plus du média et du
+`.torrent` : un seul `.nfo` par groupe, même pour un pack multi-fichiers
+(`extract_video_dir_text` sur le dossier déjà mis en scène). `CommitResult`
+gagne un champ `nfo_path`. Lu depuis le chemin **mis en scène** (pas
+l'original) pour que "Complete name" dans le `.nfo` reflète le nom de
+release final. Sous-projet 5 (upload C411) n'aura donc qu'à lire ce `.nfo`
+déjà prêt, pas à en générer un.
+
+Aussi corrigé le même jour, découverts en testant en conditions réelles
+(hors scope de la conception initiale, documentés ici car dans le même
+module/branche) :
+- `preview_upload()` déduit un indice de langue depuis les vraies pistes
+  audio du fichier (`extract_video_metadata`) quand le nom de fichier n'en
+  porte aucun — combine plusieurs langues avec `+` pour déclencher le
+  préfixe `MULTI` attendu par C411.
+- `quality.py:SOURCE_RANK` traitait WEB-DL/WEBRip et WEB comme des sources
+  différentes (faux `quality_gap` sur des titres déjà couverts par une
+  release C411 équivalente) — voir CHANGELOG.md pour le détail.
+
 Voir le plan d'implémentation complet (code exact) :
 [docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md).

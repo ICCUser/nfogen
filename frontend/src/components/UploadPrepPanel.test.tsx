@@ -61,6 +61,7 @@ it("Confirmer appelle prepareUploadCommit et affiche le resultat", async () => {
     release_name: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
     staged_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.mkv",
     torrent_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.torrent",
+    nfo_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.nfo",
   });
   const user = userEvent.setup();
   render(<UploadPrepPanel localPaths={["/media/movie.mkv"]} title="Movie" onClose={vi.fn()} />);

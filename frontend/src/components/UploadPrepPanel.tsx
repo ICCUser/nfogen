@@ -108,6 +108,8 @@ export default function UploadPrepPanel({
               Mis en scène : <span className="font-mono">{commitResults[index].staged_path}</span>
               <br />
               Torrent : <span className="font-mono">{commitResults[index].torrent_path}</span>
+              <br />
+              NFO : <span className="font-mono">{commitResults[index].nfo_path}</span>
             </p>
           )}
         </div>
