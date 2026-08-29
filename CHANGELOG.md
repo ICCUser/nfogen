@@ -55,6 +55,13 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   point ; caractères accentués translittérés (`é` → `e`, pas supprimés) ;
   chaque mot du titre capitalisé (convention scene).
 
+### Ajouté
+
+- **AV1 reconnu comme codec vidéo** dans le profil c411
+  (`video_codec_aliases`) : n'était pas listé, laissant le champ
+  `video_codec` vide (et le champ manquant révélait au passage le bug du
+  point traînant avant `-TEAM` corrigé ci-dessous).
+
 ### Corrigé
 
 - **Point trainant avant le tiret du tag d'équipe** quand un champ du
