@@ -189,6 +189,45 @@ def test_read_unknown_profile_still_raises():
         ps.read_profile("ni-gere-ni-livre")
 
 
+# --------------------------------------------------------------------------- #
+# Section "tracker" (AUTOMATION.md, sous-projet 4b) : reglages propres au
+# tracker (pas a une categorie de media), separee des categories existantes.
+# --------------------------------------------------------------------------- #
+TRACKER_RULES = {
+    "tracker": {
+        "display_name": "Test Tracker",
+        "torznab_categories": {"anime": ["2060"], "documentaire": ["2070"]},
+        "audio_language_codes": {"fre": "FR", "eng": "EN"},
+        "min_request_interval_seconds": 4.5,
+        "torrent_piece_sizes": [
+            {"max_bytes": 1073741824, "piece_size": 1048576},
+            {"piece_size": 16777216},
+        ],
+    }
+}
+
+
+def test_tracker_is_a_valid_top_level_key():
+    ps.write_profile("trackertest", rules=TRACKER_RULES, templates={})
+    read = ps.read_profile("trackertest")
+    assert read["rules"]["tracker"]["display_name"] == "Test Tracker"
+
+
+def test_tracker_and_a_category_can_coexist():
+    combined = {**TRACKER_RULES, **RULES}
+    ps.write_profile("trackertest2", rules=combined, templates=TEMPLATES)
+    read = ps.read_profile("trackertest2")
+    assert "tracker" in read["rules"]
+    assert "game" in read["rules"]
+
+
+def test_unknown_top_level_key_still_rejected():
+    # Regression : le schema ne doit pas devenir "tout accepte" en ouvrant
+    # "tracker" -- une cle inconnue reste une erreur (voir rules.schema.json).
+    with pytest.raises(ps.ProfileStoreError):
+        ps.write_profile("bogus", rules={"totally_unknown_key": {}}, templates={})
+
+
 def test_concurrent_writes_to_same_profile_never_corrupt_it():
     """`write_profile` fait `shutil.rmtree()` puis recree le dossier fichier
     par fichier (rules.json, puis chaque template) : sans verrou (`ps._LOCK`),

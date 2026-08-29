@@ -1,16 +1,46 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "nfogen rules.json",
-  "description": "Schema generique d'un fichier de regles de profil nfogen. Chaque cle de premier niveau DOIT etre un nom de categorie connu du coeur (video/audio/game/ebook/print3d, cf. nfogen/declarative_profile.py:CATEGORIES) ; une cle inconnue (typo, futur nom non encore supporte...) est REJETEE ici plutot qu'ignoree silencieusement -- sinon un profil partiellement mal ecrit serait accepte sans bruit, et la regle ratee decouverte seulement plus tard en production.",
+  "description": "Schema generique d'un fichier de regles de profil nfogen. Chaque cle de premier niveau DOIT etre soit un nom de categorie de media connu du coeur (video/audio/game/ebook/print3d), soit 'tracker' (reglages propres au tracker, pas a une categorie) -- une cle inconnue (typo, futur nom non encore supporte...) est REJETEE ici plutot qu'ignoree silencieusement.",
   "type": "object",
   "propertyNames": {
-    "enum": ["video", "audio", "game", "ebook", "print3d"]
+    "enum": ["video", "audio", "game", "ebook", "print3d", "tracker"]
   },
   "patternProperties": {
-    "^(video|audio|game|ebook|print3d)$": { "$ref": "#/$defs/category" }
+    "^(video|audio|game|ebook|print3d)$": { "$ref": "#/$defs/category" },
+    "^tracker$": { "$ref": "#/$defs/tracker" }
   },
   "additionalProperties": false,
   "$defs": {
+    "tracker": {
+      "type": "object",
+      "description": "Reglages propres a CE tracker, pas a une categorie de media (voir AUTOMATION.md, sous-projet 4b) : categories Torznab pour le filtre genre, bareme de taille de piece torrent, codes de langue MediaInfo reconnus, delai minimal entre requetes, nom d'affichage.",
+      "properties": {
+        "display_name": { "type": "string" },
+        "torznab_categories": {
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "audio_language_codes": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "min_request_interval_seconds": { "type": "number" },
+        "torrent_piece_sizes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "max_bytes": { "type": "integer" },
+              "piece_size": { "type": "integer" }
+            },
+            "required": ["piece_size"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "category": {
       "type": "object",
       "properties": {
