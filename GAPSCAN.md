@@ -345,6 +345,65 @@ incrémental :
   effectivement indexé ce titre alternatif pour ce média précis — pas
   garanti à 100%.
 
+### Filtre type/genre + pagination serveur (2026-08-28)
+
+**Constat** : 1140+ médias dans la bibliothèque de l'utilisateur, le
+tableau `GET /gapscan/results` renvoie tout d'un coup (pas de pagination),
+et le seul filtre disponible sur les résultats déjà scannés est le statut
+(`GapStatus`) — aucun moyen d'afficher "seulement les films" ou "seulement
+les animés" une fois un scan combiné (Films + séries) terminé (le menu
+"Films seulement/Séries seulement" ne contrôle QUE ce qui est scanné, pas
+ce qui est affiché).
+
+**Genre (Animé/Documentaire)** : dérivé de `c411_matches[0].category` (le
+premier match, déjà trié par pertinence C411), jamais du côté
+Sonarr/Radarr — confirmé par l'utilisateur : "les trackers sont les plus à
+même de donner ça". Table de correspondance **vérifiée en direct** via
+`GET https://c411.org/api?t=caps` (la note précédente de ce fichier,
+`2030`/`2060`/`2070` = "Films/Anime/Documentaire", était fausse — `2030`
+est en fait le code **Film générique**, ce qui expliquait un faux
+classement "Anime" sur un film totalement étranger au genre pendant les
+tests) :
+
+| Genre | Films | Séries |
+|---|---|---|
+| Standard (Film/Série) | `2030` | `5000` |
+| Animé | `2060` | `5070` |
+| Documentaire | `2070` | `5080` |
+
+**Limite assumée, actée avec l'utilisateur** : un titre `"absent"` (aucun
+match C411 trouvé) n'a par définition aucune catégorie — impossible de le
+classer Animé/Documentaire tant que rien n'est trouvé. Ces titres restent
+filtrables par `media_type` (Film/Série, toujours connu via Sonarr/Radarr)
+mais jamais par genre fin ; un filtre Animé/Documentaire actif les exclut
+simplement (comportement voulu, pas un bug).
+
+**Pagination** : côté **serveur** (choix explicite de l'utilisateur, pense
+à la scalabilité au-delà de 1140 titres) — `GET /gapscan/results` gagne
+`page`/`page_size` en plus de `status` (déjà existant) et des nouveaux
+`media_type`/`genre`. Réponse enveloppée `{items, total}` au lieu d'une
+liste nue (rupture du contrat existant, assumée puisque frontend et API
+sont versionnés/déployés ensemble). Le tri des colonnes est explicitement
+**hors scope** de ce lot (à ajouter plus tard si besoin réel une fois le
+tableau plus maniable).
+
+**Conception** :
+1. `nfogen/gapscan.py` : `genre_of(result: GapResult) -> Optional[str]`
+   (fonction pure, `"anime"`/`"documentaire"`/`None`), table de
+   correspondance ci-dessus.
+2. `nfogen/gapscan_runner.py` : `results()` gagne `media_type_filter` et
+   `genre_filter` (même principe que `status_filter` déjà là).
+3. `nfogen/api.py` : `GET /gapscan/results` gagne `media_type`, `genre`,
+   `page` (défaut 1), `page_size` (défaut 50, max 500) ; chaque item de la
+   réponse gagne un champ `genre` calculé (`genre_of`) — un seul endroit
+   qui connaît la table de correspondance, jamais dupliquée côté
+   TypeScript. `GET /gapscan/results/export.csv` gagne les mêmes filtres
+   media_type/genre (cohérence avec la vue affichée) + colonne `genre`.
+4. Frontend (`GapScanPage.tsx`) : deux nouveaux `<select>` (Type,
+   Genre) à côté du filtre Statut existant ; pagination
+   précédent/suivant sous le tableau ("Page X / Y — N résultats"). Tout
+   changement de filtre remet la page à 1.
+
 ## Plan de tests (calqué sur l'existant, `tests/test_c411.py` etc.)
 
 - `sonarr_client`/`radarr_client` : tests contre des réponses JSON figées
