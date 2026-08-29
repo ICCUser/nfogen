@@ -38,12 +38,13 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   multi-fichiers) à côté du média et du `.torrent`, en réutilisant le
   moteur `nfogen.generate()` existant — aucune génération manuelle
   séparée nécessaire.
-- **Filtre Type/Genre + pagination serveur sur GapScan** : `GET
-  /gapscan/results` accepte maintenant `media_type`/`genre` (Animé/
-  Documentaire, dérivé de la catégorie C411 du match trouvé) en plus du
-  filtre statut existant, avec pagination côté serveur (`page`/
-  `page_size`) — supporte des bibliothèques de 1000+ titres sans tout
-  charger d'un coup.
+- **Filtre Type + pagination serveur sur GapScan** : `GET /gapscan/results`
+  accepte maintenant `media_type`/`genre` (Animé/Documentaire, dérivé de la
+  catégorie C411 du match trouvé) en plus du filtre statut existant, avec
+  pagination côté serveur (`page`/`page_size`) — supporte des
+  bibliothèques de 1000+ titres sans tout charger d'un coup. Un seul menu
+  "Type" côté frontend (Films, Séries, Films d'animation, Séries animées,
+  Documentaires films/séries) plutôt que deux menus séparés à combiner.
 - **Titre corrigeable dans "Préparer l'upload"** : le titre déduit du nom
   de fichier ne correspond pas toujours au titre officiel attendu par le
   tracker (ex. "A Guy And A Girl" au lieu de "Un Gars, Une Fille") — champ

@@ -399,13 +399,19 @@ tableau plus maniable).
    qui connaît la table de correspondance, jamais dupliquée côté
    TypeScript. `GET /gapscan/results/export.csv` gagne les mêmes filtres
    media_type/genre (cohérence avec la vue affichée) + colonne `genre`.
-4. Frontend (`GapScanPage.tsx`) : deux nouveaux `<select>` (Type,
-   Genre) à côté du filtre Statut existant ; pagination
-   précédent/suivant sous le tableau ("Page X / Y — N résultats"). Tout
-   changement de filtre remet la page à 1.
+4. Frontend (`GapScanPage.tsx`) : nouveau `<select>` à côté du filtre
+   Statut existant ; pagination précédent/suivant sous le tableau
+   ("Page X / Y — N résultats"). Tout changement de filtre remet la page
+   à 1.
 
-**Livré (2026-08-28)** — conforme à la conception ci-dessus, aucun écart
-notable.
+**Livré (2026-08-28)** — un écart par rapport à la conception initiale :
+deux `<select>` séparés (Type, Genre) prévus au départ, **fusionnés en un
+seul** après retour utilisateur ("deux menus qui se combinent, c'est pas
+intuitif") — chaque option du select unique correspond directement à une
+catégorie C411 réelle (Films, Séries, Films d'animation, Séries animées,
+Documentaires films/séries). Aucun changement côté API : `media_type`/
+`genre` restent deux paramètres distincts, combinés uniquement côté
+frontend à la sélection.
 
 Voir le plan d'implémentation complet (code exact) :
 [docs/superpowers/plans/2026-08-28-gapscan-genre-filter-pagination.md](docs/superpowers/plans/2026-08-28-gapscan-genre-filter-pagination.md).
