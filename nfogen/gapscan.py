@@ -341,6 +341,14 @@ def run_gapscan(
             )  # type: ignore[arg-type]
         if on_progress is not None:
             on_progress(index, total)
+    # `only` restreint ce qui est REINTERROGE cette passe, jamais ce qui est
+    # CONSERVE du dernier scan -- incident reel signale par l'utilisateur
+    # (2026-08-28) : un scan "Films seulement" effacait les series deja
+    # scannees precedemment (et vice versa) au lieu de les laisser intactes.
+    if only == "movies":
+        results.extend(r for r in (previous_results or []) if r.media_type == "series")
+    elif only == "series":
+        results.extend(r for r in (previous_results or []) if r.media_type == "movie")
     return results
 
 

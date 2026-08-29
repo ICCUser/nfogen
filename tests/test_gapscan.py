@@ -604,6 +604,42 @@ def test_run_gapscan_only_series_skips_movies():
     assert not any(call[0] == "movie" for call in c411.calls)
 
 
+def test_run_gapscan_only_movies_preserves_previously_scanned_series():
+    """Incident reel signale par l'utilisateur (2026-08-28) : un scan
+    'Films seulement' effacait les series deja scannees precedemment au
+    lieu de les laisser intactes -- `only` restreint ce qui est REINTERROGE,
+    jamais ce qui est CONSERVE du dernier scan."""
+    previous_series = GapResult(
+        media_type="series", title="Severance", year=2022, season_number=1,
+        imdb_id=None, tmdb_id=None, tvdb_id=1, status=GapStatus.COVERED,
+        local_quality=ReleaseQuality(raw=""),
+    )
+    c411 = FakeC411(movie_results=[], tv_results=[])
+    results = run_gapscan(
+        c411, radarr=_FakeRadarr(), sonarr=_FakeSonarr(), only="movies",
+        previous_results=[previous_series],
+    )
+    assert previous_series in results
+    assert any(r.media_type == "movie" for r in results)
+    assert not any(call[0] == "tv" for call in c411.calls)  # toujours pas reinterroge
+
+
+def test_run_gapscan_only_series_preserves_previously_scanned_movies():
+    previous_movie = GapResult(
+        media_type="movie", title="Matrix", year=1999, season_number=None,
+        imdb_id="tt0133093", tmdb_id="603", tvdb_id=None, status=GapStatus.COVERED,
+        local_quality=ReleaseQuality(raw=""),
+    )
+    c411 = FakeC411(movie_results=[], tv_results=[])
+    results = run_gapscan(
+        c411, radarr=_FakeRadarr(), sonarr=_FakeSonarr(), only="series",
+        previous_results=[previous_movie],
+    )
+    assert previous_movie in results
+    assert any(r.media_type == "series" for r in results)
+    assert not any(call[0] == "movie" for call in c411.calls)  # toujours pas reinterroge
+
+
 def test_run_gapscan_reuses_previous_results_for_unchanged_covered_items():
     """Mode incremental de bout en bout : combine `previous_results` avec la
     bibliotheque Radarr+Sonarr (voir tests scan_movie/scan_series_season
