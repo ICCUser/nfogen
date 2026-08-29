@@ -684,3 +684,14 @@ où `GapResult.title` lui-même est faux (ex. "A Guy And A Girl"), mais
 n'est plus jugée prioritaire — corrigeables à la main via le champ titre
 en attendant. Décisions déjà prises ci-dessus (TMDB seul, Read Access
 Token) restent valables si/quand ce chantier reprend ; aucun code écrit.
+
+**Piste à approfondir (utilisateur, 2026-08-29, pas tranchée)** : au-delà du
+sous-projet 4b (qui rend déclaratifs catégories/langues/pièces/identifiants),
+l'appel d'upload lui-même (formulaire `/upload` de C411 — champs exacts,
+méthode d'auth, structure de la requête) reste à concevoir. Question posée
+sans réponse encore : faut-il un jeu de **règles API par tracker**
+(gabarit de requête déclaratif dans le profil, un peu comme
+`name_proposal.template`) plutôt que du code Python spécifique par
+tracker pour la soumission elle-même ? Cohérent avec le principe
+directeur, mais pas encore conçu — à trancher quand ce sous-projet sera
+détaillé, pas avant.
