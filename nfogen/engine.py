@@ -94,17 +94,20 @@ def propose_release_name(
     profile: str = "c411",
     filenames: list[str],
     title_hints: list[str | None] | None = None,
+    title_override: str | None = None,
 ) -> NameProposal:
     """Propose un `release_name` a partir des seuls noms de fichiers (+
-    `title_hints` optionnels, cf. `nfogen.name_proposal`). Leve une
-    ValueError si ce profil/categorie n'a pas de `name_proposal` configure."""
+    `title_hints` optionnels, cf. `nfogen.name_proposal`). `title_override` :
+    remplace le titre deduit du nom de fichier (AUTOMATION.md, sous-projet
+    5). Leve une ValueError si ce profil/categorie n'a pas de
+    `name_proposal` configure."""
     rule = get_name_proposal_rule(profile, category)
     if rule is None:
         raise ValueError(
             f"Aucune proposition de nom disponible pour profil='{profile}' categorie='{category}' "
             "(name_proposal non configure dans rules.json)."
         )
-    return rule(filenames, title_hints)
+    return rule(filenames, title_hints, title_override)
 
 
 def list_available() -> dict[str, list[str]]:

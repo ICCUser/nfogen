@@ -122,14 +122,19 @@ def _language_hint_from_audio_tracks(audio_languages: list[str]) -> str:
     return "+".join(codes)
 
 
-def preview_upload(local_paths: list[str], profile: str = "c411") -> list[GroupProposal]:
+def preview_upload(
+    local_paths: list[str], profile: str = "c411", title_override: Optional[str] = None
+) -> list[GroupProposal]:
     """Sans aucune ecriture disque : extrait les metadonnees (best-effort --
     une extraction illisible devient un avertissement, jamais un
     plantage), groupe par equipe (`group_by_team`), propose un nom de
     pack + un nom par fichier pour chaque groupe, valide via le VRAI
     validateur du profil (`registry.get_validator`) -- recupere
     gratuitement `cross_checks`/`upscale_checks`/`track_language_checks`
-    sans dupliquer cette logique ici."""
+    sans dupliquer cette logique ici. `title_override` (AUTOMATION.md,
+    sous-projet 5) : remplace le titre deduit du nom de fichier pour TOUS
+    les groupes de cet appel (ex. titre officiel du tracker different du
+    titre Sonarr/Radarr, "A Guy And A Girl" -> "Un Gars, Une Fille")."""
     if not local_paths:
         return []
 
@@ -164,7 +169,8 @@ def preview_upload(local_paths: list[str], profile: str = "c411") -> list[GroupP
         ]
 
         pack = propose_release_name(
-            category="video", profile=profile, filenames=group_filenames, title_hints=group_hints
+            category="video", profile=profile, filenames=group_filenames, title_hints=group_hints,
+            title_override=title_override,
         )
         warnings = group_extraction_warnings + list(pack.warnings)
 
@@ -175,7 +181,8 @@ def preview_upload(local_paths: list[str], profile: str = "c411") -> list[GroupP
         files: list[ProposedFile] = []
         for path, filename, hint in zip(group_paths, group_filenames, group_hints):
             single = propose_release_name(
-                category="video", profile=profile, filenames=[filename], title_hints=[hint]
+                category="video", profile=profile, filenames=[filename], title_hints=[hint],
+                title_override=title_override,
             )
             base_name = single.name or pack.name
             files.append(ProposedFile(source_path=path, staged_name=base_name + Path(filename).suffix))

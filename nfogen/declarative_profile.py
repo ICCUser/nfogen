@@ -128,9 +128,13 @@ def _make_name_proposal_rule(
     config: dict[str, Any],
 ) -> Callable[..., name_proposal_engine.NameProposal]:
     def propose(
-        filenames: list[str], title_hints: list[str | None] | None = None
+        filenames: list[str],
+        title_hints: list[str | None] | None = None,
+        title_override: str | None = None,
     ) -> name_proposal_engine.NameProposal:
-        return name_proposal_engine.propose_video_release_name(filenames, config, title_hints)
+        return name_proposal_engine.propose_video_release_name(
+            filenames, config, title_hints, title_override
+        )
 
     return propose
 

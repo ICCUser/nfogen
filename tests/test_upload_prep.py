@@ -174,6 +174,23 @@ def test_empty_local_paths_returns_empty_list():
     assert preview_upload([]) == []
 
 
+def test_preview_upload_title_override_replaces_filename_derived_title():
+    """Cas reel signale par l'utilisateur (2026-08-28) : le titre Sonarr/
+    Radarr ('A Guy And A Girl') ne correspond pas au titre officiel attendu
+    par C411 ('Un Gars, Une Fille'). L'override s'applique au nom de pack
+    ET au nom individuel de chaque fichier."""
+    paths = [
+        "/media/A.Guy.And.A.Girl.S02E01.1080p.WEB.AC3.x264-Valentin.mkv",
+        "/media/A.Guy.And.A.Girl.S02E02.1080p.WEB.AC3.x264-Valentin.mkv",
+    ]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(paths, title_override="Un Gars, Une Fille")
+    assert len(proposals) == 1
+    group = proposals[0]
+    assert group.release_name.startswith("Un.Gars.Une.Fille.")
+    assert all(f.staged_name.startswith("Un.Gars.Une.Fille.") for f in group.files)
+
+
 def _make_source(tmp_path, name: str, content: bytes = b"contenu de test") -> str:
     p = tmp_path / name
     p.write_bytes(content)
