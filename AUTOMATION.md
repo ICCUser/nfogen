@@ -504,18 +504,40 @@ dans `rules.json`), jamais une langue française codée en dur dans
 `upload_prep.py` ou ailleurs — même principe que tout le reste de ce
 pipeline.
 
-**Piste à vérifier AVANT toute conception du mécanisme de titre localisé**
-(suggestion de l'utilisateur, à valider) : Radarr/Sonarr interrogent déjà
-TMDB/TVDB eux-mêmes et exposent potentiellement le titre dans la langue
-configurée sur l'instance (réglage "Metadata Language"/"Information
-Language", propre à Radarr/Sonarr, indépendant de la langue d'affichage
-de leur interface) — si cette instance est réglée sur l'anglais, `A Guy
-And A Girl` s'expliquerait sans aucun bug ni lacune côté nfogen, juste un
-réglage à changer chez l'utilisateur, sans client TMDB/TVDB à écrire.
-**Pas encore vérifié** : reste à contrôler ce réglage réel côté
-Radarr/Sonarr de l'utilisateur, et si le changer suffit à corriger le cas
-"A Guy And A Girl" / "Un gars, une fille", avant de décider si un client
-TMDB/TVDB dédié est réellement nécessaire (uniquement si Radarr/Sonarr ne
-peuvent pas fournir cette info par eux-mêmes, ex. l'utilisateur veut
-garder son instance en anglais pour son propre usage tout en publiant en
-français sur C411).
+**Décision (2026-08-28) : le tracker, pas la config *arr.** Piste
+envisagée un temps : s'appuyer sur le réglage "Metadata Language" de
+Radarr/Sonarr (ils interrogent déjà TMDB/TVDB eux-mêmes) plutôt que
+d'ajouter un client dédié. **Écartée** : c'est un réglage global à
+l'instance, pas pensé pour ça — si l'utilisateur veut son Radarr/Sonarr en
+anglais pour son usage perso mais publier en français sur C411, les deux
+besoins entrent en conflit sur un seul réglage. Ça casserait aussi le
+principe déjà posé pour tout le pipeline : **seul le profil doit savoir ce
+qu'un tracker exige**, jamais un réglage *arr sans rapport. Donc :
+interroger **TMDB directement**, langue pilotée par le profil
+(`metadata_language` dans `rules.json`).
+
+**TMDB seul, pas TVDB** (décision utilisateur, 2026-08-28 : accès TVDB
+non fonctionnel de son côté, et ça évite une deuxième authentification à
+maintenir) :
+- **Films** : `movie.tmdb_id` déjà connu (Radarr) → direct.
+- **Séries** : Sonarr ne donne qu'un `tvdb_id` → pont via l'endpoint TMDB
+  `find` (`GET /find/{tvdb_id}?external_source=tvdb_id`). Si le pont ne
+  trouve rien (rare), avertissement + repli sur le titre déjà connu —
+  jamais bloquant, jamais deviné.
+- **Authentification** : Read Access Token TMDB (Bearer, pas la clé v3 en
+  paramètre d'URL) — recommandé par TMDB, en lecture seule (principe du
+  moindre privilège, même discipline que la clé API C411 : jamais
+  journalisée/exposée).
+
+**Livraison 1 (2026-08-28) — Livré, conforme à la conception, aucun écart
+notable.** Titre éditable dans le panneau "Préparer l'upload", indépendant
+de toute intégration TMDB : `title_override` enfilé de bout en bout
+(`name_proposal.propose_video_release_name` → `engine.propose_release_name`
+→ `upload_prep.preview_upload` → `POST /gapscan/prepare-upload/preview` →
+`UploadPrepPanel`). Ponctuation naturelle (virgule, apostrophe...) retirée
+entièrement, jamais convertie en point — confirmé auprès du support C411.
+
+**Livraison 2 (pas commencée)** : intégration TMDB (client dédié,
+`metadata_language` dans `rules.json`, pré-remplissage automatique du
+champ titre de la Livraison 1) — nécessite le Read Access Token TMDB de
+l'utilisateur (déjà en sa possession).

@@ -44,6 +44,12 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   filtre statut existant, avec pagination côté serveur (`page`/
   `page_size`) — supporte des bibliothèques de 1000+ titres sans tout
   charger d'un coup.
+- **Titre corrigeable dans "Préparer l'upload"** : le titre déduit du nom
+  de fichier ne correspond pas toujours au titre officiel attendu par le
+  tracker (ex. "A Guy And A Girl" au lieu de "Un Gars, Une Fille") — champ
+  éditable + bouton "Recalculer" avant confirmation (`title_override`,
+  jusqu'ici indisponible). Ponctuation naturelle retirée entièrement à la
+  normalisation, jamais convertie en point.
 
 ### Corrigé
 
