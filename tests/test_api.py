@@ -1664,6 +1664,27 @@ def test_gapscan_results_export_csv(reload_api, monkeypatch):
     assert resp.text.splitlines()[0].startswith("media_type,")
 
 
+def test_gapscan_results_export_csv_includes_genre_column_and_filters(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    resp = client.get("/gapscan/results/export.csv")
+    assert resp.status_code == 200
+    header = resp.text.splitlines()[0]
+    assert "genre" in header.split(",")
+
+    filtered = client.get("/gapscan/results/export.csv", params={"media_type": "series"})
+    assert filtered.status_code == 200
+    assert len(filtered.text.splitlines()) == 1  # seulement l'en-tete, aucun resultat serie
+
+
 def test_gapscan_run_returns_409_when_a_scan_is_already_running(reload_api, monkeypatch):
     mod = reload_api(
         NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",

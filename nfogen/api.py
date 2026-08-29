@@ -843,7 +843,7 @@ def gapscan_results(
 
 
 _CSV_COLUMNS = [
-    "media_type", "title", "year", "season_number", "status",
+    "media_type", "title", "year", "season_number", "status", "genre",
     "imdb_id", "tmdb_id", "tvdb_id",
     "local_resolution", "local_source", "local_languages",
     "has_freeleech_alternative", "has_double_upload_window", "error",
@@ -851,15 +851,22 @@ _CSV_COLUMNS = [
 
 
 @app.get("/gapscan/results/export.csv", dependencies=[Depends(require_token)])
-def gapscan_results_export_csv(status: Optional[str] = Query(None)) -> Response:
+def gapscan_results_export_csv(
+    status: Optional[str] = Query(None),
+    media_type: Optional[str] = Query(None),
+    genre: Optional[str] = Query(None),
+) -> Response:
     _require_gapscan_available()
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(_CSV_COLUMNS)
-    for r in gapscan_runner.results(status_filter=status):
+    for r in gapscan_runner.results(
+        status_filter=status, media_type_filter=media_type, genre_filter=genre
+    ):
         writer.writerow(
             [
                 r.media_type, r.title, r.year, r.season_number, r.status.value,
+                gapscan.genre_of(r) or "",
                 r.imdb_id, r.tmdb_id, r.tvdb_id,
                 r.local_quality.resolution, r.local_quality.source,
                 "+".join(r.local_quality.languages),
