@@ -112,6 +112,20 @@ def test_no_team_tag_falls_back_to_notag_placeholder():
     assert proposal.fields["team"] == "NOTAG"
 
 
+def test_undetected_video_codec_leaves_no_dangling_dot_before_team_tag():
+    # AV1 n'est pas dans video_codec_aliases : le codec n'est pas detecte,
+    # laissant le champ "video_codec" vide juste avant "-{team}" dans le
+    # gabarit -- ne doit jamais laisser de point trainant devant le tiret
+    # (cas reel : "Die.Hard.2...DTS.5.1.-LAZARUS" au lieu de
+    # "...DTS.5.1-LAZARUS").
+    files = ["Die Hard 2 (1990) [Bluray-1080p][DTS 5.1][AV1]-LAZARUS.mkv"]
+    proposal = propose_video_release_name(files, CONFIG)
+    assert proposal.name is not None
+    assert ".-" not in proposal.name
+    assert proposal.name.endswith("-LAZARUS")
+    assert any("codec vidéo" in w.lower() for w in proposal.warnings)
+
+
 def test_unconfigured_language_bracket_is_a_placeholder_with_warning():
     files = ["Movie (2020) [WEBDL-1080p][DE+EN][x264].mkv"]
     proposal = propose_video_release_name(files, CONFIG)

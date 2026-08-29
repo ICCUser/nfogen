@@ -306,4 +306,8 @@ def propose_video_release_name(
         return NameProposal(None, fields, warnings + [msg])
 
     name = re.sub(r"\.{2,}", ".", name).strip(".")
+    # Un champ vide (ex. video_codec non detecte) laisse un point trainant
+    # juste avant le tiret du tag d'equipe ("...5.1.-LAZARUS") : jamais de
+    # point avant ce tiret cote C411 (convention 'CodecVideo-TEAM').
+    name = re.sub(r"\.-", "-", name)
     return NameProposal(name, fields, warnings)
