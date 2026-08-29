@@ -9,6 +9,7 @@ une PROPOSITION a relire, jamais une valeur appliquee a l'aveugle.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -40,20 +41,46 @@ def strip_ext(filename: str) -> str:
 
 
 _TITLE_PUNCTUATION_RE = re.compile(r"[,;:!?'\"]")
+_WORD_START_RE = re.compile(r"\b\w")
+
+
+def _fold_accents_to_ascii(text: str) -> str:
+    """Translittere les caracteres accentues vers leur equivalent ASCII
+    ('e' -> 'e', 'a' -> 'a'...) au lieu de les supprimer -- incident reel
+    (2026-08-28) : "Celibataires... ou Presque" devenait "Clibataires.ou.Presque"
+    (le "e" disparaissait completement, pas juste son accent). Decompose en
+    caractere de base + marque combinante (NFKD), ne garde que le
+    caractere de base. Un caractere sans equivalent latin (japonais...) est
+    tout de meme supprime en dernier recours -- comportement historique
+    conserve pour ce cas, aucune meilleure option sans deviner."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    without_marks = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return without_marks.encode("ascii", "ignore").decode("ascii")
+
+
+def _capitalize_each_word(text: str) -> str:
+    """Convention scene : chaque mot du titre est capitalise ("Il faut
+    sauver" -> "Il Faut Sauver"), pas seulement le premier caractere du
+    titre entier -- incident reel, 2026-08-28. Seule la premiere lettre de
+    chaque mot est forcee en majuscule ; le reste de la casse existante
+    n'est JAMAIS modifie (contrairement a `str.title()`, qui abaisserait a
+    tort un acronyme comme "FBI" en "Fbi")."""
+    return _WORD_START_RE.sub(lambda m: m.group().upper(), text)
 
 
 def _normalize_title_text(text: str) -> str:
     """Convertit un titre brut (deja isole, sans suffixe annee/saison/tags)
-    vers la forme point-separee/ASCII attendue par la convention C411 --
-    reutilise aussi bien pour un titre deduit du nom de fichier
-    (`_clean_title`) que pour un titre fourni explicitement
+    vers la forme point-separee/ASCII/capitalisee attendue par la
+    convention C411 -- reutilise aussi bien pour un titre deduit du nom de
+    fichier (`_clean_title`) que pour un titre fourni explicitement
     (`title_override`, AUTOMATION.md sous-projet 5). Ponctuation naturelle
     (virgule, apostrophe...) retiree ENTIEREMENT, jamais convertie en point
     -- confirme aupres du support C411, 2026-08-28 ("Un Gars, Une Fille" ->
     "Un.Gars.Une.Fille", pas "Un.Gars,.Une.Fille")."""
     stripped = text.strip(" -._")
-    ascii_title = stripped.encode("ascii", "ignore").decode("ascii")
-    no_punctuation = _TITLE_PUNCTUATION_RE.sub("", ascii_title)
+    ascii_title = _fold_accents_to_ascii(stripped)
+    capitalized = _capitalize_each_word(ascii_title)
+    no_punctuation = _TITLE_PUNCTUATION_RE.sub("", capitalized)
     cleaned = re.sub(r"[\s_]+", ".", no_punctuation.strip())
     return re.sub(r"\.+", ".", cleaned).strip(".")
 

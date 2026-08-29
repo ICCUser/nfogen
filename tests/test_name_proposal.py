@@ -254,10 +254,10 @@ def test_title_override_strips_punctuation_never_converts_to_dots():
 def test_title_override_strips_apostrophes():
     """Retiree entierement, jamais convertie en point : "L'Associe" ->
     "LAssocie" (pas de separateur insere), coherent avec la confirmation
-    du support C411."""
+    du support C411. Chaque mot capitalise ("du" -> "Du")."""
     files = ["Movie.2020.1080p.WEB.x264-TEAM.mkv"]
     proposal = propose_video_release_name(files, CONFIG, title_override="L'Associe du Diable")
-    assert proposal.fields["title"] == "LAssocie.du.Diable"
+    assert proposal.fields["title"] == "LAssocie.Du.Diable"
 
 
 def test_empty_title_override_falls_back_to_filename_derived_title():
@@ -270,3 +270,32 @@ def test_empty_title_override_falls_back_to_filename_derived_title():
 def test_title_override_applies_uniformly_to_a_whole_pack():
     proposal = propose_video_release_name(ONE_PIECE_FILES, CONFIG, title_override="Le Grand Voyage")
     assert proposal.name == "Le.Grand.Voyage.S01.MULTI.VFF.1080p.WEB.AC3.2.0.x264-NOTAG"
+
+
+def test_title_override_transliterates_accents_instead_of_dropping_them():
+    """Incident reel signale par l'utilisateur (2026-08-28) : les caracteres
+    accentues etaient SUPPRIMES (encode ascii/ignore) au lieu d'etre
+    translitteres -- "Celibataires... ou Presque" devenait "Clibataires.ou.Presque"
+    (le "e" disparaissait completement)."""
+    files = ["Movie.2020.1080p.WEB.x264-TEAM.mkv"]
+    proposal = propose_video_release_name(files, CONFIG, title_override="Célibataires... ou Presque")
+    assert proposal.fields["title"] == "Celibataires.Ou.Presque"
+
+
+def test_title_override_capitalizes_each_word():
+    """Convention scene : chaque mot du titre est capitalise, pas seulement
+    le premier caractere -- "Il faut sauver le soldat Ryan" ->
+    "Il.Faut.Sauver.Le.Soldat.Ryan" (incident reel, 2026-08-28)."""
+    files = ["Movie.2020.1080p.WEB.x264-TEAM.mkv"]
+    proposal = propose_video_release_name(files, CONFIG, title_override="Il faut sauver le soldat Ryan")
+    assert proposal.fields["title"] == "Il.Faut.Sauver.Le.Soldat.Ryan"
+
+
+def test_title_override_capitalization_preserves_internal_casing():
+    """Ne doit jamais abaisser une casse deja correcte (acronymes) -- seule
+    la premiere lettre de chaque mot est forcee en majuscule, jamais le
+    reste force en minuscule (contrairement a str.title(), qui abaisserait
+    "FBI" en "Fbi")."""
+    files = ["Movie.2020.1080p.WEB.x264-TEAM.mkv"]
+    proposal = propose_video_release_name(files, CONFIG, title_override="FBI Duo Tres Special")
+    assert proposal.fields["title"] == "FBI.Duo.Tres.Special"
