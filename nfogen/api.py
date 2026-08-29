@@ -54,7 +54,7 @@ from .profile_store import ProfileStoreError
 # dependance dure de l'API -- une install nfogen[api] seule (sans httpx)
 # doit continuer a demarrer normalement, /gapscan/* renvoie alors 501.
 try:
-    from . import gapscan_config_store, gapscan_runner, upload_prep
+    from . import gapscan, gapscan_config_store, gapscan_runner, upload_prep
     from .c411_client import C411Client, C411Error
     from .radarr_client import RadarrClient, RadarrError
     from .sonarr_client import SonarrClient, SonarrError
@@ -820,9 +820,26 @@ def gapscan_status() -> dict[str, Any]:
 
 
 @app.get("/gapscan/results", dependencies=[Depends(require_token)])
-def gapscan_results(status: Optional[str] = Query(None)) -> list[dict[str, Any]]:
+def gapscan_results(
+    status: Optional[str] = Query(None),
+    media_type: Optional[str] = Query(None),
+    genre: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
+) -> dict[str, Any]:
     _require_gapscan_available()
-    return [asdict(r) for r in gapscan_runner.results(status_filter=status)]
+    items = gapscan_runner.results(
+        status_filter=status, media_type_filter=media_type, genre_filter=genre
+    )
+    total = len(items)
+    start = (page - 1) * page_size
+    page_items = items[start : start + page_size]
+    serialized: list[dict[str, Any]] = []
+    for r in page_items:
+        d = asdict(r)
+        d["genre"] = gapscan.genre_of(r)
+        serialized.append(d)
+    return {"items": serialized, "total": total}
 
 
 _CSV_COLUMNS = [

@@ -1426,11 +1426,12 @@ def test_gapscan_run_then_status_then_results(reload_api, monkeypatch):
     assert status["total"] == 1
     assert status["processed"] == 1
 
-    results = client.get("/gapscan/results").json()
-    assert len(results) == 1
-    assert results[0]["media_type"] == "movie"
-    assert results[0]["title"] == "Matrix"
-    assert results[0]["status"] == "absent"  # FakeGapscanC411 ne renvoie jamais de match
+    body = client.get("/gapscan/results").json()
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
+    assert body["items"][0]["media_type"] == "movie"
+    assert body["items"][0]["title"] == "Matrix"
+    assert body["items"][0]["status"] == "absent"  # FakeGapscanC411 ne renvoie jamais de match
 
 
 def test_gapscan_run_uses_a_rate_limit_safe_default_interval(reload_api, monkeypatch):
@@ -1473,8 +1474,8 @@ def test_gapscan_run_only_movies_excludes_series(reload_api, monkeypatch):
     assert run.status_code == 200
     _wait_gapscan_done(client)
 
-    results = client.get("/gapscan/results").json()
-    assert {r["media_type"] for r in results} == {"movie"}
+    body = client.get("/gapscan/results").json()
+    assert {r["media_type"] for r in body["items"]} == {"movie"}
 
 
 def test_gapscan_run_rejects_an_invalid_only_value(reload_api, monkeypatch):
@@ -1559,7 +1560,7 @@ def test_gapscan_run_incremental_reuses_covered_results(reload_api, monkeypatch)
     client.post("/gapscan/run")
     status = _wait_gapscan_done(client)
     assert status["state"] == "done"
-    assert client.get("/gapscan/results").json()[0]["status"] == "covered"
+    assert client.get("/gapscan/results").json()["items"][0]["status"] == "covered"
 
     # Si reinterroge, ce client renverrait ABSENT (aucun match) : revelateur.
     monkeypatch.setattr(mod, "C411Client", _FakeGapscanC411)
@@ -1567,7 +1568,7 @@ def test_gapscan_run_incremental_reuses_covered_results(reload_api, monkeypatch)
     assert run2.status_code == 200
     status2 = _wait_gapscan_done(client)
     assert status2["state"] == "done"
-    assert client.get("/gapscan/results").json()[0]["status"] == "covered"
+    assert client.get("/gapscan/results").json()["items"][0]["status"] == "covered"
 
 
 def test_gapscan_results_filterable_by_status_query_param(reload_api, monkeypatch):
@@ -1581,8 +1582,68 @@ def test_gapscan_results_filterable_by_status_query_param(reload_api, monkeypatc
     client.post("/gapscan/run")
     _wait_gapscan_done(client)
 
-    assert len(client.get("/gapscan/results", params={"status": "absent"}).json()) == 1
-    assert client.get("/gapscan/results", params={"status": "covered"}).json() == []
+    assert client.get("/gapscan/results", params={"status": "absent"}).json()["total"] == 1
+    assert client.get("/gapscan/results", params={"status": "covered"}).json() == {"items": [], "total": 0}
+
+
+class _FakeGapscanRadarrThreeMovies(_FakeGapscanRadarr):
+    def list_movie_files(self):
+        return [
+            RadarrMovieFile(movie_id=1, title="A", year=1999, imdb_id="tt1", tmdb_id=1),
+            RadarrMovieFile(movie_id=2, title="B", year=1999, imdb_id="tt2", tmdb_id=2),
+            RadarrMovieFile(movie_id=3, title="C", year=1999, imdb_id="tt3", tmdb_id=3),
+        ]
+
+
+def test_gapscan_results_paginated(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod, radarr_cls=_FakeGapscanRadarrThreeMovies)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    page1 = client.get("/gapscan/results", params={"page": 1, "page_size": 2}).json()
+    assert page1["total"] == 3
+    assert len(page1["items"]) == 2
+
+    page2 = client.get("/gapscan/results", params={"page": 2, "page_size": 2}).json()
+    assert page2["total"] == 3
+    assert len(page2["items"]) == 1
+
+
+def test_gapscan_results_filterable_by_media_type_and_genre(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    assert client.get("/gapscan/results", params={"media_type": "movie"}).json()["total"] == 1
+    assert client.get("/gapscan/results", params={"media_type": "series"}).json()["total"] == 0
+    assert client.get("/gapscan/results", params={"genre": "anime"}).json() == {"items": [], "total": 0}
+
+
+def test_gapscan_results_items_include_genre_field(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    body = client.get("/gapscan/results").json()
+    assert body["items"][0]["genre"] is None  # FakeGapscanC411 : aucun match -> pas de genre
 
 
 def test_gapscan_results_export_csv(reload_api, monkeypatch):
