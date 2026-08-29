@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { prepareUploadCommit, prepareUploadPreview } from "../api/client";
 import { ApiError } from "../api/types";
 import type { UploadCommitResult, UploadGroupProposal } from "../api/types";
+import { useProfile } from "../ProfileContext";
 
 /** Apercu (sans ecriture disque) puis confirmation par groupe de la mise
  * en scene + generation de .torrent (AUTOMATION.md, sous-projet 4). Un
@@ -19,6 +20,12 @@ export default function UploadPrepPanel({
   title: string;
   onClose: () => void;
 }) {
+  const { profile: globalProfile, profiles } = useProfile();
+  // Le profil actif global s'applique par defaut, mais peut etre remplace
+  // juste pour CET upload sans changer le profil actif de l'appli (retour
+  // utilisateur, 2026-08-29 : "selection de profil unitaire par media" --
+  // ex. scanne avec le profil A, mais upload ce titre-la vers le profil B).
+  const [profile, setProfile] = useState(globalProfile);
   const [groups, setGroups] = useState<UploadGroupProposal[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recalculating, setRecalculating] = useState(false);
@@ -34,11 +41,11 @@ export default function UploadPrepPanel({
   const [commitResults, setCommitResults] = useState<Record<number, UploadCommitResult>>({});
   const [commitErrors, setCommitErrors] = useState<Record<number, string>>({});
 
-  async function loadPreview(override?: string) {
+  async function loadPreview(override?: string, profileOverride: string = profile) {
     setRecalculating(true);
     setLoadError(null);
     try {
-      const g = await prepareUploadPreview(localPaths, "c411", override || undefined);
+      const g = await prepareUploadPreview(localPaths, profileOverride, override || undefined);
       setGroups(g);
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : "Aperçu indisponible.");
@@ -52,12 +59,17 @@ export default function UploadPrepPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localPaths]);
 
+  function handleProfileChange(next: string) {
+    setProfile(next);
+    loadPreview(titleOverride, next);
+  }
+
   async function handleConfirm(index: number, group: UploadGroupProposal) {
     if (!group.release_name) return;
     setCommitting(index);
     setCommitErrors((prev) => ({ ...prev, [index]: "" }));
     try {
-      const result = await prepareUploadCommit(group.release_name, group.files);
+      const result = await prepareUploadCommit(group.release_name, group.files, profile);
       setCommitResults((prev) => ({ ...prev, [index]: result }));
     } catch (e) {
       setCommitErrors((prev) => ({
@@ -79,6 +91,22 @@ export default function UploadPrepPanel({
       </div>
 
       <div className="flex items-end gap-2">
+        <label className="block text-xs font-medium text-ink-dim">
+          Profil pour cet upload
+          <select
+            aria-label="Profil pour cet upload"
+            className="mt-1 w-full max-w-[10rem] rounded-md border border-line-strong bg-surface px-2 py-1.5 text-sm text-ink"
+            value={profile}
+            onChange={(e) => handleProfileChange(e.target.value)}
+          >
+            {Object.keys(profiles).length === 0 && <option value="c411">c411</option>}
+            {Object.keys(profiles).map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="block flex-1 text-xs font-medium text-ink-dim">
           Titre (si différent de celui déduit du nom de fichier)
           <input

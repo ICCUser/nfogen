@@ -3,15 +3,31 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import UploadPrepPanel from "./UploadPrepPanel";
+import { ProfileProvider } from "../ProfileContext";
 
 vi.mock("../api/client", () => ({
   prepareUploadPreview: vi.fn(),
   prepareUploadCommit: vi.fn(),
+  listAllProfiles: vi.fn(),
+  readManagedProfile: vi.fn(),
 }));
 
-import { prepareUploadCommit, prepareUploadPreview } from "../api/client";
+import {
+  listAllProfiles,
+  prepareUploadCommit,
+  prepareUploadPreview,
+  readManagedProfile,
+} from "../api/client";
 import { ApiError } from "../api/types";
 import type { UploadGroupProposal } from "../api/types";
+
+function renderPanel(props: { localPaths: string[]; title: string; onClose: () => void }) {
+  return render(
+    <ProfileProvider>
+      <UploadPrepPanel {...props} />
+    </ProfileProvider>,
+  );
+}
 
 const ONE_GROUP: UploadGroupProposal[] = [
   {
@@ -31,6 +47,10 @@ const BLOCKED_GROUP: UploadGroupProposal[] = [
 beforeEach(() => {
   vi.mocked(prepareUploadPreview).mockReset();
   vi.mocked(prepareUploadCommit).mockReset();
+  vi.mocked(listAllProfiles).mockResolvedValue({ c411: ["video"], ygg: ["video"] });
+  vi.mocked(readManagedProfile).mockResolvedValue({
+    name: "c411", rules: { tracker: { display_name: "C411" } }, templates: {},
+  });
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -41,7 +61,7 @@ it("charge et affiche l'apercu au montage avec le titre deja connu (GapResult) c
    * jamais reutilise jusqu'ici pour le nommage, qui redecouvrait un titre
    * (souvent anglais) depuis le nom de fichier au lieu de ca. */
   vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
-  render(<UploadPrepPanel localPaths={["/media/movie.mkv"]} title="Movie" onClose={vi.fn()} />);
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
   await waitFor(() => {
     expect(screen.getByText(/Movie\.2020\.MULTI\.VFF\.1080p\.BluRay\.AC3\.x264-TEAM$/)).toBeInTheDocument();
@@ -52,7 +72,7 @@ it("charge et affiche l'apercu au montage avec le titre deja connu (GapResult) c
 
 it("un groupe bloque n'a pas de bouton Confirmer, affiche l'avertissement", async () => {
   vi.mocked(prepareUploadPreview).mockResolvedValue(BLOCKED_GROUP);
-  render(<UploadPrepPanel localPaths={["/media/x.mkv"]} title="X" onClose={vi.fn()} />);
+  renderPanel({ localPaths: ["/media/x.mkv"], title: "X", onClose: vi.fn() });
 
   await waitFor(() => {
     expect(screen.getByText(/Aucune année ni tag de saison/)).toBeInTheDocument();
@@ -69,7 +89,7 @@ it("Confirmer appelle prepareUploadCommit et affiche le resultat", async () => {
     nfo_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.nfo",
   });
   const user = userEvent.setup();
-  render(<UploadPrepPanel localPaths={["/media/movie.mkv"]} title="Movie" onClose={vi.fn()} />);
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
   await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(screen.getByRole("button", { name: /Confirmer/i }));
@@ -80,12 +100,13 @@ it("Confirmer appelle prepareUploadCommit et affiche le resultat", async () => {
   expect(prepareUploadCommit).toHaveBeenCalledWith(
     "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
     ONE_GROUP[0].files,
+    "c411",
   );
 });
 
 it("une erreur de chargement affiche un message", async () => {
   vi.mocked(prepareUploadPreview).mockRejectedValue(new ApiError(500, "Erreur interne du serveur."));
-  render(<UploadPrepPanel localPaths={["/media/movie.mkv"]} title="Movie" onClose={vi.fn()} />);
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
   await waitFor(() => {
     expect(screen.getByText(/Erreur interne du serveur/)).toBeInTheDocument();
@@ -95,7 +116,7 @@ it("une erreur de chargement affiche un message", async () => {
 it("Recalculer renvoie le titre corrige a prepareUploadPreview", async () => {
   const user = userEvent.setup();
   vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
-  render(<UploadPrepPanel localPaths={["/media/movie.mkv"]} title="Movie" onClose={vi.fn()} />);
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
   await waitFor(() => screen.getByRole("button", { name: "Recalculer" }));
 
   const CORRECTED_GROUP: UploadGroupProposal[] = [
@@ -115,4 +136,27 @@ it("Recalculer renvoie le titre corrige a prepareUploadPreview", async () => {
     "c411",
     "Un Gars, Une Fille",
   );
+});
+
+it("defaults to the globally active profile", async () => {
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  await waitFor(() => {
+    expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", "Movie");
+  });
+});
+
+it("lets the user override the profile for this one upload without changing the global active profile", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+  await waitFor(() => screen.getByRole("button", { name: "Recalculer" }));
+
+  const select = screen.getByLabelText(/Profil pour cet upload/i);
+  await user.selectOptions(select, "ygg");
+
+  await waitFor(() => {
+    expect(prepareUploadPreview).toHaveBeenLastCalledWith(["/media/movie.mkv"], "ygg", "Movie");
+  });
 });
