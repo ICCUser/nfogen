@@ -465,3 +465,57 @@ module/branche) :
 
 Voir le plan d'implémentation complet (code exact) :
 [docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md).
+
+## Sous-projet 5 : Upload vers C411 (notes préliminaires, 2026-08-28)
+
+Pas encore conçu formellement, mais plusieurs découvertes réelles pendant
+les tests du sous-projet 4 réduisent significativement le périmètre
+attendu — à documenter avant de les perdre.
+
+**Problème déclencheur** : le titre du `release_name` proposé
+(`name_proposal.py`) vient **uniquement du nom de fichier** — jamais
+corrigé vers le titre français attendu par C411 (cas réel : "A Guy And A
+Girl" au lieu de "Un gars, une fille"). Aucun mécanisme de correction
+n'existe aujourd'hui.
+
+**La présentation C411 ("Cover manquante" + page d'aide "Présentation
+HTML", collées par l'utilisateur, 2026-08-28)** — trois onglets existent
+pour la description d'une release à l'upload :
+- **Standard (BBCode)**
+- **HTML brut** — réservé aux membres de l'équipe interne (grades G0/G3),
+  **pas accessible à un compte normal** — hors scope pour nfogen.
+- **Généré automatiquement** — construit par C411 lui-même **depuis TMDB
+  + le `.nfo`**. Quand l'auto-détection TMDB échoue (release trop
+  ambiguë), C411 propose une recherche manuelle (coller un ID TMDB) ou un
+  lien d'image direct — la cover reste optionnelle, jamais bloquante.
+
+Conséquence importante : nfogen n'a probablement **pas besoin de
+construire une présentation HTML lui-même** pour un premier lot — juste
+s'assurer qu'un ID TMDB correct est associé à l'upload (déjà connu via
+`movie.tmdb_id`/`RadarrMovieFile`) et soumettre le `.nfo` (déjà généré,
+sous-projet 4) ; C411 se charge du reste via "Généré automatiquement".
+Web scraping quelconque ou générateur HTML maison : à écarter tant que
+cette hypothèse n'est pas infirmée par un vrai test d'upload.
+
+**Principe rappelé par l'utilisateur (agnosticisme)** : la logique "aller
+chercher titre/synopsis dans la langue attendue par le tracker" doit être
+pilotée par le **profil** (ex. un futur champ `metadata_language: "fr"`
+dans `rules.json`), jamais une langue française codée en dur dans
+`upload_prep.py` ou ailleurs — même principe que tout le reste de ce
+pipeline.
+
+**Piste à vérifier AVANT toute conception du mécanisme de titre localisé**
+(suggestion de l'utilisateur, à valider) : Radarr/Sonarr interrogent déjà
+TMDB/TVDB eux-mêmes et exposent potentiellement le titre dans la langue
+configurée sur l'instance (réglage "Metadata Language"/"Information
+Language", propre à Radarr/Sonarr, indépendant de la langue d'affichage
+de leur interface) — si cette instance est réglée sur l'anglais, `A Guy
+And A Girl` s'expliquerait sans aucun bug ni lacune côté nfogen, juste un
+réglage à changer chez l'utilisateur, sans client TMDB/TVDB à écrire.
+**Pas encore vérifié** : reste à contrôler ce réglage réel côté
+Radarr/Sonarr de l'utilisateur, et si le changer suffit à corriger le cas
+"A Guy And A Girl" / "Un gars, une fille", avant de décider si un client
+TMDB/TVDB dédié est réellement nécessaire (uniquement si Radarr/Sonarr ne
+peuvent pas fournir cette info par eux-mêmes, ex. l'utilisateur veut
+garder son instance en anglais pour son propre usage tout en publiant en
+français sur C411).
