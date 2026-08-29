@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,6 +64,7 @@ const MATRIX_GAP: GapResult = {
   tmdb_id: "603",
   tvdb_id: null,
   status: "absent",
+  genre: null,
   local_quality: { raw: "", resolution: 2160, source: "BLURAY", codec: "X265", languages: ["VFF"], multi: true, pure: false },
   c411_matches: [],
   has_freeleech_alternative: false,
@@ -85,14 +86,14 @@ function renderPage() {
 beforeEach(() => {
   vi.mocked(gapscanConfig).mockResolvedValue(CONFIGURED);
   vi.mocked(gapscanStatus).mockResolvedValue(IDLE_STATUS);
-  vi.mocked(gapscanResults).mockResolvedValue([]);
+  vi.mocked(gapscanResults).mockResolvedValue({ items: [], total: 0 });
 });
 
 afterEach(() => vi.resetAllMocks());
 
 describe("GapScanPage", () => {
   it("affiche les resultats deja disponibles au chargement, avec leur statut", async () => {
-    vi.mocked(gapscanResults).mockResolvedValue([MATRIX_GAP]);
+    vi.mocked(gapscanResults).mockResolvedValue({ items: [MATRIX_GAP], total: 1 });
 
     renderPage();
 
@@ -105,9 +106,12 @@ describe("GapScanPage", () => {
   });
 
   it("signale un chemin local non resolu par un badge, avec le detail en infobulle", async () => {
-    vi.mocked(gapscanResults).mockResolvedValue([
-      { ...MATRIX_GAP, path_resolved: false, path_error: "Fichier introuvable apres resolution : /mnt/nas/Matrix.mkv" },
-    ]);
+    vi.mocked(gapscanResults).mockResolvedValue({
+      items: [
+        { ...MATRIX_GAP, path_resolved: false, path_error: "Fichier introuvable apres resolution : /mnt/nas/Matrix.mkv" },
+      ],
+      total: 1,
+    });
 
     renderPage();
 
@@ -116,7 +120,7 @@ describe("GapScanPage", () => {
   });
 
   it("n'affiche pas de badge de chemin quand le chemin est resolu", async () => {
-    vi.mocked(gapscanResults).mockResolvedValue([{ ...MATRIX_GAP, path_resolved: true, path_error: null }]);
+    vi.mocked(gapscanResults).mockResolvedValue({ items: [{ ...MATRIX_GAP, path_resolved: true, path_error: null }], total: 1 });
 
     renderPage();
 
@@ -126,9 +130,10 @@ describe("GapScanPage", () => {
 
   it("affiche un bouton Préparer l'upload sur une ligne avec chemin résolu, ouvre le panneau", async () => {
     const user = userEvent.setup();
-    vi.mocked(gapscanResults).mockResolvedValue([
-      { ...MATRIX_GAP, local_paths: ["/media/matrix.mkv"], path_resolved: true },
-    ]);
+    vi.mocked(gapscanResults).mockResolvedValue({
+      items: [{ ...MATRIX_GAP, local_paths: ["/media/matrix.mkv"], path_resolved: true }],
+      total: 1,
+    });
 
     renderPage();
 
@@ -139,9 +144,10 @@ describe("GapScanPage", () => {
   });
 
   it("n'affiche pas de bouton Préparer l'upload si le chemin n'est pas résolu", async () => {
-    vi.mocked(gapscanResults).mockResolvedValue([
-      { ...MATRIX_GAP, local_paths: [], path_resolved: false },
-    ]);
+    vi.mocked(gapscanResults).mockResolvedValue({
+      items: [{ ...MATRIX_GAP, local_paths: [], path_resolved: false }],
+      total: 1,
+    });
 
     renderPage();
 
@@ -157,7 +163,9 @@ describe("GapScanPage", () => {
     vi.mocked(gapscanStatus)
       .mockResolvedValueOnce(IDLE_STATUS)
       .mockResolvedValueOnce({ ...IDLE_STATUS, state: "done", total: 1, processed: 1 });
-    vi.mocked(gapscanResults).mockResolvedValueOnce([]).mockResolvedValueOnce([MATRIX_GAP]);
+    vi.mocked(gapscanResults)
+      .mockResolvedValueOnce({ items: [], total: 0 })
+      .mockResolvedValueOnce({ items: [MATRIX_GAP], total: 1 });
 
     renderPage();
     await screen.findByRole("button", { name: "Lancer un scan" });
@@ -300,7 +308,7 @@ describe("GapScanPage", () => {
     const user = userEvent.setup();
     const DONE_STATUS: GapscanStatus = { ...IDLE_STATUS, state: "done", total: 1, processed: 1, finished_at: 1700000000 };
     vi.mocked(gapscanStatus).mockResolvedValue(DONE_STATUS);
-    vi.mocked(gapscanResults).mockResolvedValue([MATRIX_GAP]);
+    vi.mocked(gapscanResults).mockResolvedValue({ items: [MATRIX_GAP], total: 1 });
     vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });
 
     renderPage();
@@ -315,7 +323,7 @@ describe("GapScanPage", () => {
     const user = userEvent.setup();
     const DONE_STATUS: GapscanStatus = { ...IDLE_STATUS, state: "done", total: 1, processed: 1, finished_at: 1700000000 };
     vi.mocked(gapscanStatus).mockResolvedValue(DONE_STATUS);
-    vi.mocked(gapscanResults).mockResolvedValue([MATRIX_GAP]);
+    vi.mocked(gapscanResults).mockResolvedValue({ items: [MATRIX_GAP], total: 1 });
     vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });
 
     renderPage();
@@ -337,5 +345,57 @@ describe("GapScanPage", () => {
     await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
 
     expect(gapscanRun).toHaveBeenCalledWith(false, "movies");
+  });
+
+  it("affiche les selects Type et Genre, appelle gapscanResults avec les filtres choisis", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanResults).mockResolvedValue({ items: [MATRIX_GAP], total: 1 });
+
+    renderPage();
+    await screen.findByText(/Matrix \(1999\)/);
+
+    await user.selectOptions(screen.getByLabelText("Type"), "movie");
+    await waitFor(() => {
+      expect(gapscanResults).toHaveBeenLastCalledWith(
+        expect.objectContaining({ mediaType: "movie", page: 1 }),
+      );
+    });
+
+    await user.selectOptions(screen.getByLabelText("Genre"), "anime");
+    await waitFor(() => {
+      expect(gapscanResults).toHaveBeenLastCalledWith(
+        expect.objectContaining({ mediaType: "movie", genre: "anime", page: 1 }),
+      );
+    });
+  });
+
+  it("affiche la pagination et change de page au clic sur Suivant", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanResults).mockResolvedValue({ items: [MATRIX_GAP], total: 120 });
+
+    renderPage();
+    await screen.findByText(/Page 1 \/ 3/);
+
+    await user.click(screen.getByRole("button", { name: "Suivant" }));
+
+    await waitFor(() => {
+      expect(gapscanResults).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+    });
+  });
+
+  it("changer de filtre revient a la page 1", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanResults).mockResolvedValue({ items: [MATRIX_GAP], total: 120 });
+
+    renderPage();
+    await screen.findByText(/Page 1 \/ 3/);
+    await user.click(screen.getByRole("button", { name: "Suivant" }));
+    await waitFor(() => screen.getByText(/Page 2 \/ 3/));
+
+    await user.selectOptions(screen.getByLabelText("Type"), "series");
+
+    await waitFor(() => {
+      expect(gapscanResults).toHaveBeenLastCalledWith(expect.objectContaining({ mediaType: "series", page: 1 }));
+    });
   });
 });

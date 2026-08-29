@@ -57,6 +57,11 @@ export default function GapScanPage() {
   const [status, setStatus] = useState<GapscanStatus | null>(null);
   const [results, setResults] = useState<GapResult[] | null>(null);
   const [filter, setFilter] = useState<GapStatus | "">("");
+  const [mediaTypeFilter, setMediaTypeFilter] = useState<"" | "movie" | "series">("");
+  const [genreFilter, setGenreFilter] = useState<"" | "anime" | "documentaire">("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 50;
   const [error, setError] = useState<string | null>(null);
   const [activeUpload, setActiveUpload] = useState<{ title: string; localPaths: string[] } | null>(null);
   const [starting, setStarting] = useState(false);
@@ -110,13 +115,33 @@ export default function GapScanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Charge aussi au montage (filter vaut "" au premier rendu) : un seul
-  // useEffect dedie au montage appellerait loadResults() une seconde fois
-  // en double de celui-ci, cf. historique du fichier.
+  // Charge aussi au montage (tous les filtres valent "" et page=1 au
+  // premier rendu) : un seul useEffect dedie au montage appellerait
+  // loadResults() une seconde fois en double de celui-ci, cf. historique
+  // du fichier.
   useEffect(() => {
     loadResults();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  }, [filter, mediaTypeFilter, genreFilter, page]);
+
+  // setFilter/setPage groupes dans le meme gestionnaire d'evenement :
+  // React les applique en un seul rendu, donc un seul appel a loadResults
+  // (pas de fetch intermediaire sur l'ancienne page avec le nouveau
+  // filtre).
+  function handleFilterChange(next: GapStatus | "") {
+    setFilter(next);
+    setPage(1);
+  }
+
+  function handleMediaTypeChange(next: "" | "movie" | "series") {
+    setMediaTypeFilter(next);
+    setPage(1);
+  }
+
+  function handleGenreChange(next: "" | "anime" | "documentaire") {
+    setGenreFilter(next);
+    setPage(1);
+  }
 
   function stopPolling() {
     if (pollRef.current !== null) {
@@ -149,9 +174,18 @@ export default function GapScanPage() {
 
   async function loadResults() {
     try {
-      setResults(await gapscanResults(filter || undefined));
+      const res = await gapscanResults({
+        status: filter || undefined,
+        mediaType: mediaTypeFilter || undefined,
+        genre: genreFilter || undefined,
+        page,
+        pageSize: PAGE_SIZE,
+      });
+      setResults(res.items);
+      setTotal(res.total);
     } catch (e) {
       setResults(null);
+      setTotal(0);
       setError(e instanceof ApiError ? e.message : "Résultats indisponibles.");
     }
   }
@@ -213,7 +247,11 @@ export default function GapScanPage() {
 
   async function handleExportCsv() {
     try {
-      const blob = await gapscanExportCsv(filter || undefined);
+      const blob = await gapscanExportCsv({
+        status: filter || undefined,
+        mediaType: mediaTypeFilter || undefined,
+        genre: genreFilter || undefined,
+      });
       downloadBlob(blob, "gapscan.csv");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Export impossible.");
@@ -457,20 +495,48 @@ export default function GapScanPage() {
         </div>
       )}
 
-      <label className="block text-sm font-medium text-ink-dim">
-        Filtrer par statut
-        <select
-          className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value as GapStatus | "")}
-        >
-          {FILTERS.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block text-sm font-medium text-ink-dim">
+          Filtrer par statut
+          <select
+            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
+            value={filter}
+            onChange={(e) => handleFilterChange(e.target.value as GapStatus | "")}
+          >
+            {FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm font-medium text-ink-dim">
+          Type
+          <select
+            aria-label="Type"
+            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
+            value={mediaTypeFilter}
+            onChange={(e) => handleMediaTypeChange(e.target.value as "" | "movie" | "series")}
+          >
+            <option value="">Tous les types</option>
+            <option value="movie">Films</option>
+            <option value="series">Séries</option>
+          </select>
+        </label>
+        <label className="block text-sm font-medium text-ink-dim">
+          Genre
+          <select
+            aria-label="Genre"
+            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
+            value={genreFilter}
+            onChange={(e) => handleGenreChange(e.target.value as "" | "anime" | "documentaire")}
+          >
+            <option value="">Tous les genres</option>
+            <option value="anime">Animé</option>
+            <option value="documentaire">Documentaire</option>
+          </select>
+        </label>
+      </div>
 
       {results === null && !error && <p className="text-sm text-ink-faint">Chargement…</p>}
 
@@ -543,6 +609,30 @@ export default function GapScanPage() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-ink-dim">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
+          >
+            Précédent
+          </button>
+          <span>
+            Page {page} / {Math.max(1, Math.ceil(total / PAGE_SIZE))} — {total} résultats
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => (p * PAGE_SIZE < total ? p + 1 : p))}
+            disabled={page * PAGE_SIZE >= total}
+            className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
+          >
+            Suivant
+          </button>
+        </div>
       )}
 
       {activeUpload && (
