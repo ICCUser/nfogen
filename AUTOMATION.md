@@ -546,7 +546,22 @@ avec ce titre déjà connu dès le chargement de l'aperçu (reste éditable si
 même celui-là est faux, cf. cas "A Guy And A Girl" où le titre Sonarr
 lui-même est erroné).
 
-**Livraison 2 (pas commencée)** : intégration TMDB (client dédié,
-`metadata_language` dans `rules.json`) pour corriger automatiquement les
-cas où `GapResult.title` lui-même est faux — nécessite le Read Access
-Token TMDB de l'utilisateur (déjà en sa possession).
+**Écart supplémentaire corrigé (2026-08-29)** : accents supprimés au lieu
+d'être translittérés ("Célibataires... ou Presque" → "Clibataires...") et
+absence de capitalisation par mot ("il faut sauver le soldat Ryan" au lieu
+de "Il.Faut.Sauver.Le.Soldat.Ryan"). Corrigé dans
+`name_proposal._normalize_title_text` (translittération NFKD + `\b\w`
+capitalisé, casse existante jamais abaissée — un acronyme comme "FBI"
+reste "FBI"). Panneau "Préparer l'upload" également corrigé pour ne plus
+garder un état périmé quand on l'ouvre sur une ligne différente sans
+fermer la précédente (`key` React sur les chemins locaux).
+
+**Livraison 2 — mise de côté (2026-08-29).** Décision utilisateur : au vu
+des résultats de la Livraison 1 + des corrections ci-dessus (accents,
+capitalisation, pré-remplissage depuis `GapResult.title`), l'essentiel des
+cas réels est déjà correct sans TMDB. L'intégration TMDB (client dédié,
+`metadata_language` dans `rules.json`) reste utile pour les cas plus rares
+où `GapResult.title` lui-même est faux (ex. "A Guy And A Girl"), mais
+n'est plus jugée prioritaire — corrigeables à la main via le champ titre
+en attendant. Décisions déjà prises ci-dessus (TMDB seul, Read Access
+Token) restent valables si/quand ce chantier reprend ; aucun code écrit.
