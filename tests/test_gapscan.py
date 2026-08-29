@@ -13,19 +13,25 @@ from typing import Optional
 
 from nfogen.c411_client import C411Error, C411Release
 from nfogen.gapscan import (
+    GapResult,
     GapStatus,
+    genre_of,
     run_gapscan,
     scan_movie,
     scan_series_season,
     sort_by_priority,
 )
+from nfogen.quality import ReleaseQuality
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.sonarr_client import SonarrSeasonFile
 
 
-def _release(title: str, imdb_id: Optional[str] = None, dvf: float = 1.0, uvf: float = 1.0) -> C411Release:
+def _release(
+    title: str, imdb_id: Optional[str] = None, dvf: float = 1.0, uvf: float = 1.0,
+    category: Optional[str] = None,
+) -> C411Release:
     return C411Release(title=title, guid=title, link="https://c411.org/x", imdb_id=imdb_id,
-                        download_volume_factor=dvf, upload_volume_factor=uvf)
+                        download_volume_factor=dvf, upload_volume_factor=uvf, category=category)
 
 
 @dataclass
@@ -664,3 +670,55 @@ def test_sort_by_priority_prefers_freeleech_at_equal_status():
 
     ordered = sort_by_priority([plain_result, fl_result])
     assert ordered[0] is fl_result  # meme statut (quality_gap) : FL passe devant malgre l'ordre alphabetique
+
+
+# --------------------------------------------------------------------------- #
+# Genre (Anime/Documentaire) : derive de la categorie C411 du PREMIER match
+# trouve (GAPSCAN.md, "Filtre type/genre + pagination serveur", 2026-08-28).
+# Table verifiee en direct via GET https://c411.org/api?t=caps -- 2030/5000
+# = Film/Serie standard, 2060/5070 = Anime (film/serie), 2070/5080 =
+# Documentaire (film/serie).
+# --------------------------------------------------------------------------- #
+def _result(status: GapStatus = GapStatus.ABSENT, c411_matches: Optional[list] = None) -> GapResult:
+    return GapResult(
+        media_type="movie", title="X", year=2020, season_number=None,
+        imdb_id=None, tmdb_id=None, tvdb_id=None, status=status,
+        local_quality=ReleaseQuality(raw=""), c411_matches=c411_matches or [],
+    )
+
+
+def test_genre_of_returns_none_when_no_c411_matches():
+    assert genre_of(_result()) is None
+
+
+def test_genre_of_anime_for_movie_category():
+    result = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="2060")])
+    assert genre_of(result) == "anime"
+
+
+def test_genre_of_anime_for_series_category():
+    result = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="5070")])
+    assert genre_of(result) == "anime"
+
+
+def test_genre_of_documentaire_for_movie_and_series_categories():
+    movie = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="2070")])
+    series = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="5080")])
+    assert genre_of(movie) == "documentaire"
+    assert genre_of(series) == "documentaire"
+
+
+def test_genre_of_none_for_standard_film_or_series_category():
+    """2030/5000 = Film/Serie generique -- pas un genre special, meme
+    valeur (None) que "aucune categorie"."""
+    result = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="2030")])
+    assert genre_of(result) is None
+
+
+def test_genre_of_uses_the_first_match_when_several_exist():
+    """Le premier match (deja trie par pertinence cote C411) fait foi."""
+    result = _result(
+        status=GapStatus.COVERED,
+        c411_matches=[_release("X", category="2060"), _release("X2", category="2070")],
+    )
+    assert genre_of(result) == "anime"

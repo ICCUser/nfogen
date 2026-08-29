@@ -131,6 +131,31 @@ def _classify(local_quality: ReleaseQuality, matches: list[C411Release]) -> GapS
     return GapStatus.COVERED
 
 
+# Categories C411 (verifiees le 2026-08-28 via GET https://c411.org/api?t=caps)
+# pertinentes pour le filtre genre. Films (2xxx) et series (5xxx) ont des
+# codes distincts, pas besoin de connaitre media_type pour desambiguer.
+# 2030/5000 (Film/Serie standard) ne sont pas retenus ici : aucun filtre
+# "standard" distinct de "pas de genre special" (voir GAPSCAN.md).
+_ANIME_CATEGORIES = {"2060", "5070"}
+_DOCUMENTARY_CATEGORIES = {"2070", "5080"}
+
+
+def genre_of(result: GapResult) -> Optional[str]:
+    """'anime'/'documentaire' d'apres la categorie C411 du PREMIER match
+    trouve (deja trie par pertinence cote C411) ; `None` si ce match est un
+    film/serie standard, OU si aucun match n'existe du tout -- un titre
+    "absent" n'a par definition aucune categorie, jamais classifiable par
+    genre fin (voir GAPSCAN.md, limite assumee)."""
+    if not result.c411_matches:
+        return None
+    category = result.c411_matches[0].category
+    if category in _ANIME_CATEGORIES:
+        return "anime"
+    if category in _DOCUMENTARY_CATEGORIES:
+        return "documentaire"
+    return None
+
+
 def scan_movie(
     movie: RadarrMovieFile,
     c411: C411Client,
