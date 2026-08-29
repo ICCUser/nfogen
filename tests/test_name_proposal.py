@@ -126,6 +126,24 @@ def test_undetected_video_codec_leaves_no_dangling_dot_before_team_tag():
     assert any("codec vidéo" in w.lower() for w in proposal.warnings)
 
 
+def test_c411_profile_recognizes_av1_video_codec():
+    # Cas reel : "Die Hard 2 (1990) [Bluray-1080p][DTS 5.1][AV1]-LAZARUS" --
+    # AV1 absent de video_codec_aliases faisait tomber le champ a vide.
+    import json
+    from pathlib import Path
+
+    rules_path = Path(__file__).resolve().parent.parent / "nfogen" / "profiles" / "c411" / "rules.json"
+    rules = json.loads(rules_path.read_text(encoding="utf-8"))
+    aliases = rules["video"]["name_proposal"]["video_codec_aliases"]
+    assert "AV1" in aliases
+
+    files = ["Die Hard 2 (1990) [Bluray-1080p][DTS 5.1][AV1]-LAZARUS.mkv"]
+    config = rules["video"]["name_proposal"]
+    proposal = propose_video_release_name(files, config)
+    assert proposal.fields["video_codec"] == aliases["AV1"]
+    assert not any("codec vidéo" in w.lower() for w in proposal.warnings)
+
+
 def test_unconfigured_language_bracket_is_a_placeholder_with_warning():
     files = ["Movie (2020) [WEBDL-1080p][DE+EN][x264].mkv"]
     proposal = propose_video_release_name(files, CONFIG)

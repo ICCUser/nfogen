@@ -122,7 +122,8 @@
         "HEVC": "hevc",
         "AVC": "avc",
         "MPEG-2": "mpeg-2",
-        "MPEG2": "mpeg2"
+        "MPEG2": "mpeg2",
+        "AV1": "AV1"
       },
       "audio_codec_aliases": {
         "AC3": "AC3",
