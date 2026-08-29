@@ -225,3 +225,48 @@ def test_strip_ext_is_public():
     from nfogen.name_proposal import strip_ext
 
     assert strip_ext("Movie.2020.1080p.mkv") == "Movie.2020.1080p"
+
+
+# --------------------------------------------------------------------------- #
+# title_override (AUTOMATION.md, sous-projet 5, Livraison 1) : le titre
+# depuis le nom de fichier ne respecte pas toujours la convention C411 (ex.
+# titre francais officiel different du titre de fichier Sonarr/Radarr,
+# "A Guy And A Girl" au lieu de "Un Gars, Une Fille") -- override manuel en
+# attendant TMDB (Livraison 2).
+# --------------------------------------------------------------------------- #
+def test_title_override_replaces_the_filename_derived_title():
+    files = ["A.Guy.And.A.Girl.S02E01.1080p.WEB.AAC.2.0.h264-Valentin.mkv"]
+    proposal = propose_video_release_name(files, CONFIG, title_override="Un Gars Une Fille")
+    assert proposal.fields["title"] == "Un.Gars.Une.Fille"
+    assert proposal.name.startswith("Un.Gars.Une.Fille.")
+
+
+def test_title_override_strips_punctuation_never_converts_to_dots():
+    """Confirme aupres du support C411 (2026-08-28) : la ponctuation
+    naturelle (virgule, apostrophe...) doit etre retiree entierement, pas
+    convertie en point -- "Un Gars, Une Fille" -> "Un.Gars.Une.Fille", pas
+    "Un.Gars,.Une.Fille"."""
+    files = ["A.Guy.And.A.Girl.S02E01.1080p.WEB.AAC.2.0.h264-Valentin.mkv"]
+    proposal = propose_video_release_name(files, CONFIG, title_override="Un Gars, Une Fille")
+    assert proposal.fields["title"] == "Un.Gars.Une.Fille"
+
+
+def test_title_override_strips_apostrophes():
+    """Retiree entierement, jamais convertie en point : "L'Associe" ->
+    "LAssocie" (pas de separateur insere), coherent avec la confirmation
+    du support C411."""
+    files = ["Movie.2020.1080p.WEB.x264-TEAM.mkv"]
+    proposal = propose_video_release_name(files, CONFIG, title_override="L'Associe du Diable")
+    assert proposal.fields["title"] == "LAssocie.du.Diable"
+
+
+def test_empty_title_override_falls_back_to_filename_derived_title():
+    """Une chaine vide/blanche ne doit jamais ecraser le titre deduit --
+    meme comportement que si le parametre n'etait pas fourni du tout."""
+    proposal = propose_video_release_name(ONE_PIECE_FILES, CONFIG, title_override="   ")
+    assert proposal.name == "One.Piece.S01.MULTI.VFF.1080p.WEB.AC3.2.0.x264-NOTAG"
+
+
+def test_title_override_applies_uniformly_to_a_whole_pack():
+    proposal = propose_video_release_name(ONE_PIECE_FILES, CONFIG, title_override="Le Grand Voyage")
+    assert proposal.name == "Le.Grand.Voyage.S01.MULTI.VFF.1080p.WEB.AC3.2.0.x264-NOTAG"

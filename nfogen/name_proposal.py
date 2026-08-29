@@ -39,14 +39,30 @@ def strip_ext(filename: str) -> str:
     return re.sub(r"\.[A-Za-z0-9]{1,4}$", "", filename)
 
 
+_TITLE_PUNCTUATION_RE = re.compile(r"[,;:!?'\"]")
+
+
+def _normalize_title_text(text: str) -> str:
+    """Convertit un titre brut (deja isole, sans suffixe annee/saison/tags)
+    vers la forme point-separee/ASCII attendue par la convention C411 --
+    reutilise aussi bien pour un titre deduit du nom de fichier
+    (`_clean_title`) que pour un titre fourni explicitement
+    (`title_override`, AUTOMATION.md sous-projet 5). Ponctuation naturelle
+    (virgule, apostrophe...) retiree ENTIEREMENT, jamais convertie en point
+    -- confirme aupres du support C411, 2026-08-28 ("Un Gars, Une Fille" ->
+    "Un.Gars.Une.Fille", pas "Un.Gars,.Une.Fille")."""
+    stripped = text.strip(" -._")
+    ascii_title = stripped.encode("ascii", "ignore").decode("ascii")
+    no_punctuation = _TITLE_PUNCTUATION_RE.sub("", ascii_title)
+    cleaned = re.sub(r"[\s_]+", ".", no_punctuation.strip())
+    return re.sub(r"\.+", ".", cleaned).strip(".")
+
+
 def _clean_title(stem: str) -> str:
     cut_points = [m.start() for rgx in (_YEAR_RE, _SEASON_EP_RE, _SEASON_ONLY_RE, _BRACKETS_RE)
                   for m in [rgx.search(stem)] if m]
     title_part = stem[: min(cut_points)] if cut_points else stem
-    title_part = title_part.strip(" -._")
-    ascii_title = title_part.encode("ascii", "ignore").decode("ascii")
-    cleaned = re.sub(r"[\s_]+", ".", ascii_title.strip())
-    return re.sub(r"\.+", ".", cleaned).strip(".")
+    return _normalize_title_text(title_part)
 
 
 def extract_team_tag(text: str) -> str | None:
@@ -119,12 +135,17 @@ def propose_video_release_name(
     filenames: list[str],
     config: dict[str, Any],
     title_hints: list[str | None] | None = None,
+    title_override: str | None = None,
 ) -> NameProposal:
     """Construit une proposition de `release_name` (1 fichier = episode/film,
     plusieurs = pack saison). `config` vient de `rules.json -> video ->
     name_proposal` (`template`, `language_aliases`). `title_hints`, optionnel
     (meme ordre/longueur que `filenames`), est prioritaire sur le nom de
-    fichier pour resolution/codec/source/equipe."""
+    fichier pour resolution/codec/source/equipe. `title_override`, optionnel :
+    remplace le titre deduit du nom de fichier (ex. titre officiel dans la
+    langue du tracker, different du titre Sonarr/Radarr -- AUTOMATION.md,
+    sous-projet 5) ; une chaine vide/blanche est ignoree comme si le
+    parametre n'etait pas fourni."""
     if not filenames:
         return NameProposal(None, {}, ["Aucun fichier fourni."])
 
@@ -150,7 +171,10 @@ def propose_video_release_name(
     raw_hints = title_hints if title_hints and len(title_hints) == len(filenames) else None
     hints: list[str] = [h or "" for h in (raw_hints or [None] * len(filenames))]
 
-    title = _clean_title(stems[0])
+    if title_override and title_override.strip():
+        title = _normalize_title_text(title_override)
+    else:
+        title = _clean_title(stems[0])
     if not title:
         warnings.append("Titre indéterminable depuis le nom de fichier : à compléter manuellement.")
 
