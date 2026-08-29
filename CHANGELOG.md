@@ -57,6 +57,11 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Corrigé
 
+- **Point trainant avant le tiret du tag d'équipe** quand un champ du
+  gabarit de nom est vide (ex. codec vidéo non détecté dans le nom de
+  fichier) : `...DTS.5.1.-LAZARUS` au lieu de `...DTS.5.1-LAZARUS`. C411
+  attend le tag d'équipe collé directement au dernier champ, jamais
+  précédé d'un point (`name_proposal.py`).
 - **Titre/aperçu périmés en ouvrant "Préparer l'upload" sur une ligne
   différente sans fermer la précédente** : React réutilisait la même
   instance du panneau, gardant le titre corrigé et l'aperçu de la ligne
