@@ -59,7 +59,8 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 | 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-automation-staging-torrent.md) |
 | 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md) |
 | 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | **Livré (2026-08-28)**, voir [le plan](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md) |
-| 5 | Upload vers C411 | À concevoir |
+| 4b | Généralisation tracker-agnostique (retrofit des sous-projets 2/4 + GapScan) | En conception (2026-08-29), voir sa section ci-dessous |
+| 5 | Upload vers C411 | À concevoir (dépend du 4b) |
 | 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
 | 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
 | 8 | Lidarr (musique) | Facultatif, en dernier |
@@ -465,6 +466,124 @@ module/branche) :
 
 Voir le plan d'implémentation complet (code exact) :
 [docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md).
+
+## Sous-projet 4b : Généralisation tracker-agnostique (2026-08-29)
+
+**But** : le principe directeur (ci-dessus) était déjà posé, mais les
+sous-projets 2/4 (déjà livrés) et GapScan (livré avant même ce document)
+ont chacun laissé passer une valeur spécifique à C411 en dur en Python là
+où le profil aurait dû trancher. Ce sous-projet corrige ces quatre points
+avant d'attaquer le sous-projet 5 (upload), qui aurait sinon reproduit le
+même problème sur du code neuf.
+
+**Déclencheur** : relecture demandée par l'utilisateur en voyant le
+nombre de pages/scripts nommés "C411" alors que le but reste "je charge un
+profil, il définit les règles du tracker, le reste de l'appli marche
+pareil" (scan, génération, upload).
+
+**Audit — ce qui est réellement couché en dur (pas juste `profile="c411"`
+en valeur par défaut, qui est déjà agnostique)** :
+
+1. **Codes de catégorie Torznab** (`gapscan.py:_ANIME_CATEGORIES`/
+   `_DOCUMENTARY_CATEGORIES`, 2060/5070/2070/5080) — varient d'un indexeur
+   Torznab à l'autre, câblés en constantes Python. (Le débit — 15
+   requêtes/min chez C411, voir GAPSCAN.md § "Débit confirmé" — est lui
+   déjà externalisé via `NFOGEN_C411_MIN_INTERVAL_SECONDS` : pas un vrai
+   problème d'agnosticisme, juste un nom de variable d'environnement
+   spécifique à généraliser en même temps que le reste du point 2
+   ci-dessous, par cohérence.)
+2. **Noms des champs de config** (`gapscan_config_store.py` :
+   `c411_api_key`/`c411_base_url`/`c411_announce_url`) — le nom du
+   tracker est câblé dans le nom du champ lui-même, pas seulement sa
+   valeur ; un deuxième tracker ne peut pas cohabiter proprement.
+3. **Barème de taille de pièce torrent** (`torrent_builder.py`, voir
+   tableau sous "Règles C411 de création de torrent" ci-dessus) — recopié
+   tel quel du sous-projet 2, jamais rendu déclaratif comme prévenu à
+   l'époque (voir "Principe directeur" ci-dessus, § "Où ça ne l'est PAS
+   encore").
+4. **Combinaisons de langue MULTI whitelistées** (`upload_prep.py`,
+   `FR+EN`/`EN+FR`/`FR+JA`/`JA+FR`) — même défaut, hérité du sous-projet 4.
+
+`c411_client.py` parle déjà Torznab standard (voir "Principe directeur"
+ci-dessus) — seul le nom (`C411Client`) est trompeur, aucun comportement
+à changer, juste un renommage. `name_proposal.py`/`rules.json` (sous-projet
+3) sont déjà 100% pilotés par profil — rien à toucher là.
+
+**Décisions (utilisateur, 2026-08-29)** :
+
+- **Identifiants par profil, pas un seul jeu global.** Chaque profil
+  (`c411`, un futur autre tracker) garde ses propres identifiants,
+  associés à son nom — cohérent avec "je charge un profil, il définit
+  tout". Sonarr/Radarr restent globaux (une seule bibliothèque média,
+  indépendante du tracker ciblé) : seuls les identifiants du **tracker**
+  deviennent namespacés. Nouveau schéma du fichier de
+  `gapscan_config_store.py` :
+  ```json
+  {
+    "sonarr_url": "...", "sonarr_api_key": "...",
+    "radarr_url": "...", "radarr_api_key": "...",
+    "trackers": {
+      "c411": { "api_key": "...", "base_url": "...", "announce_url": "..." }
+    }
+  }
+  ```
+  **Compat ascendante sans script de migration** : `effective_tracker("c411")`
+  retombe sur les anciens champs plats (`c411_api_key`/`c411_base_url`/
+  `c411_announce_url`) tant qu'aucun `trackers.c411` n'est encore
+  enregistré — les identifiants déjà en place sur le serveur de
+  l'utilisateur continuent de marcher sans ressaisie, migrés en douceur au
+  prochain `PUT /gapscan/config`.
+- **Nouvelle section `tracker` dans `rules.json`** (même niveau que
+  `video`), regroupe tout ce qui varie par tracker mais pas par catégorie
+  de média :
+  ```json
+  "tracker": {
+    "display_name": "C411",
+    "torznab_categories": {"anime": ["2060", "5070"], "documentaire": ["2070", "5080"]},
+    "multi_language_whitelist": ["FR+EN", "EN+FR", "FR+JA", "JA+FR"],
+    "min_request_interval_seconds": 4.5,
+    "torrent_piece_sizes": [
+      {"max_bytes": 1073741824, "piece_size": 1048576},
+      {"max_bytes": 2147483648, "piece_size": 2097152},
+      {"max_bytes": 3221225472, "piece_size": 4194304},
+      {"max_bytes": 8589934592, "piece_size": 8388608},
+      {"piece_size": 16777216}
+    ]
+  }
+  ```
+  (`torrent_piece_sizes` reprend telle quelle la table déjà documentée
+  ci-dessus sous "Règles C411 de création de torrent" — dernière entrée
+  sans `max_bytes` = barème au-delà de 8 Go.) `gapscan.py`,
+  `torrent_builder.py` et `upload_prep.py` lisent cette section au lieu de
+  constantes Python. L'env var `NFOGEN_C411_MIN_INTERVAL_SECONDS` reste
+  lisible pour le profil `c411` (rétrocompat), mais devient un simple
+  override déploiement de `min_request_interval_seconds` plutôt que
+  l'unique source de vérité.
+- **Renommage `c411_client.py` → `torznab_client.py`**
+  (`C411Client`/`C411Error`/`C411Release` → `TorznabClient`/`TorznabError`/
+  `TorznabRelease`), purement mécanique.
+- **API** : `GET`/`PUT /gapscan/config` gagnent un paramètre `profile` ;
+  réponse sans préfixe `c411_` (`tracker_configured`, `tracker_base_url`,
+  `tracker_announce_url_configured`).
+- **Frontend** : `GapScanPage.tsx` lit `display_name` du profil actif au
+  lieu du texte en dur ("Scan C411" → "Scan {display_name}", etc.).
+  `ProfileEditorPage.tsx` gagne un nouvel onglet **"Tracker"** (à côté de
+  Règles/Template/Aperçu) pour éditer `display_name`/`torznab_categories`/
+  `multi_language_whitelist`/`torrent_piece_sizes` en formulaire structuré,
+  cohérent avec `CategoryRulesForm` existant.
+
+**Pas dans ce sous-projet** (delta volontairement laissé de côté, YAGNI,
+mais probable suite proche — même traitement que la Livraison 2 TMDB
+mise de côté) : les regex de **détection** dans `name_proposal.py`
+(saison/épisode, année, tag d'équipe, crochets) restent en dur en Python.
+Elles supposent une convention scene déjà quasi-universelle (S01E01,
+`-TEAM`, crochets) — aucun tracker connu n'en a besoin d'autres pour
+l'instant. Motivation de l'utilisateur pour ne pas les négliger trop
+longtemps : lisibilité du projet pour quelqu'un qui le découvre sur
+GitHub sans connaître son historique — actuellement rien ne signale que
+ces regex sont un point dur, câblé C411-implicite par convention plutôt
+que par valeur. À rouvrir explicitement quand un deuxième tracker aux
+conventions vraiment différentes se présente.
 
 ## Sous-projet 5 : Upload vers C411 (notes préliminaires, 2026-08-28)
 
