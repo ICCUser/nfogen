@@ -121,7 +121,7 @@ hors scope automatisable pour l'instant.
 nfogen/
 ├── sonarr_client.py     # GET /api/v3/series, /api/v3/episodefile — titre, année, IDs (tvdbId/imdbId), qualité, langues
 ├── radarr_client.py     # GET /api/v3/movie, /api/v3/moviefile     — idem films
-├── c411_client.py       # Client API C411 (clé API) : recherche par titre/ID externe, parsing qualité/langue des releases listées
+├── torznab_client.py    # Client Torznab (clé API du tracker configuré) : recherche par titre/ID externe, parsing qualité/langue des releases listées -- renomme depuis c411_client.py (2026-08-29, protocole deja generique)
 ├── gapscan.py           # Orchestration : bibliothèque locale -> matching -> liste de GapResult
 ├── models.py            # + dataclass GapResult (titre, année, ids externes, quality_local, language_local, statut_c411, raisons)
 └── api.py               # + endpoints /gapscan/*
@@ -370,6 +370,14 @@ tests) :
 | Standard (Film/Série) | `2030` | `5000` |
 | Animé | `2060` | `5070` |
 | Documentaire | `2070` | `5080` |
+
+**Mise à jour (2026-08-29, AUTOMATION.md sous-projet 4b)** : ces codes ne
+sont plus des constantes Python (`gapscan._ANIME_CATEGORIES`/
+`_DOCUMENTARY_CATEGORIES`) — ils vivent désormais dans la section
+`tracker.torznab_categories` du profil (`rules.json`), lue par
+`nfogen/tracker_profile.py`. Le tableau ci-dessus reste la référence
+factuelle (valeurs inchangées, juste déplacées), et c'est bien la valeur
+actuellement enregistrée dans `nfogen/profiles/c411/rules.json`.
 
 **Limite assumée, actée avec l'utilisateur** : un titre `"absent"` (aucun
 match C411 trouvé) n'a par définition aucune catégorie — impossible de le

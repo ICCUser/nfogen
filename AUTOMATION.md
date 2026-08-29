@@ -59,8 +59,8 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 | 2 | Mise en scène du fichier (hardlink/copie) + génération du `.torrent` | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-automation-staging-torrent.md) |
 | 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md) |
 | 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | **Livré (2026-08-28)**, voir [le plan](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md) |
-| 4b | Généralisation tracker-agnostique (retrofit des sous-projets 2/4 + GapScan) | En conception (2026-08-29), voir sa section ci-dessous |
-| 5 | Upload vers C411 | À concevoir (dépend du 4b) |
+| 4b | Généralisation tracker-agnostique (retrofit des sous-projets 2/4 + GapScan) | **Livré (2026-08-29)**, voir [le plan](docs/superpowers/plans/2026-08-29-tracker-agnostic-generalization.md) |
+| 5 | Upload vers C411 | À concevoir |
 | 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
 | 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
 | 8 | Lidarr (musique) | Facultatif, en dernier |
@@ -584,6 +584,34 @@ GitHub sans connaître son historique — actuellement rien ne signale que
 ces regex sont un point dur, câblé C411-implicite par convention plutôt
 que par valeur. À rouvrir explicitement quand un deuxième tracker aux
 conventions vraiment différentes se présente.
+
+**Livré (2026-08-29)** — conforme à la conception ci-dessus, avec deux
+écarts découverts en écrivant le plan d'implémentation (voir
+[le plan](docs/superpowers/plans/2026-08-29-tracker-agnostic-generalization.md)
+pour le détail tâche par tâche) :
+
+- **Pas d'onglet "Tracker" dans l'éditeur de profil.** Le seul profil qui
+  existe (`c411`) est livré avec sa section `tracker` déjà peuplée ;
+  l'éditer se fait à la main (`rules.json`) ou via export/import `.zip`,
+  déjà supportés. Une UI structurée est repoussée au jour où un second
+  tracker doit réellement être créé depuis l'interface.
+- **`tracker.audio_language_codes` remplace le `multi_language_whitelist`
+  envisagé** — en relisant le vrai code (`upload_prep.py`), il n'existe
+  aucune liste blanche de combinaisons ; seule une table `code MediaInfo
+  → code court` (`fre`→`FR`, etc.) est réellement spécifique à C411.
+- **Sélecteur de profil global dans l'en-tête** (`ProfileContext`,
+  `App.tsx`), pas par page comme d'abord esquissé — remplace le "Scan
+  C411" en dur dans la navigation ET le sélecteur déjà présent sur
+  "Générer". Le panneau "Préparer l'upload" garde un **override local**
+  (retour utilisateur, 2026-08-29 : "sélection de profil unitaire par
+  média") — le profil global s'applique par défaut, mais un upload donné
+  peut cibler un autre tracker sans changer le profil actif de
+  l'application.
+- **Correctif trouvé en testant** : `tracker_profile.py` plantait
+  (`ProfileStoreError` non gérée) pour un nom de profil qui n'existe pas
+  du tout (pas seulement un profil existant sans section `tracker`) —
+  corrigé pour dégrader proprement dans les deux cas (jamais de
+  supposition, jamais de plantage).
 
 ## Sous-projet 5 : Upload vers C411 (notes préliminaires, 2026-08-28)
 

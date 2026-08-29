@@ -11,6 +11,21 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Ajouté
 
+- **Généralisation tracker-agnostique** (AUTOMATION.md, sous-projet 4b) :
+  les quatre dernières valeurs spécifiques à C411 câblées en Python
+  (codes de catégorie Torznab, barème de taille de pièce torrent, codes
+  de langue MediaInfo pour le préfixe MULTI, noms des champs
+  d'identifiants) déménagent dans une nouvelle section `tracker` du
+  profil (`rules.json`), lue par `nfogen/tracker_profile.py`. Les
+  identifiants de tracker (`gapscan_config_store.py`) sont désormais
+  namespacés par profil (compat ascendante sans script de migration :
+  les anciens champs plats continuent de fonctionner pour `c411`).
+  `c411_client.py` renommé en `torznab_client.py` (le protocole était
+  déjà générique, seul le nom trompait). Côté frontend, un
+  `ProfileContext` partagé pilote un **sélecteur de profil unique dans
+  l'en-tête** (remplace le "Scan C411" en dur et le sélecteur local de
+  "Générer") ; le panneau "Préparer l'upload" garde un override de
+  profil propre à chaque média, indépendant du profil actif global.
 - **Mise en scène de fichiers + création de `.torrent`**
   (`nfogen/file_staging.py`, `nfogen/torrent_builder.py`) : hardlink avec
   repli copie si périphérique différent (jamais de modification du fichier
