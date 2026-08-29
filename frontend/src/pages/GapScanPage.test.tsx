@@ -347,24 +347,24 @@ describe("GapScanPage", () => {
     expect(gapscanRun).toHaveBeenCalledWith(false, "movies");
   });
 
-  it("affiche les selects Type et Genre, appelle gapscanResults avec les filtres choisis", async () => {
+  it("un seul select Type combine media_type et genre en une seule option", async () => {
     const user = userEvent.setup();
     vi.mocked(gapscanResults).mockResolvedValue({ items: [MATRIX_GAP], total: 1 });
 
     renderPage();
     await screen.findByText(/Matrix \(1999\)/);
 
-    await user.selectOptions(screen.getByLabelText("Type"), "movie");
-    await waitFor(() => {
-      expect(gapscanResults).toHaveBeenLastCalledWith(
-        expect.objectContaining({ mediaType: "movie", page: 1 }),
-      );
-    });
-
-    await user.selectOptions(screen.getByLabelText("Genre"), "anime");
+    await user.selectOptions(screen.getByLabelText("Type"), "movie:anime");
     await waitFor(() => {
       expect(gapscanResults).toHaveBeenLastCalledWith(
         expect.objectContaining({ mediaType: "movie", genre: "anime", page: 1 }),
+      );
+    });
+
+    await user.selectOptions(screen.getByLabelText("Type"), "series:documentaire");
+    await waitFor(() => {
+      expect(gapscanResults).toHaveBeenLastCalledWith(
+        expect.objectContaining({ mediaType: "series", genre: "documentaire", page: 1 }),
       );
     });
   });
@@ -395,7 +395,9 @@ describe("GapScanPage", () => {
     await user.selectOptions(screen.getByLabelText("Type"), "series");
 
     await waitFor(() => {
-      expect(gapscanResults).toHaveBeenLastCalledWith(expect.objectContaining({ mediaType: "series", page: 1 }));
+      expect(gapscanResults).toHaveBeenLastCalledWith(
+        expect.objectContaining({ mediaType: "series", genre: undefined, page: 1 }),
+      );
     });
   });
 });

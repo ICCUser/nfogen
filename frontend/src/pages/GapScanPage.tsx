@@ -39,6 +39,27 @@ const FILTERS: { value: GapStatus | ""; label: string }[] = [
   { value: "error", label: STATUS_LABEL.error },
 ];
 
+// Un seul menu combinant media_type + genre (retour utilisateur, 2026-08-28 :
+// deux selects separes qui se combinent n'etaient pas intuitifs). Chaque
+// option correspond directement a une categorie C411 reelle (voir
+// GAPSCAN.md, "Filtre type/genre + pagination serveur").
+type TypeGenreOption = {
+  value: string;
+  label: string;
+  mediaType?: "movie" | "series";
+  genre?: "anime" | "documentaire";
+};
+
+const TYPE_GENRE_OPTIONS: TypeGenreOption[] = [
+  { value: "", label: "Tous les types" },
+  { value: "movie", label: "Films", mediaType: "movie" },
+  { value: "series", label: "Séries", mediaType: "series" },
+  { value: "movie:anime", label: "Films d'animation", mediaType: "movie", genre: "anime" },
+  { value: "series:anime", label: "Séries animées", mediaType: "series", genre: "anime" },
+  { value: "movie:documentaire", label: "Documentaires (films)", mediaType: "movie", genre: "documentaire" },
+  { value: "series:documentaire", label: "Documentaires (séries)", mediaType: "series", genre: "documentaire" },
+];
+
 function qualitySummary(q: GapResult["local_quality"]): string {
   const parts = [
     q.resolution ? `${q.resolution}p` : null,
@@ -57,8 +78,9 @@ export default function GapScanPage() {
   const [status, setStatus] = useState<GapscanStatus | null>(null);
   const [results, setResults] = useState<GapResult[] | null>(null);
   const [filter, setFilter] = useState<GapStatus | "">("");
-  const [mediaTypeFilter, setMediaTypeFilter] = useState<"" | "movie" | "series">("");
-  const [genreFilter, setGenreFilter] = useState<"" | "anime" | "documentaire">("");
+  const [typeGenreFilter, setTypeGenreFilter] = useState("");
+  const selectedTypeGenre =
+    TYPE_GENRE_OPTIONS.find((o) => o.value === typeGenreFilter) ?? TYPE_GENRE_OPTIONS[0];
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const PAGE_SIZE = 50;
@@ -122,7 +144,7 @@ export default function GapScanPage() {
   useEffect(() => {
     loadResults();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, mediaTypeFilter, genreFilter, page]);
+  }, [filter, typeGenreFilter, page]);
 
   // setFilter/setPage groupes dans le meme gestionnaire d'evenement :
   // React les applique en un seul rendu, donc un seul appel a loadResults
@@ -133,13 +155,8 @@ export default function GapScanPage() {
     setPage(1);
   }
 
-  function handleMediaTypeChange(next: "" | "movie" | "series") {
-    setMediaTypeFilter(next);
-    setPage(1);
-  }
-
-  function handleGenreChange(next: "" | "anime" | "documentaire") {
-    setGenreFilter(next);
+  function handleTypeGenreChange(next: string) {
+    setTypeGenreFilter(next);
     setPage(1);
   }
 
@@ -176,8 +193,8 @@ export default function GapScanPage() {
     try {
       const res = await gapscanResults({
         status: filter || undefined,
-        mediaType: mediaTypeFilter || undefined,
-        genre: genreFilter || undefined,
+        mediaType: selectedTypeGenre.mediaType,
+        genre: selectedTypeGenre.genre,
         page,
         pageSize: PAGE_SIZE,
       });
@@ -249,8 +266,8 @@ export default function GapScanPage() {
     try {
       const blob = await gapscanExportCsv({
         status: filter || undefined,
-        mediaType: mediaTypeFilter || undefined,
-        genre: genreFilter || undefined,
+        mediaType: selectedTypeGenre.mediaType,
+        genre: selectedTypeGenre.genre,
       });
       downloadBlob(blob, "gapscan.csv");
     } catch (e) {
@@ -515,25 +532,14 @@ export default function GapScanPage() {
           <select
             aria-label="Type"
             className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={mediaTypeFilter}
-            onChange={(e) => handleMediaTypeChange(e.target.value as "" | "movie" | "series")}
+            value={typeGenreFilter}
+            onChange={(e) => handleTypeGenreChange(e.target.value)}
           >
-            <option value="">Tous les types</option>
-            <option value="movie">Films</option>
-            <option value="series">Séries</option>
-          </select>
-        </label>
-        <label className="block text-sm font-medium text-ink-dim">
-          Genre
-          <select
-            aria-label="Genre"
-            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={genreFilter}
-            onChange={(e) => handleGenreChange(e.target.value as "" | "anime" | "documentaire")}
-          >
-            <option value="">Tous les genres</option>
-            <option value="anime">Animé</option>
-            <option value="documentaire">Documentaire</option>
+            {TYPE_GENRE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </select>
         </label>
       </div>
