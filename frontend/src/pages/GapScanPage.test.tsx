@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import GapScanPage from "./GapScanPage";
+import { ProfileProvider } from "../ProfileContext";
 
 vi.mock("../api/client", () => ({
   downloadBlob: vi.fn(),
@@ -13,6 +14,8 @@ vi.mock("../api/client", () => ({
   gapscanResults: vi.fn(),
   gapscanRun: vi.fn(),
   gapscanStatus: vi.fn(),
+  listAllProfiles: vi.fn(),
+  readManagedProfile: vi.fn(),
 }));
 
 vi.mock("../components/UploadPrepPanel", () => ({
@@ -30,19 +33,22 @@ import {
   gapscanResults,
   gapscanRun,
   gapscanStatus,
+  listAllProfiles,
+  readManagedProfile,
 } from "../api/client";
 import type { GapResult, GapscanConfig, GapscanStatus } from "../api/types";
 
 const CONFIGURED: GapscanConfig = {
-  c411_configured: true,
-  c411_base_url: "https://c411.org",
+  profile: "c411",
+  tracker_configured: true,
+  tracker_base_url: "https://c411.org",
   sonarr_configured: false,
   sonarr_url: null,
   radarr_configured: true,
   radarr_url: "http://radarr.local:7878",
   sonarr_path_mappings: {},
   radarr_path_mappings: {},
-  c411_announce_url_configured: false,
+  tracker_announce_url_configured: false,
   staging_dir: null,
 };
 
@@ -78,7 +84,9 @@ const MATRIX_GAP: GapResult = {
 function renderPage() {
   return render(
     <MemoryRouter>
-      <GapScanPage />
+      <ProfileProvider>
+        <GapScanPage />
+      </ProfileProvider>
     </MemoryRouter>,
   );
 }
@@ -87,11 +95,31 @@ beforeEach(() => {
   vi.mocked(gapscanConfig).mockResolvedValue(CONFIGURED);
   vi.mocked(gapscanStatus).mockResolvedValue(IDLE_STATUS);
   vi.mocked(gapscanResults).mockResolvedValue({ items: [], total: 0 });
+  vi.mocked(listAllProfiles).mockResolvedValue({ c411: ["video"] });
+  vi.mocked(readManagedProfile).mockResolvedValue({
+    name: "c411", rules: { tracker: { display_name: "C411" } }, templates: {},
+  });
 });
 
 afterEach(() => vi.resetAllMocks());
 
 describe("GapScanPage", () => {
+  it("affiche le display_name du profil actif (ProfileContext), pas un nom en dur", async () => {
+    vi.mocked(readManagedProfile).mockResolvedValue({
+      name: "c411", rules: { tracker: { display_name: "Mon Tracker" } }, templates: {},
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Scan Mon Tracker/)).toBeInTheDocument();
+  });
+
+  it("n'a pas de selecteur de profil qui lui soit propre (vit dans l'entete, App.tsx)", async () => {
+    renderPage();
+    await screen.findByRole("button", { name: "Lancer un scan" });
+    expect(screen.queryByRole("combobox", { name: /^profil/i })).not.toBeInTheDocument();
+  });
+
   it("affiche les resultats deja disponibles au chargement, avec leur statut", async () => {
     vi.mocked(gapscanResults).mockResolvedValue({ items: [MATRIX_GAP], total: 1 });
 
@@ -192,15 +220,16 @@ describe("GapScanPage", () => {
 
   it("service non configure : bouton desactive avec message explicite", async () => {
     vi.mocked(gapscanConfig).mockResolvedValue({
-      c411_configured: false,
-      c411_base_url: null,
+      profile: "c411",
+      tracker_configured: false,
+      tracker_base_url: null,
       sonarr_configured: false,
       sonarr_url: null,
       radarr_configured: false,
       radarr_url: null,
       sonarr_path_mappings: {},
       radarr_path_mappings: {},
-      c411_announce_url_configured: false,
+      tracker_announce_url_configured: false,
       staging_dir: null,
     });
 
@@ -227,15 +256,18 @@ describe("GapScanPage", () => {
     await user.type(screen.getByLabelText("Clé API Sonarr"), "sk-123");
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
 
-    expect(gapscanConfigWrite).toHaveBeenCalledWith({
-      sonarr_url: "http://sonarr.local:8989",
-      sonarr_api_key: "sk-123",
-      // deja remplis depuis CONFIGURED (URL/base non sensibles), renvoyes tels quels
-      radarr_url: "http://radarr.local:7878",
-      c411_base_url: "https://c411.org",
-      sonarr_path_mappings: {},
-      radarr_path_mappings: {},
-    });
+    expect(gapscanConfigWrite).toHaveBeenCalledWith(
+      {
+        sonarr_url: "http://sonarr.local:8989",
+        sonarr_api_key: "sk-123",
+        // deja remplis depuis CONFIGURED (URL/base non sensibles), renvoyes tels quels
+        radarr_url: "http://radarr.local:7878",
+        tracker_base_url: "https://c411.org",
+        sonarr_path_mappings: {},
+        radarr_path_mappings: {},
+      },
+      "c411",
+    );
     expect(await screen.findByText("Enregistré.")).toBeInTheDocument();
   });
 
@@ -265,6 +297,7 @@ describe("GapScanPage", () => {
       expect.objectContaining({
         radarr_path_mappings: { "/data/movies": "/mnt/nas/movies" },
       }),
+      "c411",
     );
   });
 
@@ -272,7 +305,7 @@ describe("GapScanPage", () => {
     const user = userEvent.setup();
     vi.mocked(gapscanConfigWrite).mockResolvedValue({
       ...CONFIGURED,
-      c411_announce_url_configured: true,
+      tracker_announce_url_configured: true,
       staging_dir: "/data/staging",
     });
 
@@ -285,9 +318,10 @@ describe("GapScanPage", () => {
 
     expect(gapscanConfigWrite).toHaveBeenCalledWith(
       expect.objectContaining({
-        c411_announce_url: "https://c411.org/announce/SECRET",
+        tracker_announce_url: "https://c411.org/announce/SECRET",
         staging_dir: "/data/staging",
       }),
+      "c411",
     );
   });
 
@@ -301,7 +335,7 @@ describe("GapScanPage", () => {
     expect(screen.queryByText("Scan rapide")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
-    expect(gapscanRun).toHaveBeenCalledWith(false, undefined);
+    expect(gapscanRun).toHaveBeenCalledWith(false, undefined, "c411");
   });
 
   it("scan precedent disponible : case 'Scan rapide' cochee par defaut, scan lance en mode incremental", async () => {
@@ -316,7 +350,7 @@ describe("GapScanPage", () => {
     expect(checkbox).toBeChecked();
 
     await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
-    expect(gapscanRun).toHaveBeenCalledWith(true, undefined);
+    expect(gapscanRun).toHaveBeenCalledWith(true, undefined, "c411");
   });
 
   it("scan precedent disponible : decocher 'Scan rapide' force un scan complet", async () => {
@@ -331,7 +365,7 @@ describe("GapScanPage", () => {
     await user.click(checkbox);
     await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
 
-    expect(gapscanRun).toHaveBeenCalledWith(false, undefined);
+    expect(gapscanRun).toHaveBeenCalledWith(false, undefined, "c411");
   });
 
   it("selectionner 'Films seulement' passe only='movies' a gapscanRun", async () => {
@@ -344,7 +378,7 @@ describe("GapScanPage", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "Bibliothèque à scanner" }), "movies");
     await user.click(screen.getByRole("button", { name: "Lancer un scan" }));
 
-    expect(gapscanRun).toHaveBeenCalledWith(false, "movies");
+    expect(gapscanRun).toHaveBeenCalledWith(false, "movies", "c411");
   });
 
   it("un seul select Type combine media_type et genre en une seule option", async () => {

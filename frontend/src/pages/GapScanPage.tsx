@@ -13,14 +13,21 @@ import {
 } from "../api/client";
 import { ApiError } from "../api/types";
 import type { GapResult, GapscanConfig, GapscanConfigWrite, GapscanStatus, GapStatus } from "../api/types";
+import { useProfile } from "../ProfileContext";
 
-const STATUS_LABEL: Record<GapStatus, string> = {
-  absent: "Absent de C411",
-  quality_gap: "Qualité supérieure disponible",
-  language_gap: "Langue manquante sur C411",
-  covered: "Déjà couvert",
-  error: "Non vérifié (erreur C411)",
-};
+/** Libelles de statut : parametres par le nom du tracker actif
+ * (`trackerName`, voir ProfileContext.displayName) au lieu d'un "C411"
+ * en dur -- generique a n'importe quel profil charge. */
+function statusLabel(status: GapStatus, trackerName: string): string {
+  const labels: Record<GapStatus, string> = {
+    absent: `Absent de ${trackerName}`,
+    quality_gap: "Qualité supérieure disponible",
+    language_gap: `Langue manquante sur ${trackerName}`,
+    covered: "Déjà couvert",
+    error: `Non vérifié (erreur ${trackerName})`,
+  };
+  return labels[status];
+}
 
 const STATUS_BADGE_CLASS: Record<GapStatus, string> = {
   absent: "bg-info-bg text-info",
@@ -29,15 +36,6 @@ const STATUS_BADGE_CLASS: Record<GapStatus, string> = {
   covered: "bg-surface-2 text-ink-faint",
   error: "bg-crit-bg text-crit",
 };
-
-const FILTERS: { value: GapStatus | ""; label: string }[] = [
-  { value: "", label: "Tous les statuts" },
-  { value: "absent", label: STATUS_LABEL.absent },
-  { value: "quality_gap", label: STATUS_LABEL.quality_gap },
-  { value: "language_gap", label: STATUS_LABEL.language_gap },
-  { value: "covered", label: STATUS_LABEL.covered },
-  { value: "error", label: STATUS_LABEL.error },
-];
 
 // Un seul menu combinant media_type + genre (retour utilisateur, 2026-08-28 :
 // deux selects separes qui se combinent n'etaient pas intuitifs). Chaque
@@ -69,11 +67,21 @@ function qualitySummary(q: GapResult["local_quality"]): string {
   return parts.length > 0 ? parts.join(" · ") : "—";
 }
 
-/** Page « Scan C411 » : compare la bibliothèque Sonarr/Radarr au catalogue
- * C411 pour repérer les candidats à l'upload (voir GAPSCAN.md). Poll
- * `/gapscan/status` pendant qu'un scan tourne, comme la génération vidéo
- * côté navigateur poll son propre état d'avancement. */
+/** Page « Scan » : compare la bibliothèque Sonarr/Radarr au catalogue du
+ * tracker actif (profil partagé, voir ProfileContext) pour repérer les
+ * candidats à l'upload (voir GAPSCAN.md). Poll `/gapscan/status` pendant
+ * qu'un scan tourne, comme la génération vidéo côté navigateur poll son
+ * propre état d'avancement. */
 export default function GapScanPage() {
+  const { profile, displayName: trackerDisplayName } = useProfile();
+  const FILTERS: { value: GapStatus | ""; label: string }[] = [
+    { value: "", label: "Tous les statuts" },
+    { value: "absent", label: statusLabel("absent", trackerDisplayName) },
+    { value: "quality_gap", label: statusLabel("quality_gap", trackerDisplayName) },
+    { value: "language_gap", label: statusLabel("language_gap", trackerDisplayName) },
+    { value: "covered", label: statusLabel("covered", trackerDisplayName) },
+    { value: "error", label: statusLabel("error", trackerDisplayName) },
+  ];
   const [config, setConfig] = useState<GapscanConfig | null>(null);
   const [status, setStatus] = useState<GapscanStatus | null>(null);
   const [results, setResults] = useState<GapResult[] | null>(null);
@@ -109,33 +117,33 @@ export default function GapScanPage() {
   const [sonarrApiKey, setSonarrApiKey] = useState("");
   const [radarrUrl, setRadarrUrl] = useState("");
   const [radarrApiKey, setRadarrApiKey] = useState("");
-  const [c411ApiKey, setC411ApiKey] = useState("");
-  const [c411BaseUrl, setC411BaseUrl] = useState("");
+  const [trackerApiKey, setTrackerApiKey] = useState("");
+  const [trackerBaseUrl, setTrackerBaseUrl] = useState("");
   const [sonarrPathMappings, setSonarrPathMappings] = useState<Record<string, string>>({});
   const [radarrPathMappings, setRadarrPathMappings] = useState<Record<string, string>>({});
-  const [c411AnnounceUrl, setC411AnnounceUrl] = useState("");
+  const [trackerAnnounceUrl, setTrackerAnnounceUrl] = useState("");
   const [stagingDir, setStagingDir] = useState("");
 
   useEffect(() => {
-    gapscanConfig()
+    gapscanConfig(profile)
       .catch(() => null)
       .then((c) => {
         if (!c) return;
         setConfig(c);
         setSonarrUrl(c.sonarr_url ?? "");
         setRadarrUrl(c.radarr_url ?? "");
-        setC411BaseUrl(c.c411_base_url ?? "");
+        setTrackerBaseUrl(c.tracker_base_url ?? "");
         setSonarrPathMappings(c.sonarr_path_mappings);
         setRadarrPathMappings(c.radarr_path_mappings);
         setStagingDir(c.staging_dir ?? "");
-        if (!c.c411_configured || (!c.sonarr_configured && !c.radarr_configured)) {
+        if (!c.tracker_configured || (!c.sonarr_configured && !c.radarr_configured)) {
           setShowConfigForm(true);
         }
       });
     refreshStatus();
     return () => stopPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [profile]);
 
   // Charge aussi au montage (tous les filtres valent "" et page=1 au
   // premier rendu) : un seul useEffect dedie au montage appellerait
@@ -144,7 +152,7 @@ export default function GapScanPage() {
   useEffect(() => {
     loadResults();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, typeGenreFilter, page]);
+  }, [filter, typeGenreFilter, page, profile]);
 
   // setFilter/setPage groupes dans le meme gestionnaire d'evenement :
   // React les applique en un seul rendu, donc un seul appel a loadResults
@@ -197,6 +205,7 @@ export default function GapScanPage() {
         genre: selectedTypeGenre.genre,
         page,
         pageSize: PAGE_SIZE,
+        profile,
       });
       setResults(res.items);
       setTotal(res.total);
@@ -211,7 +220,7 @@ export default function GapScanPage() {
     setStarting(true);
     setError(null);
     try {
-      await gapscanRun(hasPreviousScan && incremental, only || undefined);
+      await gapscanRun(hasPreviousScan && incremental, only || undefined, profile);
       // refreshStatus() demarre elle-meme le polling si l'etat est
       // "running" (voir plus haut) -- pas d'appel a startPolling() ici :
       // un scan deja termine au premier appel ne doit pas en declencher un
@@ -238,21 +247,21 @@ export default function GapScanPage() {
       if (sonarrApiKey.trim()) fields.sonarr_api_key = sonarrApiKey.trim();
       if (radarrUrl.trim()) fields.radarr_url = radarrUrl.trim();
       if (radarrApiKey.trim()) fields.radarr_api_key = radarrApiKey.trim();
-      if (c411ApiKey.trim()) fields.c411_api_key = c411ApiKey.trim();
-      if (c411BaseUrl.trim()) fields.c411_base_url = c411BaseUrl.trim();
-      if (c411AnnounceUrl.trim()) fields.c411_announce_url = c411AnnounceUrl.trim();
+      if (trackerApiKey.trim()) fields.tracker_api_key = trackerApiKey.trim();
+      if (trackerBaseUrl.trim()) fields.tracker_base_url = trackerBaseUrl.trim();
+      if (trackerAnnounceUrl.trim()) fields.tracker_announce_url = trackerAnnounceUrl.trim();
       if (stagingDir.trim()) fields.staging_dir = stagingDir.trim();
       // Contrairement aux cles/URLs ci-dessus, un dictionnaire vide est une
       // valeur explicite valide ("aucun mapping") : toujours envoye.
       fields.sonarr_path_mappings = sonarrPathMappings;
       fields.radarr_path_mappings = radarrPathMappings;
 
-      const updated = await gapscanConfigWrite(fields);
+      const updated = await gapscanConfigWrite(fields, profile);
       setConfig(updated);
       setSonarrApiKey("");
       setRadarrApiKey("");
-      setC411ApiKey("");
-      setC411AnnounceUrl("");
+      setTrackerApiKey("");
+      setTrackerAnnounceUrl("");
       setConfigSaved(true);
       setTimeout(() => setConfigSaved(false), 2000);
     } catch (e) {
@@ -268,6 +277,7 @@ export default function GapScanPage() {
         status: filter || undefined,
         mediaType: selectedTypeGenre.mediaType,
         genre: selectedTypeGenre.genre,
+        profile,
       });
       downloadBlob(blob, "gapscan.csv");
     } catch (e) {
@@ -276,8 +286,8 @@ export default function GapScanPage() {
   }
 
   const running = status?.state === "running";
-  const notConfigured = config !== null && !config.c411_configured;
-  const noLibrary = config !== null && config.c411_configured && !config.sonarr_configured && !config.radarr_configured;
+  const notConfigured = config !== null && !config.tracker_configured;
+  const noLibrary = config !== null && config.tracker_configured && !config.sonarr_configured && !config.radarr_configured;
   // Un scan precedent existe (memoire ou repris du disque au demarrage,
   // voir gapscan_results_store.py) des qu'un "done" a deja ete rapporte.
   const hasPreviousScan = status?.state === "done" && status.finished_at !== null;
@@ -286,10 +296,10 @@ export default function GapScanPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-xl font-semibold text-ink">Scan C411</h1>
+          <h1 className="font-display text-xl font-semibold text-ink">Scan {trackerDisplayName}</h1>
           <p className="text-sm text-ink-dim">
-            Compare ta bibliothèque Sonarr/Radarr au catalogue C411 pour repérer ce qui n'y est pas
-            encore, ou pas dans ta qualité — candidats à uploader.
+            Compare ta bibliothèque Sonarr/Radarr au catalogue {trackerDisplayName} pour repérer ce qui
+            n'y est pas encore, ou pas dans ta qualité — candidats à uploader.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -337,7 +347,7 @@ export default function GapScanPage() {
 
       {notConfigured && (
         <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
-          Clé API C411 non configurée — renseigne-la ci-dessous.
+          Clé API {trackerDisplayName} non configurée — renseigne-la ci-dessous.
         </div>
       )}
       {!notConfigured && noLibrary && (
@@ -352,7 +362,7 @@ export default function GapScanPage() {
           onClick={() => setShowConfigForm((v) => !v)}
           className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink"
         >
-          Configuration (Sonarr, Radarr, C411)
+          Configuration (Sonarr, Radarr, {trackerDisplayName})
           <span className="text-ink-faint">{showConfigForm ? "▲" : "▼"}</span>
         </button>
         {showConfigForm && (
@@ -403,32 +413,32 @@ export default function GapScanPage() {
                 />
               </label>
               <label className="block text-sm font-medium text-ink-dim">
-                URL de base C411
+                URL de base {trackerDisplayName}
                 <input
                   className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
                   placeholder="https://c411.org"
-                  value={c411BaseUrl}
-                  onChange={(e) => setC411BaseUrl(e.target.value)}
+                  value={trackerBaseUrl}
+                  onChange={(e) => setTrackerBaseUrl(e.target.value)}
                 />
               </label>
               <label className="block text-sm font-medium text-ink-dim">
-                Clé API C411
+                Clé API {trackerDisplayName}
                 <input
                   className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
                   type="password"
-                  placeholder={config?.c411_configured ? "•••• (enregistrée)" : ""}
-                  value={c411ApiKey}
-                  onChange={(e) => setC411ApiKey(e.target.value)}
+                  placeholder={config?.tracker_configured ? "•••• (enregistrée)" : ""}
+                  value={trackerApiKey}
+                  onChange={(e) => setTrackerApiKey(e.target.value)}
                 />
               </label>
               <label className="block text-sm font-medium text-ink-dim">
-                Adresse d'annonce C411
+                Adresse d'annonce {trackerDisplayName}
                 <input
                   className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
                   type="password"
-                  placeholder={config?.c411_announce_url_configured ? "•••• (enregistrée)" : ""}
-                  value={c411AnnounceUrl}
-                  onChange={(e) => setC411AnnounceUrl(e.target.value)}
+                  placeholder={config?.tracker_announce_url_configured ? "•••• (enregistrée)" : ""}
+                  value={trackerAnnounceUrl}
+                  onChange={(e) => setTrackerAnnounceUrl(e.target.value)}
                 />
               </label>
               <label className="block text-sm font-medium text-ink-dim">
@@ -585,7 +595,7 @@ export default function GapScanPage() {
                     className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE_CLASS[r.status]}`}
                     title={r.status === "error" ? r.error ?? undefined : undefined}
                   >
-                    {STATUS_LABEL[r.status]}
+                    {statusLabel(r.status, trackerDisplayName)}
                   </span>
                   {r.has_freeleech_alternative && (
                     <span className="ml-1 rounded-full bg-good-bg px-2 py-0.5 text-xs text-good">FL</span>
