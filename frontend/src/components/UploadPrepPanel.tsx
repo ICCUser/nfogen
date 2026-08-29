@@ -22,11 +22,14 @@ export default function UploadPrepPanel({
   const [groups, setGroups] = useState<UploadGroupProposal[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recalculating, setRecalculating] = useState(false);
-  // Titre corrige (AUTOMATION.md, sous-projet 5, Livraison 1) : vide par
-  // defaut (garde le titre deduit du nom de fichier) -- rempli seulement
-  // quand l'auto-detection se trompe (ex. "A Guy And A Girl" au lieu de
-  // "Un Gars, Une Fille"), puis "Recalculer" relance l'apercu avec.
-  const [titleOverride, setTitleOverride] = useState("");
+  // Titre corrige (AUTOMATION.md, sous-projet 5, Livraison 1) : pre-rempli
+  // avec le titre DEJA CONNU (GapResult.title, Sonarr/Radarr -- le meme
+  // que celui affiche dans l'en-tete du panneau juste au-dessus) plutot
+  // que de redecouvrir un titre depuis le nom de fichier alors qu'on en a
+  // deja un sous la main -- retour utilisateur, 2026-08-28 ("Les Fils du
+  // vent" : le titre FR etait deja connu, mais jamais reutilise pour le
+  // nommage). Reste editable si meme celui-la est incorrect.
+  const [titleOverride, setTitleOverride] = useState(title);
   const [committing, setCommitting] = useState<number | null>(null);
   const [commitResults, setCommitResults] = useState<Record<number, UploadCommitResult>>({});
   const [commitErrors, setCommitErrors] = useState<Record<number, string>>({});
@@ -45,7 +48,7 @@ export default function UploadPrepPanel({
   }
 
   useEffect(() => {
-    loadPreview();
+    loadPreview(title);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localPaths]);
 

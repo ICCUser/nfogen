@@ -35,14 +35,19 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
-it("charge et affiche l'apercu au montage", async () => {
+it("charge et affiche l'apercu au montage avec le titre deja connu (GapResult) comme override par defaut", async () => {
+  /* Cas reel signale par l'utilisateur (2026-08-28, "Les Fils du vent") :
+   * le titre Radarr/Sonarr est deja affiche dans l'en-tete du panneau --
+   * jamais reutilise jusqu'ici pour le nommage, qui redecouvrait un titre
+   * (souvent anglais) depuis le nom de fichier au lieu de ca. */
   vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
   render(<UploadPrepPanel localPaths={["/media/movie.mkv"]} title="Movie" onClose={vi.fn()} />);
 
   await waitFor(() => {
     expect(screen.getByText(/Movie\.2020\.MULTI\.VFF\.1080p\.BluRay\.AC3\.x264-TEAM$/)).toBeInTheDocument();
   });
-  expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", undefined);
+  expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", "Movie");
+  expect(screen.getByLabelText(/Titre/i)).toHaveValue("Movie");
 });
 
 it("un groupe bloque n'a pas de bouton Confirmer, affiche l'avertissement", async () => {
@@ -98,6 +103,7 @@ it("Recalculer renvoie le titre corrige a prepareUploadPreview", async () => {
   ];
   vi.mocked(prepareUploadPreview).mockResolvedValue(CORRECTED_GROUP);
 
+  await user.clear(screen.getByLabelText(/Titre/i));
   await user.type(screen.getByLabelText(/Titre/i), "Un Gars, Une Fille");
   await user.click(screen.getByRole("button", { name: "Recalculer" }));
 
