@@ -234,6 +234,20 @@ describe("prepareUploadPreview / prepareUploadCommit", () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       local_paths: ["/a.mkv"],
       profile: "c411",
+      title_override: undefined,
+    });
+  });
+
+  it("preview envoie title_override quand fourni", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([]));
+
+    await prepareUploadPreview(["/a.mkv"], "c411", "Un Gars, Une Fille");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      local_paths: ["/a.mkv"],
+      profile: "c411",
+      title_override: "Un Gars, Une Fille",
     });
   });
 

@@ -357,10 +357,11 @@ export async function gapscanExportCsv(
 export function prepareUploadPreview(
   localPaths: string[],
   profile = "c411",
+  titleOverride?: string,
 ): Promise<UploadGroupProposal[]> {
   return request<UploadGroupProposal[]>("/gapscan/prepare-upload/preview", {
     method: "POST",
-    body: JSON.stringify({ local_paths: localPaths, profile }),
+    body: JSON.stringify({ local_paths: localPaths, profile, title_override: titleOverride }),
   });
 }
 

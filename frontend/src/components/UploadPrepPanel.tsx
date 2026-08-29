@@ -21,22 +21,32 @@ export default function UploadPrepPanel({
 }) {
   const [groups, setGroups] = useState<UploadGroupProposal[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [recalculating, setRecalculating] = useState(false);
+  // Titre corrige (AUTOMATION.md, sous-projet 5, Livraison 1) : vide par
+  // defaut (garde le titre deduit du nom de fichier) -- rempli seulement
+  // quand l'auto-detection se trompe (ex. "A Guy And A Girl" au lieu de
+  // "Un Gars, Une Fille"), puis "Recalculer" relance l'apercu avec.
+  const [titleOverride, setTitleOverride] = useState("");
   const [committing, setCommitting] = useState<number | null>(null);
   const [commitResults, setCommitResults] = useState<Record<number, UploadCommitResult>>({});
   const [commitErrors, setCommitErrors] = useState<Record<number, string>>({});
 
+  async function loadPreview(override?: string) {
+    setRecalculating(true);
+    setLoadError(null);
+    try {
+      const g = await prepareUploadPreview(localPaths, "c411", override || undefined);
+      setGroups(g);
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? e.message : "Aperçu indisponible.");
+    } finally {
+      setRecalculating(false);
+    }
+  }
+
   useEffect(() => {
-    let cancelled = false;
-    prepareUploadPreview(localPaths)
-      .then((g) => {
-        if (!cancelled) setGroups(g);
-      })
-      .catch((e) => {
-        if (!cancelled) setLoadError(e instanceof ApiError ? e.message : "Aperçu indisponible.");
-      });
-    return () => {
-      cancelled = true;
-    };
+    loadPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localPaths]);
 
   async function handleConfirm(index: number, group: UploadGroupProposal) {
@@ -62,6 +72,26 @@ export default function UploadPrepPanel({
         <h2 className="font-display text-sm font-semibold text-ink">Préparer l'upload — {title}</h2>
         <button type="button" onClick={onClose} className="text-sm text-ink-faint hover:text-ink">
           Fermer
+        </button>
+      </div>
+
+      <div className="flex items-end gap-2">
+        <label className="block flex-1 text-xs font-medium text-ink-dim">
+          Titre (si différent de celui déduit du nom de fichier)
+          <input
+            className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink font-mono"
+            placeholder="Laisser vide pour garder le titre déduit du nom de fichier"
+            value={titleOverride}
+            onChange={(e) => setTitleOverride(e.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => loadPreview(titleOverride)}
+          disabled={recalculating}
+          className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
+        >
+          {recalculating ? "Calcul…" : "Recalculer"}
         </button>
       </div>
 

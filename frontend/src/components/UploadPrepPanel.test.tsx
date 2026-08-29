@@ -42,7 +42,7 @@ it("charge et affiche l'apercu au montage", async () => {
   await waitFor(() => {
     expect(screen.getByText(/Movie\.2020\.MULTI\.VFF\.1080p\.BluRay\.AC3\.x264-TEAM$/)).toBeInTheDocument();
   });
-  expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"]);
+  expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", undefined);
 });
 
 it("un groupe bloque n'a pas de bouton Confirmer, affiche l'avertissement", async () => {
@@ -85,4 +85,28 @@ it("une erreur de chargement affiche un message", async () => {
   await waitFor(() => {
     expect(screen.getByText(/Erreur interne du serveur/)).toBeInTheDocument();
   });
+});
+
+it("Recalculer renvoie le titre corrige a prepareUploadPreview", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  render(<UploadPrepPanel localPaths={["/media/movie.mkv"]} title="Movie" onClose={vi.fn()} />);
+  await waitFor(() => screen.getByRole("button", { name: "Recalculer" }));
+
+  const CORRECTED_GROUP: UploadGroupProposal[] = [
+    { ...ONE_GROUP[0], release_name: "Un.Gars.Une.Fille.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM" },
+  ];
+  vi.mocked(prepareUploadPreview).mockResolvedValue(CORRECTED_GROUP);
+
+  await user.type(screen.getByLabelText(/Titre/i), "Un Gars, Une Fille");
+  await user.click(screen.getByRole("button", { name: "Recalculer" }));
+
+  await waitFor(() => {
+    expect(screen.getByText(/^Un\.Gars\.Une\.Fille\./)).toBeInTheDocument();
+  });
+  expect(prepareUploadPreview).toHaveBeenLastCalledWith(
+    ["/media/movie.mkv"],
+    "c411",
+    "Un Gars, Une Fille",
+  );
 });
