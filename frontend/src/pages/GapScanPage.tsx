@@ -642,7 +642,14 @@ export default function GapScanPage() {
       )}
 
       {activeUpload && (
+        // key force un demontage/remontage complet quand on ouvre un
+        // "Preparer l'upload" different SANS fermer le precedent -- sinon
+        // React reutilise la meme instance et son etat interne (titre
+        // corrige, apercu deja charge) reste celui de la ligne precedente
+        // (incident reel, 2026-08-28 : titre vide/perime en changeant de
+        // ligne sans cliquer Fermer entre les deux).
         <UploadPrepPanel
+          key={activeUpload.localPaths.join("|")}
           localPaths={activeUpload.localPaths}
           title={activeUpload.title}
           onClose={() => setActiveUpload(null)}
