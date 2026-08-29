@@ -57,7 +57,17 @@ export interface NameProposal {
 export const CATEGORIES = ["video", "audio", "game", "ebook", "print3d"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
-export type RulesDocument = Partial<Record<Category, CategoryRules>>;
+/** Reglages propres au TRACKER (pas a une categorie de media) -- voir
+ * AUTOMATION.md, sous-projet 4b / nfogen/rules.schema.json $defs.tracker. */
+export interface TrackerRules {
+  display_name?: string;
+  torznab_categories?: Record<string, string[]>;
+  audio_language_codes?: Record<string, string>;
+  min_request_interval_seconds?: number;
+  torrent_piece_sizes?: { max_bytes?: number; piece_size: number }[];
+}
+
+export type RulesDocument = Partial<Record<Category, CategoryRules>> & { tracker?: TrackerRules };
 
 export type TemplatesDocument = Partial<Record<Category, string>>;
 
