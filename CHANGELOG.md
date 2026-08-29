@@ -52,10 +52,15 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   jusqu'ici indisponible), **pré-rempli avec le titre déjà connu**
   (Sonarr/Radarr) plutôt que de repartir du nom de fichier. Ponctuation
   naturelle retirée entièrement à la normalisation, jamais convertie en
-  point.
+  point ; caractères accentués translittérés (`é` → `e`, pas supprimés) ;
+  chaque mot du titre capitalisé (convention scene).
 
 ### Corrigé
 
+- **Titre/aperçu périmés en ouvrant "Préparer l'upload" sur une ligne
+  différente sans fermer la précédente** : React réutilisait la même
+  instance du panneau, gardant le titre corrigé et l'aperçu de la ligne
+  d'avant au lieu de repartir de la nouvelle.
 - **GapScan classait à tort des titres en "Qualité supérieure
   disponible"** quand une release C411 strictement équivalente existait
   déjà (`quality.py:SOURCE_RANK`) : une version locale scene taguée
