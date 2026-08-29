@@ -404,6 +404,12 @@ tableau plus maniable).
    précédent/suivant sous le tableau ("Page X / Y — N résultats"). Tout
    changement de filtre remet la page à 1.
 
+**Livré (2026-08-28)** — conforme à la conception ci-dessus, aucun écart
+notable.
+
+Voir le plan d'implémentation complet (code exact) :
+[docs/superpowers/plans/2026-08-28-gapscan-genre-filter-pagination.md](docs/superpowers/plans/2026-08-28-gapscan-genre-filter-pagination.md).
+
 ## Plan de tests (calqué sur l'existant, `tests/test_c411.py` etc.)
 
 - `sonarr_client`/`radarr_client` : tests contre des réponses JSON figées
