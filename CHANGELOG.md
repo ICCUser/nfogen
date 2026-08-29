@@ -60,6 +60,10 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   indice de langue depuis les vraies pistes audio détectées par MediaInfo
   quand le nom de fichier n'en porte aucun (plusieurs langues → indice
   combiné pour déclencher le préfixe `MULTI` attendu par C411).
+- **Un scan "Films seulement"/"Séries seulement" effaçait l'autre type**
+  déjà scanné précédemment (`run_gapscan`) — `only` ne devait restreindre
+  que ce qui est réinterrogé côté C411, jamais ce qui est conservé du
+  dernier scan.
 
 ### Modifié
 
