@@ -11,7 +11,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from nfogen.torznab_client import TorznabError, TorznabRelease
 from nfogen.gapscan import (
     GapResult,
     GapStatus,
@@ -24,6 +23,7 @@ from nfogen.gapscan import (
 from nfogen.quality import ReleaseQuality
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.sonarr_client import SonarrSeasonFile
+from nfogen.torznab_client import TorznabError, TorznabRelease
 
 
 def _release(
@@ -758,3 +758,23 @@ def test_genre_of_uses_the_first_match_when_several_exist():
         c411_matches=[_release("X", category="2060"), _release("X2", category="2070")],
     )
     assert genre_of(result) == "anime"
+
+
+def test_genre_of_uses_the_given_profile_not_always_c411(monkeypatch):
+    from nfogen import tracker_profile
+
+    monkeypatch.setattr(
+        tracker_profile, "torznab_categories",
+        lambda profile: {"anime": ["9999"]} if profile == "other" else {},
+    )
+    result = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="9999")])
+    assert genre_of(result, profile="other") == "anime"
+    assert genre_of(result, profile="c411") is None
+
+
+def test_genre_of_none_when_profile_has_no_torznab_categories_declared(monkeypatch):
+    from nfogen import tracker_profile
+
+    monkeypatch.setattr(tracker_profile, "torznab_categories", lambda profile: {})
+    result = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="2060")])
+    assert genre_of(result, profile="c411") is None
