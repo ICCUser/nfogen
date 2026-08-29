@@ -15,7 +15,7 @@ from typing import Optional
 import pytest
 
 from nfogen import gapscan_runner
-from nfogen.c411_client import C411Release
+from nfogen.torznab_client import TorznabRelease
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.sonarr_client import SonarrSeasonFile
 
@@ -42,8 +42,8 @@ def _season(title: str = "Severance", season_number: int = 1) -> SonarrSeasonFil
 
 @dataclass
 class FakeC411:
-    movie_results: list[C411Release] = field(default_factory=list)
-    tv_results: list[C411Release] = field(default_factory=list)
+    movie_results: list[TorznabRelease] = field(default_factory=list)
+    tv_results: list[TorznabRelease] = field(default_factory=list)
     closed: bool = False
 
     def search_movie(self, query=None, imdb_id=None, tmdb_id=None):
@@ -261,7 +261,7 @@ def test_start_with_incremental_reuses_covered_results_from_last_scan():
         movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
     )
     c411_first = FakeC411(
-        movie_results=[C411Release(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+        movie_results=[TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
     )
     gapscan_runner.start(c411_first, radarr=FakeRadarr(movies=[movie]))
     _wait_until_not_running()
@@ -307,7 +307,7 @@ def test_start_without_incremental_rescans_everything():
         movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
     )
     c411_first = FakeC411(
-        movie_results=[C411Release(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+        movie_results=[TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
     )
     gapscan_runner.start(c411_first, radarr=FakeRadarr(movies=[movie]))
     _wait_until_not_running()
@@ -327,7 +327,7 @@ def test_start_with_incremental_and_max_age_reverifies_a_stale_covered_result():
         movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
     )
     c411_first = FakeC411(
-        movie_results=[C411Release(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+        movie_results=[TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
     )
     gapscan_runner.start(c411_first, radarr=FakeRadarr(movies=[movie]))
     _wait_until_not_running()
@@ -375,7 +375,7 @@ def test_results_filterable_by_media_type():
 
 
 def test_results_filterable_by_genre():
-    anime_release = C411Release(title="A", guid="A", link="https://c411.org/x", category="2060")
+    anime_release = TorznabRelease(title="A", guid="A", link="https://c411.org/x", category="2060")
     c411 = FakeC411(movie_results=[anime_release])
     radarr = FakeRadarr(movies=[_movie("A")])
 

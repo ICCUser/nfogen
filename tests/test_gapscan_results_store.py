@@ -16,7 +16,7 @@ import sys
 import pytest
 
 from nfogen import gapscan_results_store as store
-from nfogen.c411_client import C411Release
+from nfogen.torznab_client import TorznabRelease
 from nfogen.gapscan import GapResult, GapStatus
 from nfogen.quality import build_quality
 
@@ -33,7 +33,7 @@ def _result(**overrides) -> GapResult:
         status=GapStatus.COVERED,
         local_quality=build_quality("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ"),
         c411_matches=[
-            C411Release(
+            TorznabRelease(
                 title="Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ",
                 guid="g1", link="https://c411.org/x", imdb_id="tt0133093",
                 download_volume_factor=0.0,

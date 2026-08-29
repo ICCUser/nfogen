@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from nfogen.c411_client import C411Error, C411Release
+from nfogen.torznab_client import TorznabError, TorznabRelease
 from nfogen.gapscan import (
     GapResult,
     GapStatus,
@@ -29,8 +29,8 @@ from nfogen.sonarr_client import SonarrSeasonFile
 def _release(
     title: str, imdb_id: Optional[str] = None, dvf: float = 1.0, uvf: float = 1.0,
     category: Optional[str] = None,
-) -> C411Release:
-    return C411Release(title=title, guid=title, link="https://c411.org/x", imdb_id=imdb_id,
+) -> TorznabRelease:
+    return TorznabRelease(title=title, guid=title, link="https://c411.org/x", imdb_id=imdb_id,
                         download_volume_factor=dvf, upload_volume_factor=uvf, category=category)
 
 
@@ -43,15 +43,15 @@ class FakeC411:
     pour tester le repli sans exigence externe (voir tests dedies plus
     bas)."""
 
-    movie_results: list[C411Release] = field(default_factory=list)
-    title_movie_results: Optional[list[C411Release]] = None
+    movie_results: list[TorznabRelease] = field(default_factory=list)
+    title_movie_results: Optional[list[TorznabRelease]] = None
     # Reponses par requete TEXTE exacte (query) -- necessaire pour tester le
     # repli par titre ALTERNATIF (voir tests dedies plus bas) sans perturber
     # title_movie_results, qui reste la reponse par defaut pour tout autre
     # titre non liste ici.
-    query_results: dict[str, list[C411Release]] = field(default_factory=dict)
-    tv_query_results: dict[str, list[C411Release]] = field(default_factory=dict)
-    tv_results: list[C411Release] = field(default_factory=list)
+    query_results: dict[str, list[TorznabRelease]] = field(default_factory=dict)
+    tv_query_results: dict[str, list[TorznabRelease]] = field(default_factory=dict)
+    tv_results: list[TorznabRelease] = field(default_factory=list)
     calls: list[tuple] = field(default_factory=list)
     raises: Optional[Exception] = None
 
@@ -182,7 +182,7 @@ def test_scan_movie_returns_error_status_when_c411_lookup_fails():
     UN titre ne doit pas empecher de savoir au moins ce qu'on sait deja
     localement (qualite/langue), et surtout pas planter tout le scan --
     voir test_run_gapscan_continues_after_a_single_item_failure."""
-    c411 = FakeC411(raises=C411Error("Appel a l'API C411 echoue (movie) : 429 Too Many Requests"))
+    c411 = FakeC411(raises=TorznabError("Appel a l'API C411 echoue (movie) : 429 Too Many Requests"))
     result = scan_movie(_movie(), c411)
     assert result.status == GapStatus.ERROR
     assert "429" in result.error
@@ -192,7 +192,7 @@ def test_scan_movie_returns_error_status_when_c411_lookup_fails():
 
 
 def test_scan_series_season_returns_error_status_when_c411_lookup_fails():
-    c411 = FakeC411(raises=C411Error("boom"))
+    c411 = FakeC411(raises=TorznabError("boom"))
     result = scan_series_season(_season(), c411)
     assert result.status == GapStatus.ERROR
     assert result.error == "boom"
@@ -563,7 +563,7 @@ def test_run_gapscan_continues_after_a_single_item_failure():
         def search_movie(self, query=None, imdb_id=None, tmdb_id=None):
             self.calls += 1
             if self.calls == 1:
-                raise C411Error("520 (transitoire)")
+                raise TorznabError("520 (transitoire)")
             return []
 
     c411 = FlakyC411()
@@ -577,7 +577,7 @@ def test_run_gapscan_continues_after_a_single_item_failure():
 def test_run_gapscan_still_reports_progress_after_an_item_failure():
     class FlakyC411:
         def search_movie(self, query=None, imdb_id=None, tmdb_id=None):
-            raise C411Error("boom")
+            raise TorznabError("boom")
 
     calls: list[tuple[int, int]] = []
     run_gapscan(

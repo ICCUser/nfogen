@@ -24,12 +24,12 @@ from .quality import ReleaseQuality, parse_release_name
 _TORZNAB_NS = "http://torznab.com/schemas/2015/feed"
 
 
-class C411Error(RuntimeError):
+class TorznabError(RuntimeError):
     """Erreur reseau ou reponse inattendue de l'API C411."""
 
 
 @dataclass
-class C411Release:
+class TorznabRelease:
     """Une release telle que listee par l'API Torznab de C411."""
 
     title: str
@@ -79,8 +79,8 @@ def _attr_float(item: ET.Element, name: str, default: float) -> float:
     return float(value) if value is not None else default
 
 
-def _parse_item(item: ET.Element) -> C411Release:
-    return C411Release(
+def _parse_item(item: ET.Element) -> TorznabRelease:
+    return TorznabRelease(
         title=(item.findtext("title") or "").strip(),
         guid=(item.findtext("guid") or "").strip(),
         link=(item.findtext("link") or "").strip(),
@@ -98,8 +98,8 @@ def _parse_item(item: ET.Element) -> C411Release:
     )
 
 
-def parse_torznab_response(xml_text: str) -> list[C411Release]:
-    """Parse une reponse Torznab RSS/XML en liste de `C411Release`.
+def parse_torznab_response(xml_text: str) -> list[TorznabRelease]:
+    """Parse une reponse Torznab RSS/XML en liste de `TorznabRelease`.
 
     Fonction pure (pas de reseau) : testable directement sur des fixtures
     figees, cf. `tests/test_c411_client.py`.
@@ -107,11 +107,11 @@ def parse_torznab_response(xml_text: str) -> list[C411Release]:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
-        raise C411Error(f"Reponse C411 illisible (XML invalide) : {exc}") from exc
+        raise TorznabError(f"Reponse C411 illisible (XML invalide) : {exc}") from exc
     return [_parse_item(item) for item in root.iter("item")]
 
 
-class C411Client:
+class TorznabClient:
     """Client HTTP pour l'API Torznab de C411 (recherche uniquement)."""
 
     def __init__(
@@ -129,7 +129,7 @@ class C411Client:
         `gapscan_runner.py` passe une valeur par defaut prudente plutot que
         de ne pas limiter du tout."""
         if not api_key:
-            raise C411Error("Cle API C411 manquante.")
+            raise TorznabError("Cle API C411 manquante.")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._client = http_client or httpx.Client(timeout=timeout)
@@ -154,7 +154,7 @@ class C411Client:
         if self._owns_client:
             self._client.close()
 
-    def __enter__(self) -> "C411Client":
+    def __enter__(self) -> "TorznabClient":
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -171,7 +171,7 @@ class C411Client:
                 pass  # ex. une date HTTP plutot qu'un nombre de secondes -- non geree, repli prudent
         return self._DEFAULT_RETRY_AFTER_SECONDS
 
-    def _search(self, params: dict[str, str]) -> list[C411Release]:
+    def _search(self, params: dict[str, str]) -> list[TorznabRelease]:
         # Incident reel (2026-08-25) : un intervalle trop agressif entre
         # requetes a declenche un 429. Un seul reessai apres Retry-After
         # (ou une valeur prudente par defaut) plutot que d'abandonner ce
@@ -188,11 +188,11 @@ class C411Client:
                 if exc.response.status_code == 429 and attempt == 0:
                     self._sleep(self._parse_retry_after(exc.response))
                     continue
-                raise C411Error(
+                raise TorznabError(
                     f"Appel a l'API C411 echoue ({params.get('t')}) : {self._redact(exc)}"
                 ) from exc
             except httpx.HTTPError as exc:
-                raise C411Error(
+                raise TorznabError(
                     f"Appel a l'API C411 echoue ({params.get('t')}) : {self._redact(exc)}"
                 ) from exc
             return parse_torznab_response(response.text)
@@ -211,7 +211,7 @@ class C411Client:
         query: Optional[str] = None,
         imdb_id: Optional[str] = None,
         tmdb_id: Optional[str] = None,
-    ) -> list[C411Release]:
+    ) -> list[TorznabRelease]:
         """`t=movie` : recherche par titre libre et/ou identifiant externe."""
         return self._search({"t": "movie", "q": query, "imdbid": imdb_id, "tmdbid": tmdb_id})
 
@@ -222,7 +222,7 @@ class C411Client:
         tmdb_id: Optional[str] = None,
         season: Optional[int] = None,
         ep: Optional[int] = None,
-    ) -> list[C411Release]:
+    ) -> list[TorznabRelease]:
         """`t=tvsearch` : recherche par titre/identifiant externe, saison/episode optionnels."""
         return self._search(
             {

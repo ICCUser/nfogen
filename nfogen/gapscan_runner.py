@@ -24,7 +24,7 @@ from enum import Enum
 from typing import Any, Optional
 
 from . import gapscan_results_store
-from .c411_client import C411Client
+from .torznab_client import TorznabClient
 from .gapscan import GapResult, genre_of, run_gapscan, sort_by_priority
 from .radarr_client import RadarrClient
 from .sonarr_client import SonarrClient
@@ -108,7 +108,7 @@ def results(
 
 
 def _run(
-    c411: C411Client,
+    c411: TorznabClient,
     radarr: Optional[RadarrClient],
     sonarr: Optional[SonarrClient],
     previous_results: Optional[list[GapResult]],
@@ -153,7 +153,7 @@ def _run(
 
 
 def start(
-    c411: C411Client,
+    c411: TorznabClient,
     radarr: Optional[RadarrClient] = None,
     sonarr: Optional[SonarrClient] = None,
     incremental: bool = False,

@@ -21,7 +21,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
 
-from .c411_client import C411Release
+from .torznab_client import TorznabRelease
 from .gapscan import GapResult, GapStatus
 from .quality import ReleaseQuality
 
@@ -59,10 +59,10 @@ def _quality_from_dict(d: dict[str, Any]) -> ReleaseQuality:
     return ReleaseQuality(**d)
 
 
-def _release_from_dict(d: dict[str, Any]) -> C411Release:
+def _release_from_dict(d: dict[str, Any]) -> TorznabRelease:
     d = dict(d)
     d.pop("quality", None)  # champ derive (__post_init__ la recalcule depuis `title`)
-    return C411Release(**d)
+    return TorznabRelease(**d)
 
 
 def _result_from_dict(d: dict[str, Any]) -> GapResult:

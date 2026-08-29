@@ -1,4 +1,4 @@
-"""Tests de nfogen.c411_client.
+"""Tests de nfogen.torznab_client.
 
 Les fixtures `tests/fixtures/c411_*.xml` sont des reponses Torznab reelles
 de C411 (capturees le 2026-08-25 avec le scope "Torznab/RSS (lecture)"),
@@ -12,7 +12,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from nfogen.c411_client import C411Client, C411Error, parse_torznab_response
+from nfogen.torznab_client import TorznabClient, TorznabError, parse_torznab_response
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -69,7 +69,7 @@ def test_freeleech_flags_default_to_normal():
 
 
 def test_parse_torznab_response_rejects_invalid_xml():
-    with pytest.raises(C411Error, match="illisible"):
+    with pytest.raises(TorznabError, match="illisible"):
         parse_torznab_response("<not-xml")
 
 
@@ -81,7 +81,7 @@ def test_parse_torznab_response_empty_channel_returns_empty_list():
 # --------------------------------------------------------------------------- #
 # Client HTTP (transport mocke, aucun reseau)
 # --------------------------------------------------------------------------- #
-def _client_with_fixture(fixture_name: str, expected_params: dict[str, str] | None = None) -> C411Client:
+def _client_with_fixture(fixture_name: str, expected_params: dict[str, str] | None = None) -> TorznabClient:
     def handler(request: httpx.Request) -> httpx.Response:
         if expected_params is not None:
             for key, value in expected_params.items():
@@ -90,7 +90,7 @@ def _client_with_fixture(fixture_name: str, expected_params: dict[str, str] | No
         return httpx.Response(200, text=_read(fixture_name))
 
     transport = httpx.MockTransport(handler)
-    return C411Client(api_key="test-key", http_client=httpx.Client(transport=transport))
+    return TorznabClient(api_key="test-key", http_client=httpx.Client(transport=transport))
 
 
 def test_search_movie_passes_ids_and_parses_results():
@@ -108,16 +108,16 @@ def test_search_tv_passes_season():
 
 
 def test_client_requires_api_key():
-    with pytest.raises(C411Error, match="[Cc]l[eé]"):
-        C411Client(api_key="")
+    with pytest.raises(TorznabError, match="[Cc]l[eé]"):
+        TorznabClient(api_key="")
 
 
 def test_client_wraps_http_errors():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, text="boom")
 
-    client = C411Client(api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
-    with pytest.raises(C411Error, match="echoue"):
+    client = TorznabClient(api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(TorznabError, match="echoue"):
         client.search_movie(query="x")
 
 
@@ -132,10 +132,10 @@ def test_error_message_never_contains_the_api_key():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(520, text="")
 
-    client = C411Client(
+    client = TorznabClient(
         api_key=secret_key, http_client=httpx.Client(transport=httpx.MockTransport(handler))
     )
-    with pytest.raises(C411Error) as excinfo:
+    with pytest.raises(TorznabError) as excinfo:
         client.search_movie(imdb_id="tt10548174", tmdb_id="1100988")
 
     assert secret_key not in str(excinfo.value)
@@ -155,7 +155,7 @@ def test_retries_once_after_429_then_succeeds():
             return httpx.Response(429, headers={"Retry-After": "3"})
         return httpx.Response(200, text=_read("c411_movie_search.xml"))
 
-    client = C411Client(
+    client = TorznabClient(
         api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
     )
     sleeps: list[float] = []
@@ -172,12 +172,12 @@ def test_gives_up_after_a_second_429():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, headers={"Retry-After": "1"})
 
-    client = C411Client(
+    client = TorznabClient(
         api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
     )
     client._sleep = lambda _seconds: None  # type: ignore[attr-defined]
 
-    with pytest.raises(C411Error, match="echoue"):
+    with pytest.raises(TorznabError, match="echoue"):
         client.search_movie(query="x")
 
 
@@ -185,13 +185,13 @@ def test_retry_after_defaults_when_header_absent_or_invalid():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429)  # pas d'en-tete Retry-After
 
-    client = C411Client(
+    client = TorznabClient(
         api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
     )
     sleeps: list[float] = []
     client._sleep = sleeps.append  # type: ignore[attr-defined]
 
-    with pytest.raises(C411Error):
+    with pytest.raises(TorznabError):
         client.search_movie(query="x")
 
     assert sleeps == [5.0]  # valeur par defaut prudente
@@ -222,7 +222,7 @@ def test_min_interval_sleeps_between_consecutive_calls():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=_read("c411_movie_search.xml"))
 
-    client = C411Client(
+    client = TorznabClient(
         api_key="test-key",
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
         min_interval_seconds=0.5,

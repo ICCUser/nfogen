@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Callable, Iterable, Optional
 
-from .c411_client import C411Client, C411Error, C411Release
+from .torznab_client import TorznabClient, TorznabError, TorznabRelease
 from .path_mapping import resolve_and_validate
 from .quality import ReleaseQuality, build_quality, is_language_gap, is_quality_upgrade
 from .radarr_client import RadarrClient, RadarrMovieFile
@@ -42,7 +42,7 @@ class GapResult:
     tvdb_id: Optional[int]
     status: GapStatus
     local_quality: ReleaseQuality
-    c411_matches: list[C411Release] = field(default_factory=list)
+    c411_matches: list[TorznabRelease] = field(default_factory=list)
     has_freeleech_alternative: bool = False
     has_double_upload_window: bool = False
     error: Optional[str] = None  # detail si status == ERROR, sinon None
@@ -65,7 +65,7 @@ class GapResult:
 _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
 
 
-def _filter_by_year(matches: list[C411Release], year: Optional[int]) -> list[C411Release]:
+def _filter_by_year(matches: list[TorznabRelease], year: Optional[int]) -> list[TorznabRelease]:
     """Ecarte les matches d'un repli par TITRE dont le millesime explicite
     differe de `year` (ex. plusieurs films distincts partagent le meme
     titre a des annees differentes -- incident reel, "Joker" 2015/2019/
@@ -118,7 +118,7 @@ def _can_reuse(
     return (time.time() - previous.checked_at) < max_age_seconds
 
 
-def _classify(local_quality: ReleaseQuality, matches: list[C411Release]) -> GapStatus:
+def _classify(local_quality: ReleaseQuality, matches: list[TorznabRelease]) -> GapStatus:
     if not matches:
         return GapStatus.ABSENT
     # Releases dont la qualite n'est pas strictement depassee par la tienne :
@@ -158,7 +158,7 @@ def genre_of(result: GapResult) -> Optional[str]:
 
 def scan_movie(
     movie: RadarrMovieFile,
-    c411: C411Client,
+    c411: TorznabClient,
     previous: Optional[GapResult] = None,
     max_age_seconds: Optional[float] = None,
     path_mappings: Optional[dict[str, str]] = None,
@@ -208,7 +208,7 @@ def scan_movie(
                 matches = _filter_by_year(c411.search_movie(query=alt_title), movie.year)
                 if matches:
                     break
-    except C411Error as exc:
+    except TorznabError as exc:
         return GapResult(**base, status=GapStatus.ERROR, error=str(exc))
     return GapResult(
         **base,
@@ -222,7 +222,7 @@ def scan_movie(
 
 def scan_series_season(
     season: SonarrSeasonFile,
-    c411: C411Client,
+    c411: TorznabClient,
     previous: Optional[GapResult] = None,
     max_age_seconds: Optional[float] = None,
     path_mappings: Optional[dict[str, str]] = None,
@@ -258,7 +258,7 @@ def scan_series_season(
                 matches = c411.search_tv(query=alt_title, season=season.season_number)
                 if matches:
                     break
-    except C411Error as exc:
+    except TorznabError as exc:
         return GapResult(**base, status=GapStatus.ERROR, error=str(exc))
     return GapResult(
         **base,
@@ -281,7 +281,7 @@ def _result_key(r: GapResult) -> tuple:
 
 
 def run_gapscan(
-    c411: C411Client,
+    c411: TorznabClient,
     radarr: Optional[RadarrClient] = None,
     sonarr: Optional[SonarrClient] = None,
     on_progress: Optional[Callable[[int, int], None]] = None,
