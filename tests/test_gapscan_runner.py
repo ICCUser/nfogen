@@ -33,6 +33,13 @@ def _movie(title: str = "Matrix") -> RadarrMovieFile:
     return RadarrMovieFile(movie_id=1, title=title, year=1999, imdb_id="tt0133093", tmdb_id=603)
 
 
+def _season(title: str = "Severance", season_number: int = 1) -> SonarrSeasonFile:
+    return SonarrSeasonFile(
+        series_id=1, title=title, year=2020, tvdb_id=1, imdb_id=None,
+        season_number=season_number, episode_file_count=1,
+    )
+
+
 @dataclass
 class FakeC411:
     movie_results: list[C411Release] = field(default_factory=list)
@@ -351,3 +358,29 @@ def test_start_passes_path_mappings_through(tmp_path):
     _wait_until_not_running()
 
     assert gapscan_runner.results()[0].path_resolved is True
+
+
+def test_results_filterable_by_media_type():
+    c411 = FakeC411(movie_results=[], tv_results=[])
+    radarr = FakeRadarr(movies=[_movie("A")])
+    sonarr = FakeSonarr(seasons=[_season("B")])
+
+    gapscan_runner.start(c411, radarr=radarr, sonarr=sonarr)
+    _wait_until_not_running()
+
+    movies = gapscan_runner.results(media_type_filter="movie")
+    assert len(movies) == 1 and movies[0].title == "A"
+    series = gapscan_runner.results(media_type_filter="series")
+    assert len(series) == 1 and series[0].title == "B"
+
+
+def test_results_filterable_by_genre():
+    anime_release = C411Release(title="A", guid="A", link="https://c411.org/x", category="2060")
+    c411 = FakeC411(movie_results=[anime_release])
+    radarr = FakeRadarr(movies=[_movie("A")])
+
+    gapscan_runner.start(c411, radarr=radarr)
+    _wait_until_not_running()
+
+    assert len(gapscan_runner.results(genre_filter="anime")) == 1
+    assert gapscan_runner.results(genre_filter="documentaire") == []

@@ -25,7 +25,7 @@ from typing import Any, Optional
 
 from . import gapscan_results_store
 from .c411_client import C411Client
-from .gapscan import GapResult, run_gapscan, sort_by_priority
+from .gapscan import GapResult, genre_of, run_gapscan, sort_by_priority
 from .radarr_client import RadarrClient
 from .sonarr_client import SonarrClient
 
@@ -87,13 +87,23 @@ def status() -> dict[str, Any]:
         }
 
 
-def results(status_filter: Optional[str] = None) -> list[GapResult]:
+def results(
+    status_filter: Optional[str] = None,
+    media_type_filter: Optional[str] = None,
+    genre_filter: Optional[str] = None,
+) -> list[GapResult]:
     """Resultats du dernier scan termine. `status_filter` : une valeur de
-    `GapStatus` (ex. "absent") pour ne garder que ce statut."""
+    `GapStatus` (ex. "absent"). `media_type_filter` : "movie" ou "series".
+    `genre_filter` : "anime" ou "documentaire" (voir `gapscan.genre_of` --
+    un titre sans match C411 ne correspond jamais a un genre_filter)."""
     with _lock:
         items = list(_results)
     if status_filter is not None:
         items = [r for r in items if r.status.value == status_filter]
+    if media_type_filter is not None:
+        items = [r for r in items if r.media_type == media_type_filter]
+    if genre_filter is not None:
+        items = [r for r in items if genre_of(r) == genre_filter]
     return items
 
 
