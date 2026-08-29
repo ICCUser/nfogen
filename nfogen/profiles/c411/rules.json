@@ -1,4 +1,24 @@
 {
+  "tracker": {
+    "display_name": "C411",
+    "torznab_categories": {
+      "anime": ["2060", "5070"],
+      "documentaire": ["2070", "5080"]
+    },
+    "audio_language_codes": {
+      "fr": "FR", "fre": "FR", "fra": "FR", "french": "FR",
+      "en": "EN", "eng": "EN", "english": "EN",
+      "ja": "JA", "jpn": "JA", "japanese": "JA"
+    },
+    "min_request_interval_seconds": 4.5,
+    "torrent_piece_sizes": [
+      {"max_bytes": 1073741824, "piece_size": 1048576},
+      {"max_bytes": 2147483648, "piece_size": 2097152},
+      {"max_bytes": 3221225472, "piece_size": 4194304},
+      {"max_bytes": 8589934592, "piece_size": 8388608},
+      {"piece_size": 16777216}
+    ]
+  },
   "video": {
     "requires_field": "release_name",
     "doc": "convention C411 'Films & videos' : point-separe, sans espace ni accent, terminee par CodecVideo-TEAM, avec annee/saison/COLLECTION/INTEGRALE",

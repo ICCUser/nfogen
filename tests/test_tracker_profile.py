@@ -72,3 +72,46 @@ def test_min_request_interval_seconds_zero_when_undeclared():
 def test_torrent_piece_sizes_empty_list_when_undeclared():
     ps.write_profile("bare5", rules={}, templates={})
     assert tracker_profile.torrent_piece_sizes("bare5") == []
+
+
+# --------------------------------------------------------------------------- #
+# Profil c411 livre avec le paquet : verifie les VRAIES valeurs, pas un profil
+# de test synthetique. Pas de NFOGEN_PROFILES_DIR necessaire (profile_store
+# retombe sur le profil livre, voir sa docstring).
+# --------------------------------------------------------------------------- #
+def test_c411_display_name():
+    assert tracker_profile.display_name("c411") == "C411"
+
+
+def test_c411_torznab_categories_match_gapscan_md():
+    # Verifiees en direct le 2026-08-28 via GET https://c411.org/api?t=caps
+    # (voir GAPSCAN.md) -- memes valeurs que l'ancien gapscan._ANIME_CATEGORIES
+    # / _DOCUMENTARY_CATEGORIES, deplacees ici.
+    assert tracker_profile.torznab_categories("c411") == {
+        "anime": ["2060", "5070"],
+        "documentaire": ["2070", "5080"],
+    }
+
+
+def test_c411_audio_language_codes_match_upload_prep_history():
+    assert tracker_profile.audio_language_codes("c411") == {
+        "fr": "FR", "fre": "FR", "fra": "FR", "french": "FR",
+        "en": "EN", "eng": "EN", "english": "EN",
+        "ja": "JA", "jpn": "JA", "japanese": "JA",
+    }
+
+
+def test_c411_min_request_interval_seconds():
+    # Limite confirmee par les admins C411 (2026-08-27) : 15 requetes/min
+    # -> 4.5s par defaut (marge de securite), voir GAPSCAN.md.
+    assert tracker_profile.min_request_interval_seconds("c411") == 4.5
+
+
+def test_c411_torrent_piece_sizes():
+    assert tracker_profile.torrent_piece_sizes("c411") == [
+        {"max_bytes": 1073741824, "piece_size": 1048576},
+        {"max_bytes": 2147483648, "piece_size": 2097152},
+        {"max_bytes": 3221225472, "piece_size": 4194304},
+        {"max_bytes": 8589934592, "piece_size": 8388608},
+        {"piece_size": 16777216},
+    ]
