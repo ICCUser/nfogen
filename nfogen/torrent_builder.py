@@ -1,7 +1,8 @@
-"""Construction du fichier .torrent final, conforme aux regles C411 (voir
-AUTOMATION.md, sous-projet 2) : bareme de taille de piece par poids
-total, tracker prive, une seule adresse d'annonce (celle du compte,
-jamais journalisee/exposee -- voir gapscan_config_store.py).
+"""Construction du fichier .torrent final (voir AUTOMATION.md, sous-projet
+2) : tracker prive, une seule adresse d'annonce (celle du compte, jamais
+journalisee/exposee -- voir gapscan_config_store.py), taille de piece
+choisie selon le bareme fourni par l'appelant (voir tracker_profile.py --
+ce module reste agnostique du tracker, aucune table en dur ici).
 """
 from __future__ import annotations
 
@@ -9,24 +10,23 @@ from pathlib import Path
 
 import torf
 
-# Bareme C411 (voir AUTOMATION.md) : jamais "Auto", toujours une valeur
-# explicite -- un .torrent de plus de 16 Mo risque d'etre rejete/mal gere.
-_PIECE_SIZE_TABLE: list[tuple[int, int]] = [
-    (1 * 1024**3, 1 * 1024**2),   # < 1 Go -> 1 Mo
-    (2 * 1024**3, 2 * 1024**2),   # < 2 Go -> 2 Mo
-    (3 * 1024**3, 4 * 1024**2),   # < 3 Go -> 4 Mo
-    (8 * 1024**3, 8 * 1024**2),   # < 8 Go -> 8 Mo
-]
-_DEFAULT_PIECE_SIZE = 16 * 1024**2  # >= 8 Go -> 16 Mo
 
-
-def piece_size_for(total_bytes: int) -> int:
-    """Taille de piece (en octets) recommandee par C411 pour un contenu de
-    `total_bytes`. Fonction pure, testable sans fichier reel."""
-    for threshold, size in _PIECE_SIZE_TABLE:
-        if total_bytes < threshold:
-            return size
-    return _DEFAULT_PIECE_SIZE
+def piece_size_for(total_bytes: int, piece_sizes: list[dict[str, int]]) -> int:
+    """Taille de piece (en octets) pour un contenu de `total_bytes`, d'apres
+    le bareme `piece_sizes` du profil (rules.json -> tracker.torrent_piece_sizes,
+    voir tracker_profile.py) -- plus aucune valeur specifique a un tracker
+    en dur ici. Chaque entree : `{"max_bytes": N, "piece_size": P}` (piece
+    P pour tout contenu < N octets), sauf la DERNIERE entree qui peut
+    omettre `max_bytes` (piece par defaut au-dela de tous les seuils).
+    Fonction pure, testable sans I/O."""
+    for entry in piece_sizes:
+        max_bytes = entry.get("max_bytes")
+        if max_bytes is None or total_bytes < max_bytes:
+            return entry["piece_size"]
+    raise ValueError(
+        "Barème de taille de pièce vide ou mal terminé (attendu : une dernière "
+        "entrée sans 'max_bytes', voir rules.json -> tracker.torrent_piece_sizes)."
+    )
 
 
 def _total_size(path: str) -> int:
@@ -36,18 +36,20 @@ def _total_size(path: str) -> int:
     return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
 
 
-def build_torrent(staged_path: str, announce_url: str, output_path: str) -> None:
+def build_torrent(
+    staged_path: str, announce_url: str, output_path: str, piece_sizes: list[dict[str, int]]
+) -> None:
     """Construit un .torrent prive a partir de `staged_path` (fichier ou
     dossier -- un dossier pour un pack multi-fichiers -- deja mis en scene
     par file_staging.py, jamais le fichier original) et l'ecrit dans
-    `output_path`. Taille de piece choisie selon le bareme C411 a partir
-    du poids total du contenu."""
+    `output_path`. Taille de piece choisie via `piece_size_for` a partir du
+    bareme `piece_sizes` du profil (voir tracker_profile.torrent_piece_sizes)."""
     total_bytes = _total_size(staged_path)
     torrent = torf.Torrent(
         path=staged_path,
         trackers=[announce_url],
         private=True,
-        piece_size=piece_size_for(total_bytes),
+        piece_size=piece_size_for(total_bytes, piece_sizes),
     )
     torrent.generate()
     torrent.write(output_path)
