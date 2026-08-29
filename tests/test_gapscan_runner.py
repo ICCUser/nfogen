@@ -15,9 +15,9 @@ from typing import Optional
 import pytest
 
 from nfogen import gapscan_runner
-from nfogen.torznab_client import TorznabRelease
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.sonarr_client import SonarrSeasonFile
+from nfogen.torznab_client import TorznabRelease
 
 
 @pytest.fixture(autouse=True)
@@ -261,7 +261,9 @@ def test_start_with_incremental_reuses_covered_results_from_last_scan():
         movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
     )
     c411_first = FakeC411(
-        movie_results=[TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+        movie_results=[
+            TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")
+        ]
     )
     gapscan_runner.start(c411_first, radarr=FakeRadarr(movies=[movie]))
     _wait_until_not_running()
@@ -307,7 +309,9 @@ def test_start_without_incremental_rescans_everything():
         movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
     )
     c411_first = FakeC411(
-        movie_results=[TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+        movie_results=[
+            TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")
+        ]
     )
     gapscan_runner.start(c411_first, radarr=FakeRadarr(movies=[movie]))
     _wait_until_not_running()
@@ -327,7 +331,9 @@ def test_start_with_incremental_and_max_age_reverifies_a_stale_covered_result():
         movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
     )
     c411_first = FakeC411(
-        movie_results=[TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+        movie_results=[
+            TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")
+        ]
     )
     gapscan_runner.start(c411_first, radarr=FakeRadarr(movies=[movie]))
     _wait_until_not_running()
@@ -384,3 +390,21 @@ def test_results_filterable_by_genre():
 
     assert len(gapscan_runner.results(genre_filter="anime")) == 1
     assert gapscan_runner.results(genre_filter="documentaire") == []
+
+
+def test_results_genre_filter_uses_the_given_profile(monkeypatch):
+    from nfogen import tracker_profile
+
+    monkeypatch.setattr(
+        tracker_profile, "torznab_categories",
+        lambda profile: {"anime": ["9999"]} if profile == "other" else {},
+    )
+    release = TorznabRelease(title="A", guid="A", link="https://c411.org/x", category="9999")
+    c411 = FakeC411(movie_results=[release])
+    radarr = FakeRadarr(movies=[_movie("A")])
+
+    gapscan_runner.start(c411, radarr=radarr)
+    _wait_until_not_running()
+
+    assert len(gapscan_runner.results(genre_filter="anime", profile="other")) == 1
+    assert gapscan_runner.results(genre_filter="anime", profile="c411") == []
