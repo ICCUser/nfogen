@@ -529,15 +529,24 @@ maintenir) :
   moindre privilège, même discipline que la clé API C411 : jamais
   journalisée/exposée).
 
-**Livraison 1 (2026-08-28) — Livré, conforme à la conception, aucun écart
-notable.** Titre éditable dans le panneau "Préparer l'upload", indépendant
-de toute intégration TMDB : `title_override` enfilé de bout en bout
-(`name_proposal.propose_video_release_name` → `engine.propose_release_name`
-→ `upload_prep.preview_upload` → `POST /gapscan/prepare-upload/preview` →
-`UploadPrepPanel`). Ponctuation naturelle (virgule, apostrophe...) retirée
-entièrement, jamais convertie en point — confirmé auprès du support C411.
+**Livraison 1 (2026-08-28) — Livré.** Titre éditable dans le panneau
+"Préparer l'upload", indépendant de toute intégration TMDB :
+`title_override` enfilé de bout en bout (`name_proposal.propose_video_release_name`
+→ `engine.propose_release_name` → `upload_prep.preview_upload` →
+`POST /gapscan/prepare-upload/preview` → `UploadPrepPanel`). Ponctuation
+naturelle (virgule, apostrophe...) retirée entièrement, jamais convertie
+en point — confirmé auprès du support C411.
+
+**Écart découvert juste après livraison (2026-08-28, cas réel "Les Fils
+du vent")** : le champ partait vide par conception initiale, forçant une
+saisie manuelle même quand `GapResult.title` (Sonarr/Radarr) contenait
+déjà le bon titre — déjà affiché dans l'en-tête du panneau, jamais
+réutilisé pour le nommage. Corrigé : le champ se pré-remplit désormais
+avec ce titre déjà connu dès le chargement de l'aperçu (reste éditable si
+même celui-là est faux, cf. cas "A Guy And A Girl" où le titre Sonarr
+lui-même est erroné).
 
 **Livraison 2 (pas commencée)** : intégration TMDB (client dédié,
-`metadata_language` dans `rules.json`, pré-remplissage automatique du
-champ titre de la Livraison 1) — nécessite le Read Access Token TMDB de
-l'utilisateur (déjà en sa possession).
+`metadata_language` dans `rules.json`) pour corriger automatiquement les
+cas où `GapResult.title` lui-même est faux — nécessite le Read Access
+Token TMDB de l'utilisateur (déjà en sa possession).

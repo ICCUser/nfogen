@@ -49,8 +49,10 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   de fichier ne correspond pas toujours au titre officiel attendu par le
   tracker (ex. "A Guy And A Girl" au lieu de "Un Gars, Une Fille") — champ
   éditable + bouton "Recalculer" avant confirmation (`title_override`,
-  jusqu'ici indisponible). Ponctuation naturelle retirée entièrement à la
-  normalisation, jamais convertie en point.
+  jusqu'ici indisponible), **pré-rempli avec le titre déjà connu**
+  (Sonarr/Radarr) plutôt que de repartir du nom de fichier. Ponctuation
+  naturelle retirée entièrement à la normalisation, jamais convertie en
+  point.
 
 ### Corrigé
 
