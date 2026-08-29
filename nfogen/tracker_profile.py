@@ -15,7 +15,14 @@ from . import profile_store
 
 
 def _tracker_section(profile: str) -> dict[str, Any]:
-    return profile_store.read_profile(profile)["rules"].get("tracker", {})
+    try:
+        rules = profile_store.read_profile(profile)["rules"]
+    except profile_store.ProfileStoreError:
+        # Profil qui n'existe carrement pas (ni utilisateur, ni livre) --
+        # meme repli neutre que "profil existant mais sans section
+        # tracker" : jamais de plantage pour un nom de profil inconnu.
+        return {}
+    return rules.get("tracker", {})
 
 
 def display_name(profile: str) -> str:

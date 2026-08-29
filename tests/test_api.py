@@ -18,10 +18,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nfogen import api as api_module
-from nfogen.c411_client import C411Release
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.registry import unregister_profile
 from nfogen.sonarr_client import SonarrSeasonFile
+from nfogen.torznab_client import TorznabRelease
 
 
 @pytest.fixture
@@ -1095,7 +1095,7 @@ class _FakeGapscanC411Covered(_FakeGapscanC411):
     pour verifier le mode incremental (POST /gapscan/run?incremental=true)."""
 
     def search_movie(self, query=None, imdb_id=None, tmdb_id=None):
-        return [C411Release(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
+        return [TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", imdb_id="tt0133093")]
 
 
 class _FakeGapscanSonarr:
@@ -1115,7 +1115,7 @@ class _FakeGapscanSonarr:
 
 
 def _patch_gapscan_clients(monkeypatch, mod, radarr_cls=_FakeGapscanRadarr, sonarr_cls=None):
-    monkeypatch.setattr(mod, "C411Client", _FakeGapscanC411)
+    monkeypatch.setattr(mod, "TorznabClient", _FakeGapscanC411)
     monkeypatch.setattr(mod, "RadarrClient", radarr_cls)
     if sonarr_cls is not None:
         monkeypatch.setattr(mod, "SonarrClient", sonarr_cls)
@@ -1166,19 +1166,37 @@ def test_gapscan_config_reports_which_services_are_configured(reload_api):
     resp = client.get("/gapscan/config")
     assert resp.status_code == 200
     assert resp.json() == {
-        "c411_configured": True,
-        "c411_base_url": "https://c411.org",
+        "profile": "c411",
+        "tracker_configured": True,
+        "tracker_base_url": "https://c411.org",
         "sonarr_configured": False,
         "sonarr_url": None,
         "radarr_configured": True,
         "radarr_url": "http://radarr.local",
         "sonarr_path_mappings": {},
         "radarr_path_mappings": {},
-        "c411_announce_url_configured": False,
+        "tracker_announce_url_configured": False,
         "staging_dir": None,
     }
     # jamais la cle elle-meme dans la reponse, meme par accident.
     assert "x" not in resp.text and "y" not in resp.text
+
+
+def test_gapscan_config_get_defaults_to_c411_profile(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.get("/gapscan/config")
+    assert resp.status_code == 200
+    assert resp.json()["profile"] == "c411"
+
+
+def test_gapscan_config_get_accepts_a_profile_query_param(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.get("/gapscan/config", params={"profile": "ygg"})
+    assert resp.status_code == 200
+    assert resp.json()["profile"] == "ygg"
+    assert resp.json()["tracker_configured"] is False  # rien configure pour ce profil
 
 
 def test_gapscan_config_write_then_read_back(reload_api, tmp_path):
@@ -1190,21 +1208,56 @@ def test_gapscan_config_write_then_read_back(reload_api, tmp_path):
 
     put = client.put(
         "/gapscan/config",
-        json={"c411_api_key": "secret", "sonarr_url": "http://sonarr.local", "sonarr_api_key": "sk"},
+        json={"tracker_api_key": "secret", "sonarr_url": "http://sonarr.local", "sonarr_api_key": "sk"},
     )
     assert put.status_code == 200
     assert "secret" not in put.text and "sk" not in put.text  # jamais la cle en retour
 
     status = client.get("/gapscan/config").json()
-    assert status["c411_configured"] is True
+    assert status["tracker_configured"] is True
     assert status["sonarr_configured"] is True
     assert status["sonarr_url"] == "http://sonarr.local"
+
+
+def test_gapscan_config_write_uses_tracker_field_names(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+
+    resp = client.put(
+        "/gapscan/config",
+        json={"profile": "c411", "tracker_api_key": "secret", "tracker_base_url": "https://c411.org"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tracker_configured"] is True
+    assert "secret" not in resp.text
+
+
+def test_gapscan_config_write_accepts_a_profile_field(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+
+    put = client.put(
+        "/gapscan/config",
+        json={"profile": "ygg", "tracker_api_key": "ygg-key", "tracker_base_url": "https://ygg.example"},
+    )
+    assert put.status_code == 200
+    assert put.json()["profile"] == "ygg"
+    assert put.json()["tracker_configured"] is True
+
+    # Le profil c411 (defaut) n'a rien recu de ce PUT -- namespaces separement.
+    assert client.get("/gapscan/config").json()["tracker_configured"] is False
 
 
 def test_gapscan_config_write_without_config_file_env_var_returns_400(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=None)
     client = TestClient(mod.app)
-    resp = client.put("/gapscan/config", json={"c411_api_key": "x"})
+    resp = client.put("/gapscan/config", json={"tracker_api_key": "x"})
     assert resp.status_code == 400
 
 
@@ -1215,11 +1268,11 @@ def test_gapscan_config_partial_write_preserves_other_fields(reload_api, tmp_pat
     )
     client = TestClient(mod.app)
 
-    client.put("/gapscan/config", json={"c411_api_key": "secret"})
+    client.put("/gapscan/config", json={"tracker_api_key": "secret"})
     client.put("/gapscan/config", json={"sonarr_url": "http://sonarr.local", "sonarr_api_key": "sk"})
 
     status = client.get("/gapscan/config").json()
-    assert status["c411_configured"] is True  # pas efface par le 2e PUT
+    assert status["tracker_configured"] is True  # pas efface par le 2e PUT
     assert status["sonarr_configured"] is True
 
 
@@ -1252,17 +1305,17 @@ def test_gapscan_config_write_then_read_back_announce_url_and_staging_dir(reload
     put = client.put(
         "/gapscan/config",
         json={
-            "c411_announce_url": "https://c411.org/announce/SECRET",
+            "tracker_announce_url": "https://c411.org/announce/SECRET",
             "staging_dir": "/data/staging",
         },
     )
     assert put.status_code == 200
-    assert put.json()["c411_announce_url_configured"] is True
+    assert put.json()["tracker_announce_url_configured"] is True
     assert put.json()["staging_dir"] == "/data/staging"
     assert "SECRET" not in put.text  # jamais l'URL en clair, meme dans la reponse du PUT
 
     status = client.get("/gapscan/config").json()
-    assert status["c411_announce_url_configured"] is True
+    assert status["tracker_announce_url_configured"] is True
     assert status["staging_dir"] == "/data/staging"
 
 
@@ -1360,7 +1413,7 @@ def test_prepare_upload_commit_real_flow(reload_api, tmp_path):
     put = client.put(
         "/gapscan/config",
         json={
-            "c411_announce_url": "https://c411.example/announce/abc123",
+            "tracker_announce_url": "https://c411.example/announce/abc123",
             "staging_dir": str(staging_dir),
         },
     )
@@ -1467,7 +1520,7 @@ def test_gapscan_run_uses_a_rate_limit_safe_default_interval(reload_api, monkeyp
         NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
         NFOGEN_C411_MIN_INTERVAL_SECONDS=None,
     )
-    monkeypatch.setattr(mod, "C411Client", CapturingC411)
+    monkeypatch.setattr(mod, "TorznabClient", CapturingC411)
     monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
     client = TestClient(mod.app)
 
@@ -1571,7 +1624,7 @@ def test_gapscan_run_incremental_reuses_covered_results(reload_api, monkeypatch)
         NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
     )
     monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
-    monkeypatch.setattr(mod, "C411Client", _FakeGapscanC411Covered)
+    monkeypatch.setattr(mod, "TorznabClient", _FakeGapscanC411Covered)
     client = TestClient(mod.app)
 
     client.post("/gapscan/run")
@@ -1580,7 +1633,7 @@ def test_gapscan_run_incremental_reuses_covered_results(reload_api, monkeypatch)
     assert client.get("/gapscan/results").json()["items"][0]["status"] == "covered"
 
     # Si reinterroge, ce client renverrait ABSENT (aucun match) : revelateur.
-    monkeypatch.setattr(mod, "C411Client", _FakeGapscanC411)
+    monkeypatch.setattr(mod, "TorznabClient", _FakeGapscanC411)
     run2 = client.post("/gapscan/run", params={"incremental": "true"})
     assert run2.status_code == 200
     status2 = _wait_gapscan_done(client)
@@ -1646,6 +1699,30 @@ def test_gapscan_results_filterable_by_media_type_and_genre(reload_api, monkeypa
     assert client.get("/gapscan/results", params={"media_type": "movie"}).json()["total"] == 1
     assert client.get("/gapscan/results", params={"media_type": "series"}).json()["total"] == 0
     assert client.get("/gapscan/results", params={"genre": "anime"}).json() == {"items": [], "total": 0}
+
+
+def test_gapscan_results_genre_filter_uses_the_given_profile(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+
+    class _AnimeC411(_FakeGapscanC411):
+        def search_movie(self, query=None, imdb_id=None, tmdb_id=None):
+            return [TorznabRelease(title="Matrix", guid="g", link="https://c411.org/x", category="2060")]
+
+    monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
+    monkeypatch.setattr(mod, "TorznabClient", _AnimeC411)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    # Aucune section "tracker" declaree pour 'other' : jamais de genre.
+    assert client.get("/gapscan/results", params={"genre": "anime", "profile": "other"}).json() == {
+        "items": [], "total": 0
+    }
+    assert client.get("/gapscan/results", params={"genre": "anime"}).json()["total"] == 1
 
 
 def test_gapscan_results_items_include_genre_field(reload_api, monkeypatch):
@@ -1722,4 +1799,36 @@ def test_gapscan_run_returns_409_when_a_scan_is_already_running(reload_api, monk
     assert second.status_code == 409
 
     gate_event.set()
+    _wait_gapscan_done(client)
+
+
+def test_gapscan_run_accepts_a_profile_query_param(reload_api, monkeypatch, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    client = TestClient(mod.app)
+    put = client.put(
+        "/gapscan/config",
+        json={"profile": "ygg", "tracker_api_key": "k", "tracker_base_url": "https://ygg.example"},
+    )
+    assert put.status_code == 200
+    _patch_gapscan_clients(monkeypatch, mod)
+
+    resp = client.post("/gapscan/run", params={"profile": "ygg"})
+    assert resp.status_code == 200
+    _wait_gapscan_done(client)
+
+
+def test_gapscan_run_defaults_to_c411_profile_when_none_given(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    resp = client.post("/gapscan/run")
+    assert resp.status_code == 200
     _wait_gapscan_done(client)

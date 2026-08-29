@@ -54,10 +54,10 @@ from .profile_store import ProfileStoreError
 # dependance dure de l'API -- une install nfogen[api] seule (sans httpx)
 # doit continuer a demarrer normalement, /gapscan/* renvoie alors 501.
 try:
-    from . import gapscan, gapscan_config_store, gapscan_runner, upload_prep
-    from .c411_client import C411Client, C411Error
+    from . import gapscan, gapscan_config_store, gapscan_runner, tracker_profile, upload_prep
     from .radarr_client import RadarrClient, RadarrError
     from .sonarr_client import SonarrClient, SonarrError
+    from .torznab_client import TorznabClient, TorznabError
 
     _GAPSCAN_AVAILABLE = True
 except ImportError:
@@ -683,18 +683,19 @@ def _require_gapscan_available() -> None:
 
 
 @app.get("/gapscan/config", dependencies=[Depends(require_token)])
-def gapscan_config() -> dict[str, Any]:
+def gapscan_config(profile: str = Query("c411")) -> dict[str, Any]:
     """Jamais les cles elles-memes, seulement si chaque service est
     configure (+ son URL, non sensible) -- meme principe que /auth/status
     pour NFOGEN_API_TOKEN."""
     _require_gapscan_available()
-    return gapscan_config_store.status()
+    return gapscan_config_store.status(profile)
 
 
 class GapscanConfigWriteRequest(BaseModel):
-    c411_api_key: Optional[str] = None
-    c411_base_url: Optional[str] = None
-    c411_announce_url: Optional[str] = None
+    profile: str = "c411"
+    tracker_api_key: Optional[str] = None
+    tracker_base_url: Optional[str] = None
+    tracker_announce_url: Optional[str] = None
     sonarr_url: Optional[str] = None
     sonarr_api_key: Optional[str] = None
     radarr_url: Optional[str] = None
@@ -709,32 +710,43 @@ def gapscan_config_write(req: GapscanConfigWriteRequest) -> dict[str, Any]:
     """Met a jour uniquement les champs fournis (les autres restent
     inchanges) -- voir gapscan_config_store.write()."""
     _require_gapscan_available()
+    fields = req.model_dump()
+    profile = fields.pop("profile")
     try:
-        gapscan_config_store.write(**req.model_dump())
+        gapscan_config_store.write(profile=profile, **fields)
     except gapscan_config_store.GapscanConfigStoreError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return gapscan_config_store.status()
+    return gapscan_config_store.status(profile)
 
 
-def _build_gapscan_clients() -> tuple[Any, Any, Any, dict[str, str], dict[str, str]]:
-    """Construit les clients GapScan depuis gapscan_config_store (fichier ou
-    environnement), plus les mappings de chemins configures. Leve
-    ValueError (-> 400) si la configuration necessaire manque."""
-    c411_config = gapscan_config_store.effective_c411()
-    if c411_config is None:
+def _min_request_interval(profile: str) -> float:
+    """Delai minimal entre deux requetes -- source de verite : le profil
+    (rules.json -> tracker.min_request_interval_seconds, voir
+    tracker_profile.py). L'ancienne variable d'environnement reste lisible
+    comme un simple override de deploiement, UNIQUEMENT pour le profil
+    c411 (c'est le seul qui existait quand cette variable a ete introduite
+    -- voir AUTOMATION.md, sous-projet 4b)."""
+    default = tracker_profile.min_request_interval_seconds(profile)
+    if profile == "c411":
+        return float(os.environ.get("NFOGEN_C411_MIN_INTERVAL_SECONDS", str(default)))
+    return default
+
+
+def _build_gapscan_clients(profile: str) -> tuple[Any, Any, Any, dict[str, str], dict[str, str]]:
+    """Construit les clients GapScan pour CE profil depuis
+    gapscan_config_store (fichier ou environnement), plus les mappings de
+    chemins configures (globaux, pas par profil). Leve ValueError (-> 400)
+    si la configuration necessaire manque."""
+    tracker_config = gapscan_config_store.effective_tracker(profile)
+    if tracker_config is None:
         raise ValueError(
-            "Cle API C411 non configuree (NFOGEN_C411_API_KEY, ou PUT /gapscan/config) : "
-            "voir GAPSCAN.md."
+            f"Clé API du tracker '{profile}' non configurée "
+            "(NFOGEN_C411_API_KEY si profile=c411, ou PUT /gapscan/config) : voir GAPSCAN.md."
         )
-    c411_key, c411_base_url = c411_config
-    # Limite confirmee directement par les admins C411 (2026-08-27) : 15
-    # requetes/min par utilisateur (60/15 = 4s pile). 4.5s par defaut
-    # desormais (~13,3/min), marge de securite -- 2.0s (~30/min, choisi
-    # avant cette confirmation) depassait la limite reelle. Ajustable si
-    # besoin.
-    min_interval = float(os.environ.get("NFOGEN_C411_MIN_INTERVAL_SECONDS", "4.5"))
-    c411 = C411Client(
-        c411_key, base_url=c411_base_url.rstrip("/") + "/api", min_interval_seconds=min_interval
+    tracker_key, tracker_base_url = tracker_config
+    min_interval = _min_request_interval(profile)
+    tracker_client = TorznabClient(
+        tracker_key, base_url=tracker_base_url.rstrip("/") + "/api", min_interval_seconds=min_interval
     )
 
     sonarr_config = gapscan_config_store.effective_sonarr()
@@ -744,13 +756,13 @@ def _build_gapscan_clients() -> tuple[Any, Any, Any, dict[str, str], dict[str, s
     radarr = RadarrClient(*radarr_config) if radarr_config else None
 
     if sonarr is None and radarr is None:
-        c411.close()
+        tracker_client.close()
         raise ValueError(
             "Aucune instance Sonarr ni Radarr configuree "
             "(NFOGEN_SONARR_URL/_API_KEY et/ou NFOGEN_RADARR_URL/_API_KEY, ou PUT /gapscan/config)."
         )
     return (
-        c411, sonarr, radarr,
+        tracker_client, sonarr, radarr,
         gapscan_config_store.effective_sonarr_path_mappings(),
         gapscan_config_store.effective_radarr_path_mappings(),
     )
@@ -758,21 +770,26 @@ def _build_gapscan_clients() -> tuple[Any, Any, Any, dict[str, str], dict[str, s
 
 @app.post("/gapscan/run", dependencies=[Depends(require_token)])
 def gapscan_run(
-    incremental: bool = Query(False), only: Optional[str] = Query(None)
+    incremental: bool = Query(False),
+    only: Optional[str] = Query(None),
+    profile: str = Query("c411"),
 ) -> dict[str, str]:
     """`incremental=true` : reutilise les resultats du dernier scan pour les
     titres deja couverts et inchanges localement (au-dela de
     NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS, reverifie quand meme -- C411
     retire/ajoute des torrents assez souvent). `only=movies`/`only=series` :
     ne scanne qu'une des deux bibliotheques, pour repartir la charge sur
-    plusieurs sessions (limite C411 confirmee : 15 requetes/min). Voir
-    gapscan_runner.start()."""
+    plusieurs sessions (limite C411 confirmee : 15 requetes/min). `profile` :
+    quel tracker interroger (identifiants/reglages namespaces, voir
+    gapscan_config_store.py/tracker_profile.py). Voir gapscan_runner.start()."""
     _require_gapscan_available()
     if only not in (None, "movies", "series"):
         raise HTTPException(status_code=400, detail="only doit valoir 'movies' ou 'series'.")
     try:
-        c411, sonarr, radarr, sonarr_path_mappings, radarr_path_mappings = _build_gapscan_clients()
-    except (ValueError, C411Error, SonarrError, RadarrError) as exc:
+        tracker_client, sonarr, radarr, sonarr_path_mappings, radarr_path_mappings = (
+            _build_gapscan_clients(profile)
+        )
+    except (ValueError, TorznabError, SonarrError, RadarrError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Bug reel trouve en audit (2026-08-27) : "au moins Sonarr OU Radarr
@@ -780,7 +797,7 @@ def gapscan_run(
     # `only` cible precisement celui qui MANQUE -- sans ce garde-fou, le
     # scan "reussissait" en silence avec 0 titre traite.
     if only == "movies" and radarr is None:
-        c411.close()
+        tracker_client.close()
         if sonarr is not None:
             sonarr.close()
         raise HTTPException(
@@ -788,7 +805,7 @@ def gapscan_run(
             detail="only=movies demande, mais Radarr n'est pas configure.",
         )
     if only == "series" and sonarr is None:
-        c411.close()
+        tracker_client.close()
         if radarr is not None:
             radarr.close()
         raise HTTPException(
@@ -799,12 +816,12 @@ def gapscan_run(
     max_age_days = float(os.environ.get("NFOGEN_GAPSCAN_INCREMENTAL_MAX_AGE_DAYS", "7"))
     max_age_seconds = max_age_days * 86400 if incremental else None
     started = gapscan_runner.start(
-        c411, radarr=radarr, sonarr=sonarr, incremental=incremental,
+        tracker_client, radarr=radarr, sonarr=sonarr, incremental=incremental,
         only=only, max_age_seconds=max_age_seconds,
         sonarr_path_mappings=sonarr_path_mappings, radarr_path_mappings=radarr_path_mappings,
     )
     if not started:
-        c411.close()
+        tracker_client.close()
         if sonarr is not None:
             sonarr.close()
         if radarr is not None:
@@ -826,10 +843,11 @@ def gapscan_results(
     genre: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
+    profile: str = Query("c411"),
 ) -> dict[str, Any]:
     _require_gapscan_available()
     items = gapscan_runner.results(
-        status_filter=status, media_type_filter=media_type, genre_filter=genre
+        status_filter=status, media_type_filter=media_type, genre_filter=genre, profile=profile
     )
     total = len(items)
     start = (page - 1) * page_size
@@ -837,7 +855,7 @@ def gapscan_results(
     serialized: list[dict[str, Any]] = []
     for r in page_items:
         d = asdict(r)
-        d["genre"] = gapscan.genre_of(r)
+        d["genre"] = gapscan.genre_of(r, profile)
         serialized.append(d)
     return {"items": serialized, "total": total}
 
@@ -855,18 +873,19 @@ def gapscan_results_export_csv(
     status: Optional[str] = Query(None),
     media_type: Optional[str] = Query(None),
     genre: Optional[str] = Query(None),
+    profile: str = Query("c411"),
 ) -> Response:
     _require_gapscan_available()
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(_CSV_COLUMNS)
     for r in gapscan_runner.results(
-        status_filter=status, media_type_filter=media_type, genre_filter=genre
+        status_filter=status, media_type_filter=media_type, genre_filter=genre, profile=profile
     ):
         writer.writerow(
             [
                 r.media_type, r.title, r.year, r.season_number, r.status.value,
-                gapscan.genre_of(r) or "",
+                gapscan.genre_of(r, profile) or "",
                 r.imdb_id, r.tmdb_id, r.tvdb_id,
                 r.local_quality.resolution, r.local_quality.source,
                 "+".join(r.local_quality.languages),

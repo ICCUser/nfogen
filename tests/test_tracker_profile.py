@@ -74,6 +74,17 @@ def test_torrent_piece_sizes_empty_list_when_undeclared():
     assert tracker_profile.torrent_piece_sizes("bare5") == []
 
 
+def test_degrades_gracefully_for_a_profile_that_does_not_exist_at_all():
+    # Pas juste "sans section tracker" (cas ci-dessus) -- un nom de profil
+    # qui n'existe carrement pas (ni utilisateur, ni livre) ne doit jamais
+    # faire planter (ProfileStoreError non geree) : meme repli neutre.
+    assert tracker_profile.torznab_categories("does-not-exist") == {}
+    assert tracker_profile.audio_language_codes("does-not-exist") == {}
+    assert tracker_profile.min_request_interval_seconds("does-not-exist") == 0.0
+    assert tracker_profile.torrent_piece_sizes("does-not-exist") == []
+    assert tracker_profile.display_name("does-not-exist") == "does-not-exist"
+
+
 # --------------------------------------------------------------------------- #
 # Profil c411 livre avec le paquet : verifie les VRAIES valeurs, pas un profil
 # de test synthetique. Pas de NFOGEN_PROFILES_DIR necessaire (profile_store
