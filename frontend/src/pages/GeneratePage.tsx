@@ -3,12 +3,12 @@ import {
   downloadAsFile,
   generateFromMetadata,
   generateUpload,
-  listAllProfiles,
   proposeReleaseName,
 } from "../api/client";
 import { ApiError } from "../api/types";
 import type { NameProposal } from "../api/types";
 import { extractGeneralTitles, extractVideoData } from "../lib/clientMediaInfo";
+import { useProfile } from "../ProfileContext";
 
 const SAMPLE_PLACEHOLDER = `{
   "release_name": "Mon.Titre-TEAM"
@@ -43,8 +43,7 @@ function detectCategoryFromFiles(selected: File[]): string | null {
  * l'API appelee par script). Repose sur POST /generate (multipart), le meme
  * endpoint que la CLI/les exemples curl du README. */
 export default function GeneratePage() {
-  const [profiles, setProfiles] = useState<Record<string, string[]>>({});
-  const [profile, setProfile] = useState("c411");
+  const { profile, profiles } = useProfile();
   const [category, setCategory] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [dataText, setDataText] = useState(SAMPLE_PLACEHOLDER);
@@ -58,11 +57,13 @@ export default function GeneratePage() {
   const [loadingLabel, setLoadingLabel] = useState("Génération…");
   const [extractionNotice, setExtractionNotice] = useState<string | null>(null);
 
+  // Le profil actif change ailleurs (selecteur global, entete de App.tsx) :
+  // une categorie deja choisie pour l'ANCIEN profil peut ne plus exister
+  // pour le nouveau -- reprend le comportement de l'ancien selecteur local
+  // ("auto-detectee" par defaut a chaque changement de profil).
   useEffect(() => {
-    listAllProfiles()
-      .then(setProfiles)
-      .catch(() => setProfiles({}));
-  }, []);
+    setCategory("");
+  }, [profile]);
 
   const categories = profiles[profile] ?? [];
 
@@ -219,25 +220,6 @@ export default function GeneratePage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 rounded-md border border-line bg-surface p-4">
-        <label className="block text-sm font-medium text-ink-dim">
-          Profil
-          <select
-            className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={profile}
-            onChange={(e) => {
-              setProfile(e.target.value);
-              setCategory("");
-            }}
-          >
-            {Object.keys(profiles).length === 0 && <option value="c411">c411</option>}
-            {Object.keys(profiles).map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <label className="block text-sm font-medium text-ink-dim">
           Catégorie
           <select

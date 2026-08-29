@@ -3,9 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import GeneratePage from "./GeneratePage";
+import { ProfileProvider, useProfile } from "../ProfileContext";
 
 vi.mock("../api/client", () => ({
   listAllProfiles: vi.fn(),
+  readManagedProfile: vi.fn(),
   generateFromMetadata: vi.fn(),
   generateUpload: vi.fn(),
   proposeReleaseName: vi.fn(),
@@ -22,10 +24,19 @@ import {
   generateUpload,
   listAllProfiles,
   proposeReleaseName,
+  readManagedProfile,
 } from "../api/client";
 import { extractGeneralTitles, extractVideoData } from "../lib/clientMediaInfo";
 
 const PROFILES = { c411: ["video", "audio", "game", "ebook", "print3d"] };
+
+function renderPage() {
+  return render(
+    <ProfileProvider>
+      <GeneratePage />
+    </ProfileProvider>,
+  );
+}
 
 function videoFile(name = "film.mkv"): File {
   return new File(["binaire"], name, { type: "video/x-matroska" });
@@ -42,6 +53,9 @@ async function selectVideoFile(): Promise<void> {
 
 beforeEach(() => {
   vi.mocked(listAllProfiles).mockResolvedValue(PROFILES);
+  vi.mocked(readManagedProfile).mockResolvedValue({
+    name: "c411", rules: { tracker: { display_name: "C411" } }, templates: {},
+  });
   vi.mocked(downloadAsFile).mockImplementation(() => {});
   // Utilisee par l'effet de proposition de nom, declenche des qu'un fichier
   // est selectionne : neutre par defaut, pas l'objet de ces tests.
@@ -63,7 +77,7 @@ describe("GeneratePage - generation video", () => {
       filename: "Film.nfo",
     });
 
-    render(<GeneratePage />);
+    renderPage();
     await selectVideoFile();
 
     await userEvent.click(screen.getByRole("button", { name: "Générer" }));
@@ -85,7 +99,7 @@ describe("GeneratePage - generation video", () => {
       filename: "Film.nfo",
     });
 
-    render(<GeneratePage />);
+    renderPage();
     await selectVideoFile();
 
     await userEvent.click(screen.getByRole("button", { name: "Générer" }));
@@ -96,5 +110,41 @@ describe("GeneratePage - generation video", () => {
     expect(await screen.findByText(/via upload/)).toBeInTheDocument();
     expect(generateUpload).toHaveBeenCalledTimes(1);
     expect(generateFromMetadata).not.toHaveBeenCalled();
+  });
+});
+
+describe("GeneratePage - profil partage (ProfileContext)", () => {
+  it("n'a plus son propre selecteur de profil (vit dans l'entete, App.tsx)", async () => {
+    renderPage();
+    await selectVideoFile();
+    expect(screen.queryByRole("combobox", { name: /^profil$/i })).not.toBeInTheDocument();
+  });
+
+  it("resets la categorie selectionnee quand le profil actif change", async () => {
+    vi.mocked(listAllProfiles).mockResolvedValue({
+      c411: ["video", "audio"], ygg: ["ebook"],
+    });
+    function Harness() {
+      const { setProfile } = useProfile();
+      return (
+        <>
+          <button onClick={() => setProfile("ygg")}>changer de profil</button>
+          <GeneratePage />
+        </>
+      );
+    }
+    render(
+      <ProfileProvider>
+        <Harness />
+      </ProfileProvider>,
+    );
+    await screen.findByRole("option", { name: "video" });
+    await userEvent.selectOptions(screen.getByLabelText("Catégorie"), "video");
+    expect((screen.getByLabelText("Catégorie") as HTMLSelectElement).value).toBe("video");
+
+    await userEvent.click(screen.getByRole("button", { name: "changer de profil" }));
+
+    await screen.findByRole("option", { name: "ebook" });
+    expect((screen.getByLabelText("Catégorie") as HTMLSelectElement).value).toBe("");
   });
 });
