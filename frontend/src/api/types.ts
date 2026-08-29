@@ -164,25 +164,29 @@ export interface GapscanStatus {
 }
 
 export interface GapscanConfig {
-  c411_configured: boolean;
-  c411_base_url: string | null;
+  profile: string;
+  tracker_configured: boolean;
+  tracker_base_url: string | null;
   sonarr_configured: boolean;
   sonarr_url: string | null;
   radarr_configured: boolean;
   radarr_url: string | null;
   sonarr_path_mappings: Record<string, string>;
   radarr_path_mappings: Record<string, string>;
-  /** true si une adresse d'annonce C411 est enregistree -- jamais la
-   * valeur elle-meme (contient le passkey du compte). */
-  c411_announce_url_configured: boolean;
+  /** true si une adresse d'annonce est enregistree pour ce profil --
+   * jamais la valeur elle-meme (contient le passkey du compte). */
+  tracker_announce_url_configured: boolean;
   staging_dir: string | null;
 }
 
-/** PUT /gapscan/config : chaque champ omis reste inchange cote serveur. */
+/** PUT /gapscan/config : chaque champ omis reste inchange cote serveur.
+ * `tracker_*` sont namespaces par `profile` (voir AUTOMATION.md,
+ * sous-projet 4b). */
 export interface GapscanConfigWrite {
-  c411_api_key?: string;
-  c411_base_url?: string;
-  c411_announce_url?: string;
+  profile?: string;
+  tracker_api_key?: string;
+  tracker_base_url?: string;
+  tracker_announce_url?: string;
   sonarr_url?: string;
   sonarr_api_key?: string;
   radarr_url?: string;

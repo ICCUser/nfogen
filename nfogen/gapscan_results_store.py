@@ -21,9 +21,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
 
-from .torznab_client import TorznabRelease
 from .gapscan import GapResult, GapStatus
 from .quality import ReleaseQuality
+from .torznab_client import TorznabRelease
 
 
 def is_configured() -> bool:

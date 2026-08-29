@@ -279,31 +279,46 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 // --------------------------------------------------------------------------- //
-// GapScan (voir GAPSCAN.md) : comparateur bibliotheque locale <-> C411.
-// Configuration exclusivement par variables d'environnement cote serveur
-// (jamais via l'API, comme NFOGEN_API_TOKEN) : pas de fonction d'ecriture
-// ici, seulement lecture de l'etat de configuration.
+// GapScan (voir GAPSCAN.md) : comparateur bibliotheque locale <-> tracker.
+// Identifiants Sonarr/Radarr globaux + identifiants de tracker namespaces
+// par `profile` (AUTOMATION.md, sous-projet 4b), modifiables a chaud via
+// PUT /gapscan/config (repli sur variables d'environnement cote serveur
+// sinon, comme NFOGEN_C411_API_KEY pour le profil c411).
 // --------------------------------------------------------------------------- //
-export function gapscanConfig(): Promise<GapscanConfig> {
-  return request<GapscanConfig>("/gapscan/config");
+export function gapscanConfig(profile = "c411"): Promise<GapscanConfig> {
+  const params = new URLSearchParams();
+  if (profile !== "c411") params.set("profile", profile);
+  const qs = params.toString();
+  return request<GapscanConfig>(`/gapscan/config${qs ? `?${qs}` : ""}`);
 }
 
 /** Enregistre cote serveur (fichier NFOGEN_GAPSCAN_CONFIG_FILE) : seuls les
  * champs fournis changent, les autres restent inchanges. Les cles ne sont
- * jamais renvoyees, meme dans la reponse de cet appel. */
-export function gapscanConfigWrite(fields: GapscanConfigWrite): Promise<GapscanConfig> {
-  return request<GapscanConfig>("/gapscan/config", { method: "PUT", body: JSON.stringify(fields) });
+ * jamais renvoyees, meme dans la reponse de cet appel. `tracker_*` sont
+ * namespaces par `profile` (voir AUTOMATION.md, sous-projet 4b). */
+export function gapscanConfigWrite(fields: GapscanConfigWrite, profile = "c411"): Promise<GapscanConfig> {
+  return request<GapscanConfig>("/gapscan/config", {
+    method: "PUT",
+    body: JSON.stringify({ ...fields, profile }),
+  });
 }
 
 /** `incremental` : reprend les titres deja couverts et inchanges du
  * dernier scan sans les reinterroger sur C411 (voir GAPSCAN.md, section
  * "Persistance des resultats + scan incremental"). `only` : ne scanne que
  * les films ou que les series, pour repartir la charge sur plusieurs
- * sessions (limite C411 confirmee : 15 requetes/min). */
-export function gapscanRun(incremental = false, only?: "movies" | "series"): Promise<{ status: string }> {
+ * sessions (limite C411 confirmee : 15 requetes/min). `profile` : quel
+ * tracker interroger (identifiants namespaces, voir AUTOMATION.md,
+ * sous-projet 4b). */
+export function gapscanRun(
+  incremental = false,
+  only?: "movies" | "series",
+  profile = "c411",
+): Promise<{ status: string }> {
   const params = new URLSearchParams();
   if (incremental) params.set("incremental", "true");
   if (only) params.set("only", only);
+  if (profile !== "c411") params.set("profile", profile);
   const qs = params.toString();
   return request(`/gapscan/run${qs ? `?${qs}` : ""}`, { method: "POST" });
 }
@@ -319,6 +334,7 @@ export function gapscanResults(
     genre?: "anime" | "documentaire";
     page?: number;
     pageSize?: number;
+    profile?: string;
   } = {},
 ): Promise<GapscanResultsPage> {
   const params = new URLSearchParams();
@@ -327,6 +343,7 @@ export function gapscanResults(
   if (opts.genre) params.set("genre", opts.genre);
   params.set("page", String(opts.page ?? 1));
   params.set("page_size", String(opts.pageSize ?? 50));
+  if (opts.profile) params.set("profile", opts.profile);
   return request<GapscanResultsPage>(`/gapscan/results?${params.toString()}`);
 }
 
@@ -335,12 +352,14 @@ export async function gapscanExportCsv(
     status?: string;
     mediaType?: "movie" | "series";
     genre?: "anime" | "documentaire";
+    profile?: string;
   } = {},
 ): Promise<Blob> {
   const params = new URLSearchParams();
   if (opts.status) params.set("status", opts.status);
   if (opts.mediaType) params.set("media_type", opts.mediaType);
   if (opts.genre) params.set("genre", opts.genre);
+  if (opts.profile) params.set("profile", opts.profile);
   const qs = params.toString();
   const resp = await safeFetch(`${getBaseUrl()}/gapscan/results/export.csv${qs ? `?${qs}` : ""}`, {
     credentials: "include",

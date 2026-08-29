@@ -3,8 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deleteManagedProfile,
   downloadAsFile,
+  gapscanConfig,
+  gapscanConfigWrite,
   gapscanExportCsv,
   gapscanResults,
+  gapscanRun,
   generateFromMetadata,
   generateUpload,
   listAllProfiles,
@@ -310,5 +313,83 @@ describe("gapscanResults / gapscanExportCsv", () => {
     const [url] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain("media_type=series");
     expect(url).toContain("genre=documentaire");
+  });
+
+  it("gapscanResults passe le parametre profile quand fourni", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ items: [], total: 0 }));
+
+    await gapscanResults({ profile: "ygg" });
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("profile=ygg");
+  });
+
+  it("gapscanExportCsv passe le parametre profile quand fourni", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("a,b\n", { status: 200 }));
+
+    await gapscanExportCsv({ profile: "ygg" });
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("profile=ygg");
+  });
+});
+
+describe("gapscanConfig / gapscanConfigWrite / gapscanRun", () => {
+  it("gapscanConfig sans argument n'ajoute pas de parametre profile", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ profile: "c411", tracker_configured: true }));
+
+    await gapscanConfig();
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).not.toContain("profile=");
+  });
+
+  it("gapscanConfig passe le profil demande en parametre", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ profile: "ygg", tracker_configured: false }));
+
+    await gapscanConfig("ygg");
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("profile=ygg");
+  });
+
+  it("gapscanConfigWrite envoie les champs tracker_* et le profil dans le corps", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ profile: "c411", tracker_configured: true }));
+
+    await gapscanConfigWrite({ tracker_api_key: "k", tracker_base_url: "https://c411.org" }, "c411");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.tracker_api_key).toBe("k");
+    expect(body.tracker_base_url).toBe("https://c411.org");
+    expect(body.profile).toBe("c411");
+  });
+
+  it("gapscanConfigWrite utilise le profil c411 par defaut", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ profile: "c411", tracker_configured: true }));
+
+    await gapscanConfigWrite({ tracker_api_key: "k" });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.profile).toBe("c411");
+  });
+
+  it("gapscanRun n'ajoute pas de parametre profile pour le defaut c411", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ status: "started" }));
+
+    await gapscanRun();
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).not.toContain("profile=");
+  });
+
+  it("gapscanRun passe le profil demande en parametre", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ status: "started" }));
+
+    await gapscanRun(false, undefined, "ygg");
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("profile=ygg");
   });
 });
