@@ -56,7 +56,9 @@ def test_two_profiles_keep_separate_credentials():
 
 
 def test_partial_write_does_not_erase_other_fields():
-    store.write(profile="c411", tracker_api_key="secret", sonarr_url="http://sonarr.local", sonarr_api_key="sk")
+    store.write(
+        profile="c411", tracker_api_key="secret", sonarr_url="http://sonarr.local", sonarr_api_key="sk"
+    )
     store.write(radarr_url="http://radarr.local", radarr_api_key="rk")
 
     assert store.effective_tracker("c411") == ("secret", "https://c411.org")
@@ -71,7 +73,9 @@ def test_write_overwrites_existing_field():
 
 
 def test_never_exposes_secrets_in_status():
-    store.write(profile="c411", tracker_api_key="secret", sonarr_url="http://sonarr.local", sonarr_api_key="sk")
+    store.write(
+        profile="c411", tracker_api_key="secret", sonarr_url="http://sonarr.local", sonarr_api_key="sk"
+    )
     status = store.status("c411")
     assert "secret" not in str(status)
     assert "sk" not in str(status)

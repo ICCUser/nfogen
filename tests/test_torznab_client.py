@@ -116,7 +116,9 @@ def test_client_wraps_http_errors():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, text="boom")
 
-    client = TorznabClient(api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    client = TorznabClient(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
     with pytest.raises(TorznabError, match="echoue"):
         client.search_movie(query="x")
 

@@ -16,9 +16,9 @@ import sys
 import pytest
 
 from nfogen import gapscan_results_store as store
-from nfogen.torznab_client import TorznabRelease
 from nfogen.gapscan import GapResult, GapStatus
 from nfogen.quality import build_quality
+from nfogen.torznab_client import TorznabRelease
 
 
 @pytest.fixture(autouse=True)
