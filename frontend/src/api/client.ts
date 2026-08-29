@@ -1,8 +1,8 @@
 import { getBaseUrl } from "./settings";
 import type {
-  GapResult,
   GapscanConfig,
   GapscanConfigWrite,
+  GapscanResultsPage,
   GapscanStatus,
   GenerateResult,
   ManagedProfile,
@@ -312,14 +312,37 @@ export function gapscanStatus(): Promise<GapscanStatus> {
   return request<GapscanStatus>("/gapscan/status");
 }
 
-export function gapscanResults(statusFilter?: string): Promise<GapResult[]> {
-  const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
-  return request<GapResult[]>(`/gapscan/results${qs}`);
+export function gapscanResults(
+  opts: {
+    status?: string;
+    mediaType?: "movie" | "series";
+    genre?: "anime" | "documentaire";
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<GapscanResultsPage> {
+  const params = new URLSearchParams();
+  if (opts.status) params.set("status", opts.status);
+  if (opts.mediaType) params.set("media_type", opts.mediaType);
+  if (opts.genre) params.set("genre", opts.genre);
+  params.set("page", String(opts.page ?? 1));
+  params.set("page_size", String(opts.pageSize ?? 50));
+  return request<GapscanResultsPage>(`/gapscan/results?${params.toString()}`);
 }
 
-export async function gapscanExportCsv(statusFilter?: string): Promise<Blob> {
-  const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
-  const resp = await safeFetch(`${getBaseUrl()}/gapscan/results/export.csv${qs}`, {
+export async function gapscanExportCsv(
+  opts: {
+    status?: string;
+    mediaType?: "movie" | "series";
+    genre?: "anime" | "documentaire";
+  } = {},
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (opts.status) params.set("status", opts.status);
+  if (opts.mediaType) params.set("media_type", opts.mediaType);
+  if (opts.genre) params.set("genre", opts.genre);
+  const qs = params.toString();
+  const resp = await safeFetch(`${getBaseUrl()}/gapscan/results/export.csv${qs ? `?${qs}` : ""}`, {
     credentials: "include",
   });
   if (!resp.ok) throw new ApiError(resp.status, resp.statusText);

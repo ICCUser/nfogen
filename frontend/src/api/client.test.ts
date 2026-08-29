@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deleteManagedProfile,
   downloadAsFile,
+  gapscanExportCsv,
+  gapscanResults,
   generateFromMetadata,
   generateUpload,
   listAllProfiles,
@@ -255,5 +257,44 @@ describe("prepareUploadPreview / prepareUploadCommit", () => {
       files,
       profile: "c411",
     });
+  });
+});
+
+describe("gapscanResults / gapscanExportCsv", () => {
+  it("envoie tous les filtres et la pagination, renvoie {items, total}", async () => {
+    const page = { items: [], total: 42 };
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(page));
+
+    const result = await gapscanResults({
+      status: "absent", mediaType: "movie", genre: "anime", page: 2, pageSize: 25,
+    });
+
+    expect(result).toEqual(page);
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("status=absent");
+    expect(url).toContain("media_type=movie");
+    expect(url).toContain("genre=anime");
+    expect(url).toContain("page=2");
+    expect(url).toContain("page_size=25");
+  });
+
+  it("gapscanResults sans options utilise page=1/page_size=50 par defaut", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ items: [], total: 0 }));
+
+    await gapscanResults();
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("page=1");
+    expect(url).toContain("page_size=50");
+  });
+
+  it("gapscanExportCsv envoie les filtres media_type/genre", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("a,b\n", { status: 200 }));
+
+    await gapscanExportCsv({ mediaType: "series", genre: "documentaire" });
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("media_type=series");
+    expect(url).toContain("genre=documentaire");
   });
 });

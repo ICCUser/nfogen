@@ -140,6 +140,16 @@ export interface GapResult {
   local_paths: string[];
   path_resolved: boolean;
   path_error: string | null;
+  /** "anime"/"documentaire" d'apres la categorie C411 du premier match
+   * trouve ; null si standard OU si aucun match (voir GAPSCAN.md). */
+  genre: "anime" | "documentaire" | null;
+}
+
+/** GET /gapscan/results : pagination cote serveur (voir GAPSCAN.md,
+ * "Filtre type/genre + pagination serveur"). */
+export interface GapscanResultsPage {
+  items: GapResult[];
+  total: number;
 }
 
 export type GapscanState = "idle" | "running" | "done" | "error";
