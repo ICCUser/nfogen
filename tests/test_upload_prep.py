@@ -204,8 +204,8 @@ def test_commit_single_file_stages_and_builds_torrent(tmp_path, monkeypatch):
         "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
     )
     monkeypatch.setattr(
-        "nfogen.upload_prep.gapscan_config_store.effective_c411_announce_url",
-        lambda: "https://c411.example/announce/abc123",
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
     )
     monkeypatch.setattr(
         "nfogen.upload_prep.extract.extract_video_text", lambda path: "General\nFormat : Matroska\n"
@@ -231,8 +231,8 @@ def test_commit_multi_file_group_stages_into_a_folder(tmp_path, monkeypatch):
         "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
     )
     monkeypatch.setattr(
-        "nfogen.upload_prep.gapscan_config_store.effective_c411_announce_url",
-        lambda: "https://c411.example/announce/abc123",
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
     )
     monkeypatch.setattr(
         "nfogen.upload_prep.extract.extract_video_dir_text",
@@ -273,7 +273,7 @@ def test_commit_without_announce_url_configured_raises(tmp_path, monkeypatch):
         "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(tmp_path)
     )
     monkeypatch.setattr(
-        "nfogen.upload_prep.gapscan_config_store.effective_c411_announce_url", lambda: None
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url", lambda profile: None
     )
     with pytest.raises(ValueError, match="annonce"):
         commit_upload("X", [ProposedFile(source_path="/x.mkv", staged_name="X.mkv")])
@@ -294,25 +294,37 @@ def test_commit_without_automation_extra_raises(monkeypatch):
 # l'utilisateur (2026-08-28) : plusieurs langues doivent produire un indice
 # qui declenche le prefixe MULTI attendu par C411, pas juste une langue.
 # --------------------------------------------------------------------------- #
+_C411_AUDIO_LANGUAGE_CODES = {
+    "fr": "FR", "fre": "FR", "fra": "FR", "french": "FR",
+    "en": "EN", "eng": "EN", "english": "EN",
+    "ja": "JA", "jpn": "JA", "japanese": "JA",
+}
+
+
 def test_language_hint_single_known_track():
-    assert _language_hint_from_audio_tracks(["fre"]) == "FR"
+    assert _language_hint_from_audio_tracks(["fre"], _C411_AUDIO_LANGUAGE_CODES) == "FR"
 
 
 def test_language_hint_combines_two_tracks_for_multi():
-    assert _language_hint_from_audio_tracks(["fre", "eng"]) == "FR+EN"
+    assert _language_hint_from_audio_tracks(["fre", "eng"], _C411_AUDIO_LANGUAGE_CODES) == "FR+EN"
 
 
 def test_language_hint_deduplicates_repeated_language():
-    assert _language_hint_from_audio_tracks(["fre", "fre"]) == "FR"
+    assert _language_hint_from_audio_tracks(["fre", "fre"], _C411_AUDIO_LANGUAGE_CODES) == "FR"
 
 
 def test_language_hint_ignores_unrecognized_codes():
-    assert _language_hint_from_audio_tracks(["fre", "klingon"]) == "FR"
+    assert _language_hint_from_audio_tracks(["fre", "klingon"], _C411_AUDIO_LANGUAGE_CODES) == "FR"
 
 
 def test_language_hint_empty_when_nothing_recognized():
-    assert _language_hint_from_audio_tracks([]) == ""
-    assert _language_hint_from_audio_tracks(["klingon"]) == ""
+    assert _language_hint_from_audio_tracks([], _C411_AUDIO_LANGUAGE_CODES) == ""
+    assert _language_hint_from_audio_tracks(["klingon"], _C411_AUDIO_LANGUAGE_CODES) == ""
+
+
+def test_language_hint_empty_when_profile_declares_no_codes():
+    # Profil sans audio_language_codes declare : jamais d'indice devine.
+    assert _language_hint_from_audio_tracks(["fre", "eng"], {}) == ""
 
 
 def test_preview_upload_uses_real_audio_tracks_when_filename_has_no_language_tag():

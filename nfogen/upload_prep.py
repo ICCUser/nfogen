@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import engine, extract, file_staging, gapscan_config_store
+from . import engine, extract, file_staging, gapscan_config_store, tracker_profile
 from .engine import propose_release_name
 from .models import RenderContext
 from .name_proposal import extract_team_tag, strip_ext
@@ -90,33 +90,21 @@ def _extraction_warning(filename: str) -> str:
     return f"[{filename}] Métadonnées illisibles : extraction MediaInfo échouée."
 
 
-# Codes de langue MediaInfo (piste audio reelle du fichier) -> code court
-# reconnu par les alias de langue du profil (rules.json -> language_aliases).
-# Volontairement limite aux langues deja couvertes par les combinaisons
-# existantes de la config C411 (FR+EN/EN+FR/FR+JA/JA+FR) -- jamais invente
-# au-dela, meme philosophie "ne jamais deviner" que le reste du projet.
-_AUDIO_LANGUAGE_CODE: dict[str, str] = {
-    "fr": "FR", "fre": "FR", "fra": "FR", "french": "FR",
-    "en": "EN", "eng": "EN", "english": "EN",
-    "ja": "JA", "jpn": "JA", "japanese": "JA",
-}
-
-
-def _language_hint_from_audio_tracks(audio_languages: list[str]) -> str:
+def _language_hint_from_audio_tracks(audio_languages: list[str], language_codes: dict[str, str]) -> str:
     """Construit un indice de langue a partir des VRAIES pistes audio du
     fichier (`extract_video_metadata`), jamais du nom de fichier -- comble
-    un ecart reel (nom de fichier sans tag de langue, alors que le fichier a
-    bien des pistes FR/EN detectees). Plusieurs langues sont combinees avec
-    '+' (ex. 'FR+EN') pour que le profil detecte le prefixe MULTI attendu
-    par C411 sur les releases multi-langues (retour utilisateur explicite,
-    2026-08-28 : sans ca, deux pistes ne signaleraient jamais MULTI).
-    Chaine vide si rien de reconnu -- jamais de supposition au-dela des
-    combinaisons que le profil sait deja gerer."""
+    un ecart reel (nom de fichier sans tag de langue, alors que le fichier
+    a bien des pistes FR/EN detectees). `language_codes` (voir
+    tracker_profile.audio_language_codes) : mapping code/nom MediaInfo ->
+    code court reconnu par les alias de langue du profil -- vide si le
+    profil n'en declare aucun, jamais de supposition au-dela. Plusieurs
+    langues sont combinees avec '+' (ex. 'FR+EN') pour que le profil
+    detecte le prefixe MULTI attendu sur les releases multi-langues."""
     codes: list[str] = []
     for lang in audio_languages:
         if not lang:
             continue
-        code = _AUDIO_LANGUAGE_CODE.get(lang.strip().lower())
+        code = language_codes.get(lang.strip().lower())
         if code and code not in codes:
             codes.append(code)
     return "+".join(codes)
@@ -150,10 +138,11 @@ def preview_upload(
         meta["name"] = filenames[i]
         metas.append(meta)
 
+    language_codes = tracker_profile.audio_language_codes(profile)
     hints: list[Optional[str]] = []
     for m in metas:
         title_tag = m.get("general_title") or ""
-        audio_hint = _language_hint_from_audio_tracks(m.get("audio_languages") or [])
+        audio_hint = _language_hint_from_audio_tracks(m.get("audio_languages") or [], language_codes)
         combined = " ".join(part for part in (title_tag, audio_hint) if part)
         hints.append(combined or None)
     validator = get_validator(profile, "video")
@@ -221,10 +210,11 @@ def commit_upload(release_name: str, files: list[ProposedFile], profile: str = "
         raise ValueError(
             "Dossier de mise en scène non configuré (PUT /gapscan/config, champ staging_dir)."
         )
-    announce_url = gapscan_config_store.effective_c411_announce_url()
+    announce_url = gapscan_config_store.effective_tracker_announce_url(profile)
     if not announce_url:
         raise ValueError(
-            "Adresse d'annonce C411 non configurée (PUT /gapscan/config, champ c411_announce_url)."
+            f"Adresse d'annonce non configurée pour le profil '{profile}' "
+            "(PUT /gapscan/config, champ tracker_announce_url)."
         )
 
     if len(files) == 1:
@@ -255,7 +245,8 @@ def commit_upload(release_name: str, files: list[ProposedFile], profile: str = "
     Path(nfo_path).write_text(nfo, encoding="utf-8")
 
     torrent_path = str(Path(staging_dir) / f"{release_name}.torrent")
-    torrent_builder.build_torrent(staged_path, announce_url, torrent_path)
+    piece_sizes = tracker_profile.torrent_piece_sizes(profile)
+    torrent_builder.build_torrent(staged_path, announce_url, torrent_path, piece_sizes)
     return CommitResult(
         release_name=release_name, staged_path=staged_path, torrent_path=torrent_path, nfo_path=nfo_path
     )
