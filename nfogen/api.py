@@ -900,12 +900,15 @@ def _run_upload_prep(fn: Any, *args: Any, **kwargs: Any) -> Any:
 class PrepareUploadPreviewRequest(BaseModel):
     local_paths: list[str] = []
     profile: str = "c411"
+    title_override: Optional[str] = None
 
 
 @app.post("/gapscan/prepare-upload/preview", dependencies=[Depends(require_token)])
 def gapscan_prepare_upload_preview(req: PrepareUploadPreviewRequest) -> list[dict[str, Any]]:
     _require_gapscan_available()
-    proposals = _run_upload_prep(upload_prep.preview_upload, req.local_paths, profile=req.profile)
+    proposals = _run_upload_prep(
+        upload_prep.preview_upload, req.local_paths, profile=req.profile, title_override=req.title_override
+    )
     return [asdict(p) for p in proposals]
 
 

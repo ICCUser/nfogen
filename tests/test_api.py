@@ -1317,6 +1317,23 @@ def test_prepare_upload_preview_real_c411_profile(reload_api):
     assert body[0]["files"][0]["source_path"] == "/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"
 
 
+def test_prepare_upload_preview_title_override(reload_api):
+    """Cas reel (2026-08-28) : le titre Sonarr/Radarr ne correspond pas au
+    titre officiel attendu par C411 -- override manuel."""
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post(
+        "/gapscan/prepare-upload/preview",
+        json={
+            "local_paths": ["/media/A.Guy.And.A.Girl.S02E01.1080p.WEB.AC3.x264-Valentin.mkv"],
+            "title_override": "Un Gars, Une Fille",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body[0]["release_name"].startswith("Un.Gars.Une.Fille.")
+
+
 def test_prepare_upload_commit_without_staging_dir_is_400(reload_api, tmp_path):
     mod = reload_api(
         NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
