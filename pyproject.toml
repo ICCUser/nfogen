@@ -41,7 +41,7 @@ gapscan = [
     "httpx>=0.27",  # c411_client.py / sonarr_client.py / radarr_client.py (voir GAPSCAN.md)
 ]
 automation = [
-    "torf>=4.0",  # torrent_builder.py (voir AUTOMATION.md, sous-projet 2) -- extra separe de gapscan, pas necessaire pour la seule detection de gap
+    "torf>=4.3.1",  # torrent_builder.py (voir AUTOMATION.md, sous-projet 2) -- extra separe de gapscan, pas necessaire pour la seule detection de gap
 ]
 
 dev = ["pytest>=8.0", "ruff>=0.4", "httpx>=0.27"]
