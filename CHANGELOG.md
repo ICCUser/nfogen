@@ -79,6 +79,15 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Corrigé
 
+- **"Débit vidéo" absent du `.nfo`, upload C411 rejeté** : `pymediainfo`
+  faisait une analyse partielle (`parse_speed=0.5`, valeur par défaut) qui
+  n'isole pas toujours la taille du flux vidéo seul sur un encodage CRF
+  (HandBrake) à plusieurs pistes audio — le champ "Bit rate" de la section
+  Video manquait alors totalement, faisant échouer la description
+  "Générée automatiquement" de C411 côté modération. Analyse complète
+  forcée (`parse_speed=1.0`) pour la génération de `.nfo` et l'extraction
+  structurée (`video_bit_rate`, consommée par l'heuristique anti-upscale —
+  qui pouvait rester silencieusement inactive pour la même raison).
 - **Point trainant avant le tiret du tag d'équipe** quand un champ du
   gabarit de nom est vide (ex. codec vidéo non détecté dans le nom de
   fichier) : `...DTS.5.1.-LAZARUS` au lieu de `...DTS.5.1-LAZARUS`. C411
