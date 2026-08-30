@@ -30,7 +30,14 @@ def extract_video_text(source: Path, *, full: bool = False) -> str:
     source = Path(source)
     if not source.is_file():
         raise FileNotFoundError(f"Fichier introuvable : {source}")
-    text = MediaInfo.parse(str(source), output="", full=full)
+    # parse_speed=1.0 (analyse complete, pas la valeur par defaut de
+    # pymediainfo 0.5) : incident reel (2026-08-30) -- un fichier CRF
+    # (HandBrake) a plusieurs pistes audio n'a pas de "Bit rate" video en
+    # analyse partielle (MediaInfo n'arrive pas a isoler la taille du flux
+    # video seul), meme si la valeur est parfaitement calculable en scannant
+    # tout le fichier. C411 rejette l'upload car sa description "Generee
+    # automatiquement" lit ce champ dans le .nfo.
+    text = MediaInfo.parse(str(source), output="", full=full, parse_speed=1.0)
     if not isinstance(text, str):
         text = str(text)
     text = text.replace("\r\n", "\n").strip("\n") + "\n"
@@ -52,7 +59,11 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
     from pymediainfo import MediaInfo
 
     source = Path(source)
-    mi = MediaInfo.parse(str(source))
+    # parse_speed=1.0 : voir extract_video_text -- meme incident, cette
+    # fois sur video_bit_rate (consomme par l'heuristique anti-upscale,
+    # rules.upscale_warnings), qui reste silencieusement None en analyse
+    # partielle plutot que d'etre calcule.
+    mi = MediaInfo.parse(str(source), parse_speed=1.0)
     video = next((t for t in mi.tracks if t.track_type == "Video"), None)
     general = next((t for t in mi.tracks if t.track_type == "General"), None)
     frame_rate = None
@@ -186,7 +197,8 @@ def _audio_tech(path: Path) -> dict[str, Any]:
     try:
         from pymediainfo import MediaInfo
 
-        mi = MediaInfo.parse(str(path))
+        # parse_speed=1.0 : meme raison que extract_video_text/extract_video_metadata.
+        mi = MediaInfo.parse(str(path), parse_speed=1.0)
     except Exception:
         return {}
     g = next((t for t in mi.tracks if t.track_type == "General"), None)

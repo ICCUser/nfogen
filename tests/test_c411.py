@@ -71,6 +71,59 @@ def test_video_raw_text_passthrough():
     assert nfo.endswith("\n")
 
 
+def test_extract_video_text_uses_full_parse_speed(tmp_path: Path, monkeypatch):
+    """Incident reel (2026-08-30) : le "Bit rate" de la piste Video est
+    absent du rapport MediaInfo pour un fichier CRF (HandBrake) a plusieurs
+    pistes audio, en analyse partielle (parse_speed par defaut de
+    pymediainfo, 0.5) -- la meme commande avec --ParseSpeed=1.0 sur le
+    fichier reel de l'utilisateur fait apparaitre la valeur. C411 rejette
+    l'upload ("Champ non renseigne : Debit video") car sa description
+    "Generee automatiquement" lit ce rapport. Corrige : analyse complete
+    systematique."""
+    from nfogen import extract
+
+    mkv = tmp_path / "t.mkv"
+    mkv.write_bytes(b"x")
+    captured: dict = {}
+
+    def fake_parse(path, **kwargs):
+        captured.update(kwargs)
+        return "General\nComplete name : orig.mkv\n"
+
+    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
+    extract.extract_video_text(mkv)
+
+    assert captured.get("parse_speed") == 1.0
+
+
+def test_extract_video_metadata_uses_full_parse_speed(tmp_path: Path, monkeypatch):
+    """Meme correctif que extract_video_text, pour les donnees structurees
+    consommees par l'heuristique anti-upscale (rules.upscale_warnings) --
+    un video_bit_rate manque a tort en analyse partielle laisse
+    l'heuristique silencieusement inactive plutot que de devine."""
+    from nfogen import extract
+
+    mkv = tmp_path / "t.mkv"
+    mkv.write_bytes(b"x")
+    captured: dict = {}
+
+    class _FakeTrack:
+        track_type = "General"
+
+    def fake_parse(path, **kwargs):
+        captured.update(kwargs)
+
+        class _Result:
+            tracks = [_FakeTrack()]
+
+        return _Result()
+
+    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
+    extract.extract_video_metadata(mkv)
+
+    assert captured.get("parse_speed") == 1.0
+
+
 @pytest.mark.skipif(not (HAS_FFMPEG and HAS_MEDIAINFO), reason="ffmpeg/libmediainfo requis")
 def test_video_from_file(tmp_path: Path):
     mkv = tmp_path / "t.mkv"
