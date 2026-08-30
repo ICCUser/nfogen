@@ -723,3 +723,28 @@ sans réponse encore : faut-il un jeu de **règles API par tracker**
 tracker pour la soumission elle-même ? Cohérent avec le principe
 directeur, mais pas encore conçu — à trancher quand ce sous-projet sera
 détaillé, pas avant.
+
+**Piste à approfondir (utilisateur, 2026-08-30, pas tranchée) : séries
+terminées — INTEGRALE vs par saison.** Constat en regardant le catalogue
+C411 (cas réel, "Lucifer") : une série peut être uploadée soit saison par
+saison (`Lucifer.2016.S01...`), soit en un seul pack `INTEGRALE`
+regroupant toutes les saisons (`Lucifer.2016.INTEGRALE...`) une fois la
+série terminée — les deux formes coexistent sur le tracker pour le même
+show. Rien dans le pipeline actuel ne gère ce choix :
+
+- **GapScan raisonne par saison** (`SonarrSeasonFile` → un `GapResult` par
+  saison) — aucune notion de "série terminée" n'est récupérée depuis
+  Sonarr (le champ existe côté API Sonarr, `series.status`, mais
+  `sonarr_client.py` ne le lit pas aujourd'hui).
+- **"Préparer l'upload" ne prend qu'une ligne à la fois** — pas de moyen
+  de sélectionner plusieurs saisons d'une même série pour les combiner en
+  un seul groupe/upload.
+- **`name_proposal.py` ne connaît que `S{saison}`/`S{saison}E{episode}`**
+  comme identifiant — aucun gabarit `INTEGRALE`.
+
+Question posée par l'utilisateur, pas encore tranchée : quand une série
+est terminée, faut-il proposer explicitement le choix (pack complet vs
+saison par saison), ou est-ce toujours l'un des deux selon un critère à
+définir ? Touche le modèle de données GapScan, l'UI de sélection, et le
+gabarit de nommage — un vrai sous-projet à concevoir, pas un correctif.
+Pas de code écrit, décisions à prendre quand ce chantier sera repris.
