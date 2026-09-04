@@ -4,9 +4,12 @@ l'appelant (voir tracker_profile.torrent_piece_sizes, sous-projet 4b) --
 ce module reste agnostique du tracker, aucune table en dur ici."""
 from __future__ import annotations
 
+import threading
+
 import pytest
 import torf
 
+from nfogen.cancellation import OperationCancelled
 from nfogen.torrent_builder import build_torrent, piece_size_for
 
 _MO = 1024**2
@@ -80,3 +83,39 @@ def test_build_torrent_supports_a_directory_for_multi_file_packs(tmp_path):
     reloaded = torf.Torrent.read(str(output))
     assert reloaded.private is True
     assert reloaded.piece_size == piece_size_for(200, _C411_PIECE_SIZES)
+
+
+_MIN_PIECE_SIZE = 16 * 1024  # torf exige un multiple de 16 KiB
+
+
+def test_build_torrent_reports_progress_as_pieces_are_hashed(tmp_path):
+    staged = tmp_path / "Release.Name.mkv"
+    staged.write_bytes(b"x" * (4 * _MIN_PIECE_SIZE))  # exactement 4 pieces
+    output = tmp_path / "output.torrent"
+    calls: list[tuple[int, int]] = []
+
+    build_torrent(
+        str(staged), "https://c411.org/announce/SECRET", str(output), [{"piece_size": _MIN_PIECE_SIZE}],
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+
+    assert calls  # au moins un appel
+    assert calls[-1] == (4, 4)
+    assert all(done <= total == 4 for done, total in calls)
+    assert output.is_file()
+
+
+def test_build_torrent_cancellation_stops_hashing_and_writes_nothing(tmp_path):
+    staged = tmp_path / "Release.Name.mkv"
+    staged.write_bytes(b"x" * (4 * _MIN_PIECE_SIZE))
+    output = tmp_path / "output.torrent"
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    with pytest.raises(OperationCancelled):
+        build_torrent(
+            str(staged), "https://c411.org/announce/SECRET", str(output), [{"piece_size": _MIN_PIECE_SIZE}],
+            cancel_event=cancel_event,
+        )
+
+    assert not output.exists()
