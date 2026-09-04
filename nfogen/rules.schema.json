@@ -37,7 +37,37 @@
             "required": ["piece_size"],
             "additionalProperties": false
           }
-        }
+        },
+        "upload": { "$ref": "#/$defs/tracker_upload" }
+      },
+      "additionalProperties": false
+    },
+    "tracker_upload": {
+      "type": "object",
+      "description": "Mapping vers l'API d'upload du tracker (AUTOMATION.md, sous-projet 5) : categorie/sous-categorie et types/valeurs d'option, figes ici plutot que requetes dynamiquement a chaque envoi.",
+      "properties": {
+        "category_id": { "type": "integer" },
+        "subcategory_id": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "language_option_id": { "type": "integer" },
+        "language_values": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "quality_option_id": { "type": "integer" },
+        "quality_values": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "season_option_id": { "type": "integer" },
+        "season_values": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "episode_option_id": { "type": "integer" },
+        "full_season_episode_value": { "type": "integer" }
       },
       "additionalProperties": false
     },

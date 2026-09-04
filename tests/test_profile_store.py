@@ -221,6 +221,28 @@ def test_tracker_and_a_category_can_coexist():
     assert "game" in read["rules"]
 
 
+def test_tracker_upload_section_is_valid():
+    rules = {
+        "tracker": {
+            "upload": {
+                "category_id": 1,
+                "subcategory_id": {"movie": 6, "series": 7},
+                "language_option_id": 1,
+                "language_values": {"VFF": 2, "MULTI.VFF": 4},
+                "quality_option_id": 2,
+                "quality_values": {"BluRay": 11, "BluRay.HDLight": 413},
+                "season_option_id": 7,
+                "season_values": {"S01": 121},
+                "episode_option_id": 6,
+                "full_season_episode_value": 96,
+            }
+        }
+    }
+    ps.write_profile("uploadtest", rules=rules, templates={})
+    read = ps.read_profile("uploadtest")
+    assert read["rules"]["tracker"]["upload"]["category_id"] == 1
+
+
 def test_unknown_top_level_key_still_rejected():
     # Regression : le schema ne doit pas devenir "tout accepte" en ouvrant
     # "tracker" -- une cle inconnue reste une erreur (voir rules.schema.json).
