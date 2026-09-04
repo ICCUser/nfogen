@@ -60,3 +60,11 @@ def torrent_piece_sizes(profile: str) -> list[dict[str, int]]:
     (torrent_builder leve alors une erreur claire plutot que de deviner
     une taille)."""
     return _tracker_section(profile).get("torrent_piece_sizes", [])
+
+
+def upload_config(profile: str) -> dict[str, Any]:
+    """Mapping catégorie/sous-catégorie/options vers l'API d'upload du
+    tracker (rules.json -> tracker.upload, voir AUTOMATION.md sous-projet
+    5) -- dictionnaire vide si non déclaré : aucun envoi n'est alors
+    possible pour ce profil, jamais deviné."""
+    return _tracker_section(profile).get("upload", {})

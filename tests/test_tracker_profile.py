@@ -126,3 +126,50 @@ def test_c411_torrent_piece_sizes():
         {"max_bytes": 8589934592, "piece_size": 8388608},
         {"piece_size": 16777216},
     ]
+
+
+# --------------------------------------------------------------------------- #
+# tracker.upload (AUTOMATION.md, sous-projet 5) -- valeurs reelles C411,
+# donnees par l'utilisateur le 2026-09-04.
+# --------------------------------------------------------------------------- #
+def test_c411_upload_category_and_subcategory_ids():
+    upload = tracker_profile.upload_config("c411")
+    assert upload["category_id"] == 1
+    assert upload["subcategory_id"] == {
+        "movie": 6, "movie:anime": 1, "movie:documentaire": 4,
+        "series": 7, "series:anime": 2, "series:documentaire": 4,
+    }
+
+
+def test_c411_upload_language_values():
+    upload = tracker_profile.upload_config("c411")
+    assert upload["language_option_id"] == 1
+    assert upload["language_values"] == {"VFF": 2, "MULTI.VFF": 4, "VO": 1, "VOSTFR": 8}
+
+
+def test_c411_upload_quality_values():
+    upload = tracker_profile.upload_config("c411")
+    assert upload["quality_option_id"] == 2
+    assert upload["quality_values"] == {
+        "BluRay.HDLight": 413, "BluRay": 11, "BluRay.REMUX": 12, "WEB": 25, "WEB.4K": 26,
+    }
+
+
+def test_c411_upload_season_values_cover_s01_to_s30():
+    upload = tracker_profile.upload_config("c411")
+    assert upload["season_option_id"] == 7
+    assert upload["season_values"]["INTEGRALE"] == 118
+    assert upload["season_values"]["S01"] == 121
+    assert upload["season_values"]["S02"] == 122
+    assert upload["season_values"]["S30"] == 150
+    assert len(upload["season_values"]) == 31  # INTEGRALE + S01..S30
+
+
+def test_c411_upload_episode_values():
+    upload = tracker_profile.upload_config("c411")
+    assert upload["episode_option_id"] == 6
+    assert upload["full_season_episode_value"] == 96
+
+
+def test_upload_config_empty_when_not_declared():
+    assert tracker_profile.upload_config("does-not-exist") == {}

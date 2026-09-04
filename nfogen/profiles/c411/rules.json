@@ -17,7 +17,33 @@
       {"max_bytes": 3221225472, "piece_size": 4194304},
       {"max_bytes": 8589934592, "piece_size": 8388608},
       {"piece_size": 16777216}
-    ]
+    ],
+    "upload": {
+      "category_id": 1,
+      "subcategory_id": {
+        "movie": 6, "movie:anime": 1, "movie:documentaire": 4,
+        "series": 7, "series:anime": 2, "series:documentaire": 4
+      },
+      "language_option_id": 1,
+      "language_values": {"VFF": 2, "MULTI.VFF": 4, "VO": 1, "VOSTFR": 8},
+      "quality_option_id": 2,
+      "quality_values": {
+        "BluRay.HDLight": 413, "BluRay": 11, "BluRay.REMUX": 12,
+        "WEB": 25, "WEB.4K": 26
+      },
+      "season_option_id": 7,
+      "season_values": {
+        "INTEGRALE": 118,
+        "S01": 121, "S02": 122, "S03": 123, "S04": 124, "S05": 125,
+        "S06": 126, "S07": 127, "S08": 128, "S09": 129, "S10": 130,
+        "S11": 131, "S12": 132, "S13": 133, "S14": 134, "S15": 135,
+        "S16": 136, "S17": 137, "S18": 138, "S19": 139, "S20": 140,
+        "S21": 141, "S22": 142, "S23": 143, "S24": 144, "S25": 145,
+        "S26": 146, "S27": 147, "S28": 148, "S29": 149, "S30": 150
+      },
+      "episode_option_id": 6,
+      "full_season_episode_value": 96
+    }
   },
   "video": {
     "requires_field": "release_name",
