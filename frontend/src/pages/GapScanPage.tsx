@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import ActiveTransfersTray from "../components/ActiveTransfersTray";
 import { KeyValueEditor } from "../components/ListEditor";
 import UploadPrepPanel from "../components/UploadPrepPanel";
 import {
@@ -354,6 +355,8 @@ export default function GapScanPage() {
           </button>
         </div>
       </div>
+
+      <ActiveTransfersTray />
 
       {notConfigured && (
         <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">

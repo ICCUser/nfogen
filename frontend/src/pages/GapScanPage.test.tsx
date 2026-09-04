@@ -31,6 +31,10 @@ vi.mock("../components/UploadPrepPanel", () => ({
   ),
 }));
 
+vi.mock("../components/ActiveTransfersTray", () => ({
+  default: () => <div>Transferts en cours (mock)</div>,
+}));
+
 import {
   gapscanConfig,
   gapscanConfigWrite,
@@ -137,6 +141,11 @@ describe("GapScanPage", () => {
     const table = within(screen.getByRole("table"));
     expect(table.getByText("Absent de C411")).toBeInTheDocument();
     expect(table.getByText(/2160p.*BLURAY.*VFF/)).toBeInTheDocument();
+  });
+
+  it("affiche l'encart Transferts en cours", async () => {
+    renderPage();
+    expect(await screen.findByText("Transferts en cours (mock)")).toBeInTheDocument();
   });
 
   it("signale un chemin local non resolu par un badge, avec le detail en infobulle", async () => {
