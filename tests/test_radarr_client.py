@@ -102,6 +102,48 @@ def test_list_movie_files_defaults_remote_path_to_none_when_absent():
     assert movies[0].remote_path is None
 
 
+def test_get_movie_details_parses_overview_poster_genres_credits():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/movie/42"
+        return httpx.Response(
+            200,
+            json={
+                "id": 42,
+                "overview": "Dom Cobb est un voleur experimente...",
+                "genres": ["Science-Fiction", "Action"],
+                "images": [
+                    {"coverType": "fanart", "remoteUrl": "https://image.tmdb.org/fanart.jpg"},
+                    {"coverType": "poster", "remoteUrl": "https://image.tmdb.org/poster.jpg"},
+                ],
+                "credits": [
+                    {"type": "cast", "character": "Cobb", "person": {"name": "Leonardo DiCaprio"}},
+                    {"type": "crew", "job": "Director", "person": {"name": "Christopher Nolan"}},
+                ],
+            },
+        )
+
+    details = _client(handler).get_movie_details(42)
+
+    assert details.overview == "Dom Cobb est un voleur experimente..."
+    assert details.genres == ["Science-Fiction", "Action"]
+    assert details.poster_url == "https://image.tmdb.org/poster.jpg"
+    assert details.directors == ["Christopher Nolan"]
+    assert details.cast == ["Leonardo DiCaprio"]
+
+
+def test_get_movie_details_degrades_gracefully_when_fields_absent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"id": 42})
+
+    details = _client(handler).get_movie_details(42)
+
+    assert details.overview == ""
+    assert details.poster_url is None
+    assert details.genres == []
+    assert details.directors == []
+    assert details.cast == []
+
+
 def test_requires_base_url_and_api_key():
     with pytest.raises(RadarrError):
         RadarrClient(base_url="", api_key="x")

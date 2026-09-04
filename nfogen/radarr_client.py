@@ -46,6 +46,23 @@ class RadarrMovieFile:
     remote_path: Optional[str] = None
 
 
+@dataclass
+class RadarrMovieDetails:
+    """Metadonnees de presentation d'un film (synopsis, affiche, genres,
+    realisateur/casting) -- recuperees A LA DEMANDE (voir get_movie_details),
+    jamais pendant le scan GapScan (voir AUTOMATION.md, sous-projet 5,
+    decision 1 : inutile pour l'ecrasante majorite des 1000+ items scannes,
+    seulement pour celui qu'on envoie reellement a un tracker). Radarr
+    interroge deja TMDB pour son propre usage -- reutilise ici plutot
+    qu'un client TMDB dedie."""
+
+    overview: str = ""
+    poster_url: Optional[str] = None
+    genres: list[str] = field(default_factory=list)
+    directors: list[str] = field(default_factory=list)
+    cast: list[str] = field(default_factory=list)
+
+
 class RadarrClient:
     """Client HTTP pour l'API v3 de Radarr."""
 
@@ -116,3 +133,30 @@ class RadarrClient:
                 )
             )
         return movies
+
+    def get_movie_details(self, movie_id: int) -> RadarrMovieDetails:
+        """`GET /api/v3/movie/{id}` : metadonnees de presentation completes
+        d'UN film -- jamais appele en boucle pendant un scan, uniquement au
+        moment de preparer un envoi vers un tracker (voir upload_prep.py)."""
+        movie = self._get(f"/api/v3/movie/{movie_id}")
+        poster_url = next(
+            (img.get("remoteUrl") for img in movie.get("images", []) if img.get("coverType") == "poster"),
+            None,
+        )
+        directors = [
+            c["person"]["name"]
+            for c in movie.get("credits", [])
+            if c.get("type") == "crew" and c.get("job") == "Director" and c.get("person", {}).get("name")
+        ]
+        cast = [
+            c["person"]["name"]
+            for c in movie.get("credits", [])
+            if c.get("type") == "cast" and c.get("person", {}).get("name")
+        ]
+        return RadarrMovieDetails(
+            overview=movie.get("overview") or "",
+            poster_url=poster_url,
+            genres=movie.get("genres") or [],
+            directors=directors,
+            cast=cast,
+        )
