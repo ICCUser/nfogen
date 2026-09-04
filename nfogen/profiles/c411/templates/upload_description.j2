@@ -1,0 +1,17 @@
+[center][size=150]{{ title }}[/size][/center]
+
+{% if poster_url %}[center][img]{{ poster_url }}[/img][/center]
+
+{% endif %}[h2]Synopsis[/h2]
+{% if overview %}{{ overview }}{% else %}(synopsis non disponible){% endif %}
+
+[h2]Informations[/h2]
+{% if directors %}[b]Réalisateur :[/b] {{ directors|join(", ") }}
+{% endif %}{% if cast %}[b]Acteurs :[/b] {{ cast|join(", ") }}
+{% endif %}{% if genres %}[b]Genre :[/b] {{ genres|join(", ") }}
+{% endif %}
+[h2]Qualité[/h2]
+[list]
+[*]Vidéo : {{ video_codec }} {{ resolution }}p ({{ source }})
+{% if audio_languages %}[*]Audio : {{ audio_languages|join(", ") }}
+{% endif %}[/list]
