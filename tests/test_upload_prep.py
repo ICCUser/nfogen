@@ -2,11 +2,13 @@
 (`nfogen/upload_prep.py`, AUTOMATION.md sous-projet 4)."""
 from __future__ import annotations
 
+import threading
 from pathlib import Path as _Path
 from unittest.mock import patch
 
 import pytest
 
+from nfogen.cancellation import OperationCancelled
 from nfogen.upload_prep import (
     CommitResult,
     ProposedFile,
@@ -14,6 +16,7 @@ from nfogen.upload_prep import (
     commit_upload,
     group_by_team,
     preview_upload,
+    resolve_staging_config,
     send_to_tracker,
 )
 
@@ -284,6 +287,114 @@ def test_commit_without_automation_extra_raises(monkeypatch):
     monkeypatch.setattr("nfogen.upload_prep._TORRENT_BUILDER_AVAILABLE", False)
     with pytest.raises(RuntimeError, match="automation"):
         commit_upload("X", [ProposedFile(source_path="/x.mkv", staged_name="X.mkv")])
+
+
+# --------------------------------------------------------------------------- #
+# resolve_staging_config / hooks on_progress/cancel_event (AUTOMATION.md,
+# sous-projet 4c) : commit_upload s'execute en tache de fond, suivi et
+# annulable -- voir commit_job_runner.py.
+# --------------------------------------------------------------------------- #
+def test_resolve_staging_config_returns_staging_dir_and_announce_url(monkeypatch):
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: "/staging"
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
+    )
+    assert resolve_staging_config("c411") == ("/staging", "https://c411.example/announce/abc123")
+
+
+def test_resolve_staging_config_raises_without_staging_dir(monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: None)
+    with pytest.raises(ValueError, match="scène"):
+        resolve_staging_config("c411")
+
+
+def test_commit_upload_reports_progress_through_all_three_steps(tmp_path, monkeypatch):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.extract.extract_video_text", lambda path: "General\nFormat : Matroska\n"
+    )
+    source = _make_source(tmp_path, "source.mkv")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+    calls: list[tuple[str, float]] = []
+
+    commit_upload(
+        "Movie.2020.1080p.x264-TEAM", files, on_progress=lambda step, pct: calls.append((step, pct))
+    )
+
+    steps_seen = [step for step, _ in calls]
+    assert steps_seen[0] == "staging"
+    assert "generating_nfo" in steps_seen
+    assert steps_seen[-1] == "building_torrent"
+    assert calls[-1][1] == 100.0  # 100% a la toute fin de la derniere etape
+
+
+def test_commit_upload_without_hooks_behaves_exactly_as_before(tmp_path, monkeypatch):
+    """Comportement 100% synchrone inchange quand on_progress/cancel_event
+    sont omis -- meme scenario que
+    test_commit_single_file_stages_and_builds_torrent, sans hooks."""
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.extract.extract_video_text", lambda path: "General\nFormat : Matroska\n"
+    )
+    source = _make_source(tmp_path, "source.mkv")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+
+    result = commit_upload("Movie.2020.1080p.x264-TEAM", files)
+
+    assert isinstance(result, CommitResult)
+    assert _Path(result.staged_path).is_file()
+
+
+def test_commit_upload_propagates_cancellation(tmp_path, monkeypatch):
+    """Force le repli COPIE (jamais hardlink, EXDEV simule -- meme
+    technique que test_file_staging.py) : l'annulation y est verifiee des
+    le premier bloc, contrairement au hardlink (instantane, aucun
+    checkpoint) ou a un torrent a une seule piece (torf peut ne jamais
+    consulter le callback pour un job qui se termine avant d'y arriver --
+    verifie separement dans test_torrent_builder.py sur un job multi-pieces)."""
+    import errno
+    import os as os_module
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
+    )
+
+    def fake_link(src, dst):
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    monkeypatch.setattr(os_module, "link", fake_link)
+    source = _make_source(tmp_path, "source.mkv")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    with pytest.raises(OperationCancelled):
+        commit_upload("Movie.2020.1080p.x264-TEAM", files, cancel_event=cancel_event)
 
 
 # --------------------------------------------------------------------------- #

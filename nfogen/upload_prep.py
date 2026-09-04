@@ -9,9 +9,10 @@ fois) -- la mise en scene cree de vrais fichiers et la generation de
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from . import c411_upload_options, engine, extract, file_staging, gapscan_config_store, tracker_profile
 from .c411_upload_client import C411UploadClient, C411UploadError
@@ -214,13 +215,13 @@ def preview_upload(
     return proposals
 
 
-def commit_upload(release_name: str, files: list[ProposedFile], profile: str = "c411") -> CommitResult:
-    """Met en scene (hardlink/copie, `file_staging.py`) et genere le
-    `.torrent` (`torrent_builder.py`) pour UN groupe deja propose par
-    `preview_upload()` -- le frontend renvoie exactement ce qu'il a recu
-    pour ce groupe, aucun etat serveur entre les deux appels. Fichier
-    unique mis en scene directement (`<release_name><ext>`), groupe
-    multi-fichiers dans un dossier (`<release_name>/<nom par fichier>`)."""
+def resolve_staging_config(profile: str = "c411") -> tuple[str, str]:
+    """Verifications rapides (config uniquement, aucune I/O lourde) --
+    faites AVANT de demarrer une tache de fond (voir
+    commit_job_runner.start(), sous-projet 4c), pour que les erreurs de
+    configuration restent visibles IMMEDIATEMENT (comme avant sous-projet
+    4c), pas seulement apres coup dans l'etat d'une tache. Renvoie
+    `(staging_dir, announce_url)`."""
     if not _TORRENT_BUILDER_AVAILABLE:
         raise RuntimeError(
             "Génération de .torrent indisponible : pip install nfogen[automation]"
@@ -236,15 +237,48 @@ def commit_upload(release_name: str, files: list[ProposedFile], profile: str = "
             f"Adresse d'annonce non configurée pour le profil '{profile}' "
             "(PUT /gapscan/config, champ tracker_announce_url)."
         )
+    return staging_dir, announce_url
+
+
+def commit_upload(
+    release_name: str,
+    files: list[ProposedFile],
+    profile: str = "c411",
+    on_progress: Optional[Callable[[str, float], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
+) -> CommitResult:
+    """Met en scene (hardlink/copie, `file_staging.py`) et genere le
+    `.torrent` (`torrent_builder.py`) pour UN groupe deja propose par
+    `preview_upload()` -- le frontend renvoie exactement ce qu'il a recu
+    pour ce groupe, aucun etat serveur entre les deux appels. Fichier
+    unique mis en scene directement (`<release_name><ext>`), groupe
+    multi-fichiers dans un dossier (`<release_name>/<nom par fichier>`).
+
+    `on_progress`/`cancel_event` (AUTOMATION.md, sous-projet 4c,
+    optionnels) : role d'ADAPTATEUR -- convertit les callbacks bruts de
+    file_staging.py (bytes_done, bytes_total) et torrent_builder.py
+    (pieces_done, pieces_total) en pourcentages 0-100 relayes a
+    on_progress(step_name, percent). Omis : comportement 100% synchrone
+    inchange (aucun test existant ne casse)."""
+    staging_dir, announce_url = resolve_staging_config(profile)
+
+    def _staging_progress(done: int, total: int) -> None:
+        if on_progress:
+            pct = (done / total * 100) if total else 100.0
+            on_progress("staging", pct)
 
     if len(files) == 1:
         staged_path = str(Path(staging_dir) / files[0].staged_name)
-        file_staging.stage_file(files[0].source_path, staged_path)
+        file_staging.stage_file(
+            files[0].source_path, staged_path,
+            on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
+        )
         raw_text = extract.extract_video_text(Path(staged_path))
     else:
         target_dir = str(Path(staging_dir) / release_name)
         file_staging.stage_files(
-            [f.source_path for f in files], target_dir, [f.staged_name for f in files]
+            [f.source_path for f in files], target_dir, [f.staged_name for f in files],
+            on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
         )
         staged_path = target_dir
         # Un seul .nfo pour tout le pack (pas un par episode) : coherent
@@ -252,6 +286,8 @@ def commit_upload(release_name: str, files: list[ProposedFile], profile: str = "
         # l'utilisateur, 2026-08-28).
         raw_text = extract.extract_video_dir_text(Path(staged_path))
 
+    if on_progress:
+        on_progress("generating_nfo", 0.0)
     # Lu depuis le chemin MIS EN SCENE (pas l'original) : "Complete name"
     # dans le .nfo reflete alors le nom de release final, pas le nom de
     # telechargement d'origine.
@@ -263,10 +299,21 @@ def commit_upload(release_name: str, files: list[ProposedFile], profile: str = "
     )
     nfo_path = str(Path(staging_dir) / (nfo_filename[0] if nfo_filename else f"{release_name}.nfo"))
     Path(nfo_path).write_text(nfo, encoding="utf-8")
+    if on_progress:
+        on_progress("generating_nfo", 100.0)
 
     torrent_path = str(Path(staging_dir) / f"{release_name}.torrent")
     piece_sizes = tracker_profile.torrent_piece_sizes(profile)
-    torrent_builder.build_torrent(staged_path, announce_url, torrent_path, piece_sizes)
+
+    def _torrent_progress(pieces_done: int, pieces_total: int) -> None:
+        if on_progress:
+            pct = (pieces_done / pieces_total * 100) if pieces_total else 100.0
+            on_progress("building_torrent", pct)
+
+    torrent_builder.build_torrent(
+        staged_path, announce_url, torrent_path, piece_sizes,
+        on_progress=_torrent_progress if on_progress else None, cancel_event=cancel_event,
+    )
     return CommitResult(
         release_name=release_name, staged_path=staged_path, torrent_path=torrent_path, nfo_path=nfo_path
     )
