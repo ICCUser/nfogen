@@ -54,7 +54,14 @@ from .profile_store import ProfileStoreError
 # dependance dure de l'API -- une install nfogen[api] seule (sans httpx)
 # doit continuer a demarrer normalement, /gapscan/* renvoie alors 501.
 try:
-    from . import gapscan, gapscan_config_store, gapscan_runner, tracker_profile, upload_prep
+    from . import (
+        commit_job_runner,
+        gapscan,
+        gapscan_config_store,
+        gapscan_runner,
+        tracker_profile,
+        upload_prep,
+    )
     from .radarr_client import RadarrClient, RadarrError
     from .sonarr_client import SonarrClient, SonarrError
     from .torznab_client import TorznabClient, TorznabError
@@ -943,13 +950,46 @@ class PrepareUploadCommitRequest(BaseModel):
 
 
 @app.post("/gapscan/prepare-upload/commit", dependencies=[Depends(require_token)])
-def gapscan_prepare_upload_commit(req: PrepareUploadCommitRequest) -> dict[str, Any]:
+def gapscan_prepare_upload_commit(req: PrepareUploadCommitRequest) -> dict[str, str]:
+    """Demarre la mise en scene + generation de .torrent EN TACHE DE FOND
+    (AUTOMATION.md, sous-projet 4c) -- renvoie un job_id immediatement,
+    suivi via GET /gapscan/commit-jobs/{job_id}. Erreurs de configuration
+    (staging_dir/announce_url manquants) restent surfacees immediatement
+    (voir upload_prep.resolve_staging_config, verifie AVANT de demarrer la
+    tache, dans commit_job_runner.start())."""
     _require_gapscan_available()
     files = [
         upload_prep.ProposedFile(source_path=f.source_path, staged_name=f.staged_name) for f in req.files
     ]
-    result = _run_upload_prep(upload_prep.commit_upload, req.release_name, files, profile=req.profile)
-    return asdict(result)
+    job_id = _run_upload_prep(commit_job_runner.start, req.release_name, files, profile=req.profile)
+    return {"job_id": job_id}
+
+
+@app.get("/gapscan/commit-jobs", dependencies=[Depends(require_token)])
+def gapscan_commit_jobs() -> list[dict[str, Any]]:
+    _require_gapscan_available()
+    return commit_job_runner.list_jobs()
+
+
+@app.get("/gapscan/commit-jobs/{job_id}", dependencies=[Depends(require_token)])
+def gapscan_commit_job_status(job_id: str) -> dict[str, Any]:
+    _require_gapscan_available()
+    status = commit_job_runner.status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Tâche inconnue.")
+    return status
+
+
+@app.post("/gapscan/commit-jobs/{job_id}/cancel", dependencies=[Depends(require_token)])
+def gapscan_commit_job_cancel(job_id: str) -> dict[str, str]:
+    _require_gapscan_available()
+    status = commit_job_runner.status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Tâche inconnue.")
+    if status["state"] in ("done", "error", "cancelled"):
+        raise HTTPException(status_code=409, detail="Cette tâche est déjà terminée.")
+    commit_job_runner.cancel(job_id)
+    return {"status": "cancelling"}
 
 
 class PrepareUploadSendRequest(BaseModel):

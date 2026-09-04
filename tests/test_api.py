@@ -1332,6 +1332,9 @@ def test_prepare_upload_routes_require_gapscan_available(reload_api, monkeypatch
         client.post("/gapscan/prepare-upload/commit", json={"release_name": "x", "files": []}).status_code
         == 501
     )
+    assert client.get("/gapscan/commit-jobs").status_code == 501
+    assert client.get("/gapscan/commit-jobs/x").status_code == 501
+    assert client.post("/gapscan/commit-jobs/x/cancel").status_code == 501
 
 
 def test_prepare_upload_routes_require_auth_when_token_configured(reload_api):
@@ -1342,6 +1345,9 @@ def test_prepare_upload_routes_require_auth_when_token_configured(reload_api):
         client.post("/gapscan/prepare-upload/commit", json={"release_name": "x", "files": []}).status_code
         == 401
     )
+    assert client.get("/gapscan/commit-jobs").status_code == 401
+    assert client.get("/gapscan/commit-jobs/x").status_code == 401
+    assert client.post("/gapscan/commit-jobs/x/cancel").status_code == 401
 
 
 def test_prepare_upload_preview_empty_paths_returns_empty_list(reload_api):
@@ -1427,12 +1433,83 @@ def test_prepare_upload_commit_real_flow(reload_api, tmp_path):
         },
     )
     assert resp.status_code == 200
-    body = resp.json()
+    job_id = resp.json()["job_id"]
+    assert job_id
+
+    deadline = time.monotonic() + 5.0
+    status = None
+    while time.monotonic() < deadline:
+        status = client.get(f"/gapscan/commit-jobs/{job_id}").json()
+        if status["state"] in ("done", "error", "cancelled"):
+            break
+        time.sleep(0.01)
+
+    assert status["state"] == "done"
+    body = status["result"]
     assert body["release_name"] == "Movie.2020.1080p.x264-TEAM"
     assert body["staged_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.mkv")
     assert body["torrent_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.torrent")
     assert body["nfo_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.nfo")
     assert (staging_dir / "Movie.2020.1080p.x264-TEAM.nfo").is_file()
+
+
+def test_commit_job_status_404_for_unknown_job(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.get("/gapscan/commit-jobs/does-not-exist")
+    assert resp.status_code == 404
+
+
+def test_commit_jobs_list_is_empty_initially(reload_api):
+    # commit_job_runner est un singleton de module (comme gapscan_runner),
+    # pas reinitialise par reload_api -- rechargement explicite ici pour
+    # partir d'un registre vierge, independamment de l'ordre des tests.
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    importlib.reload(mod.commit_job_runner)
+    client = TestClient(mod.app)
+    resp = client.get("/gapscan/commit-jobs")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_cancel_unknown_job_is_404(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post("/gapscan/commit-jobs/does-not-exist/cancel")
+    assert resp.status_code == 404
+
+
+def test_cancel_already_finished_job_is_409(reload_api, tmp_path):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    source = tmp_path / "source.mkv"
+    source.write_bytes(b"contenu")
+
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
+    )
+    client = TestClient(mod.app)
+    client.put(
+        "/gapscan/config",
+        json={
+            "tracker_announce_url": "https://c411.example/announce/abc123",
+            "staging_dir": str(staging_dir),
+        },
+    )
+    resp = client.post(
+        "/gapscan/prepare-upload/commit",
+        json={"release_name": "X", "files": [{"source_path": str(source), "staged_name": "X.mkv"}]},
+    )
+    job_id = resp.json()["job_id"]
+
+    deadline = time.monotonic() + 5.0
+    status = {"state": "staging"}
+    while time.monotonic() < deadline and status["state"] not in ("done", "error", "cancelled"):
+        status = client.get(f"/gapscan/commit-jobs/{job_id}").json()
+        time.sleep(0.01)
+
+    cancel_resp = client.post(f"/gapscan/commit-jobs/{job_id}/cancel")
+    assert cancel_resp.status_code == 409
 
 
 def test_prepare_upload_send_creates_a_draft(reload_api, tmp_path, monkeypatch):
