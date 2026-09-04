@@ -8,6 +8,7 @@ import { ProfileProvider } from "../ProfileContext";
 vi.mock("../api/client", () => ({
   prepareUploadPreview: vi.fn(),
   prepareUploadCommit: vi.fn(),
+  sendToTracker: vi.fn(),
   listAllProfiles: vi.fn(),
   readManagedProfile: vi.fn(),
 }));
@@ -17,14 +18,35 @@ import {
   prepareUploadCommit,
   prepareUploadPreview,
   readManagedProfile,
+  sendToTracker,
 } from "../api/client";
 import { ApiError } from "../api/types";
 import type { UploadGroupProposal } from "../api/types";
 
-function renderPanel(props: { localPaths: string[]; title: string; onClose: () => void }) {
+function renderPanel(props: {
+  localPaths: string[];
+  title: string;
+  onClose: () => void;
+  mediaType?: "movie" | "series";
+  radarrMovieId?: number | null;
+  sonarrSeriesId?: number | null;
+  tmdbId?: number | null;
+  tvdbId?: number | null;
+  genre?: "anime" | "documentaire" | null;
+  seasonNumber?: number | null;
+}) {
   return render(
     <ProfileProvider>
-      <UploadPrepPanel {...props} />
+      <UploadPrepPanel
+        mediaType="movie"
+        radarrMovieId={null}
+        sonarrSeriesId={null}
+        tmdbId={null}
+        tvdbId={null}
+        genre={null}
+        seasonNumber={null}
+        {...props}
+      />
     </ProfileProvider>,
   );
 }
@@ -47,6 +69,7 @@ const BLOCKED_GROUP: UploadGroupProposal[] = [
 beforeEach(() => {
   vi.mocked(prepareUploadPreview).mockReset();
   vi.mocked(prepareUploadCommit).mockReset();
+  vi.mocked(sendToTracker).mockReset();
   vi.mocked(listAllProfiles).mockResolvedValue({ c411: ["video"], ygg: ["video"] });
   vi.mocked(readManagedProfile).mockResolvedValue({
     name: "c411", rules: { tracker: { display_name: "C411" } }, templates: {},
@@ -102,6 +125,67 @@ it("Confirmer appelle prepareUploadCommit et affiche le resultat", async () => {
     ONE_GROUP[0].files,
     "c411",
   );
+});
+
+it("affiche le bouton Envoyer a C411 seulement apres confirmation, et affiche le lien du brouillon", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({
+    release_name: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
+    staged_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.mkv",
+    torrent_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.torrent",
+    nfo_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.nfo",
+  });
+  vi.mocked(sendToTracker).mockResolvedValue({
+    draft_id: 555, draft_url: "https://c411.org/user/drafts/555", duplicate_warning: null,
+  });
+
+  renderPanel({
+    localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn(),
+    mediaType: "movie", radarrMovieId: 42, sonarrSeriesId: null, tmdbId: 603, tvdbId: null,
+    genre: null, seasonNumber: null,
+  });
+
+  expect(screen.queryByRole("button", { name: /Envoyer à C411/i })).not.toBeInTheDocument();
+
+  await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(screen.getByRole("button", { name: /Confirmer/i }));
+
+  const sendButton = await screen.findByRole("button", { name: /Envoyer à C411/i });
+  await user.click(sendButton);
+
+  expect(await screen.findByText(/c411\.org\/user\/drafts\/555/)).toBeInTheDocument();
+  expect(sendToTracker).toHaveBeenCalledWith(
+    expect.objectContaining({
+      releaseName: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
+      mediaType: "movie", radarrMovieId: 42, tmdbId: 603,
+    }),
+  );
+});
+
+it("affiche l'avertissement anti-doublon quand present", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({
+    release_name: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
+    staged_path: "/staging/x.mkv", torrent_path: "/staging/x.torrent", nfo_path: "/staging/x.nfo",
+  });
+  vi.mocked(sendToTracker).mockResolvedValue({
+    draft_id: 555, draft_url: "https://c411.org/user/drafts/555",
+    duplicate_warning: "1 release(s) déjà approuvée(s) pour cet identifiant TMDB...",
+  });
+
+  renderPanel({
+    localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn(),
+    mediaType: "movie", radarrMovieId: 42, sonarrSeriesId: null, tmdbId: 603, tvdbId: null,
+    genre: null, seasonNumber: null,
+  });
+
+  await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(await screen.findByRole("button", { name: /Envoyer à C411/i }));
+
+  expect(await screen.findByText(/déjà approuvée/i)).toBeInTheDocument();
 });
 
 it("une erreur de chargement affiche un message", async () => {

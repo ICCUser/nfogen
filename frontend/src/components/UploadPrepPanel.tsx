@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { prepareUploadCommit, prepareUploadPreview } from "../api/client";
+import { prepareUploadCommit, prepareUploadPreview, sendToTracker } from "../api/client";
 import { ApiError } from "../api/types";
-import type { UploadCommitResult, UploadGroupProposal } from "../api/types";
+import type { SendToTrackerResult, UploadCommitResult, UploadGroupProposal } from "../api/types";
 import { useProfile } from "../ProfileContext";
 
 /** Apercu (sans ecriture disque) puis confirmation par groupe de la mise
@@ -14,10 +14,24 @@ import { useProfile } from "../ProfileContext";
 export default function UploadPrepPanel({
   localPaths,
   title,
+  mediaType,
+  radarrMovieId,
+  sonarrSeriesId,
+  tmdbId,
+  tvdbId,
+  genre,
+  seasonNumber,
   onClose,
 }: {
   localPaths: string[];
   title: string;
+  mediaType: "movie" | "series";
+  radarrMovieId: number | null;
+  sonarrSeriesId: number | null;
+  tmdbId: number | null;
+  tvdbId: number | null;
+  genre: "anime" | "documentaire" | null;
+  seasonNumber: number | null;
   onClose: () => void;
 }) {
   const { profile: globalProfile, profiles } = useProfile();
@@ -40,6 +54,9 @@ export default function UploadPrepPanel({
   const [committing, setCommitting] = useState<number | null>(null);
   const [commitResults, setCommitResults] = useState<Record<number, UploadCommitResult>>({});
   const [commitErrors, setCommitErrors] = useState<Record<number, string>>({});
+  const [sending, setSending] = useState<number | null>(null);
+  const [sendResults, setSendResults] = useState<Record<number, SendToTrackerResult>>({});
+  const [sendErrors, setSendErrors] = useState<Record<number, string>>({});
 
   async function loadPreview(override?: string, profileOverride: string = profile) {
     setRecalculating(true);
@@ -78,6 +95,38 @@ export default function UploadPrepPanel({
       }));
     } finally {
       setCommitting(null);
+    }
+  }
+
+  async function handleSend(index: number) {
+    const commit = commitResults[index];
+    if (!commit) return;
+    setSending(index);
+    setSendErrors((prev) => ({ ...prev, [index]: "" }));
+    try {
+      const result = await sendToTracker({
+        releaseName: commit.release_name,
+        stagedPath: commit.staged_path,
+        torrentPath: commit.torrent_path,
+        nfoPath: commit.nfo_path,
+        profile,
+        mediaType,
+        radarrMovieId: radarrMovieId ?? undefined,
+        sonarrSeriesId: sonarrSeriesId ?? undefined,
+        tmdbId: tmdbId ?? undefined,
+        tvdbId: tvdbId ?? undefined,
+        genre: genre ?? undefined,
+        seasonNumber: seasonNumber ?? undefined,
+        draftId: sendResults[index]?.draft_id,
+      });
+      setSendResults((prev) => ({ ...prev, [index]: result }));
+    } catch (e) {
+      setSendErrors((prev) => ({
+        ...prev,
+        [index]: e instanceof ApiError ? e.message : "Envoi impossible.",
+      }));
+    } finally {
+      setSending(null);
     }
   }
 
@@ -172,6 +221,37 @@ export default function UploadPrepPanel({
               <br />
               NFO : <span className="font-mono">{commitResults[index].nfo_path}</span>
             </p>
+          )}
+          {commitResults[index] && !sendResults[index] && (
+            <button
+              type="button"
+              onClick={() => handleSend(index)}
+              disabled={sending === index}
+              className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
+            >
+              {sending === index ? "Envoi…" : "Envoyer à C411"}
+            </button>
+          )}
+          {sendErrors[index] && <p className="text-xs text-crit">{sendErrors[index]}</p>}
+          {sendResults[index] && (
+            <div className="space-y-1 text-xs">
+              <p className="text-good">
+                Brouillon créé :{" "}
+                <a
+                  href={sendResults[index].draft_url}
+                  className="underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {sendResults[index].draft_url}
+                </a>
+                <br />
+                Finalise-le sur le site pour l'envoyer réellement en modération.
+              </p>
+              {sendResults[index].duplicate_warning && (
+                <p className="text-warn">⚠ {sendResults[index].duplicate_warning}</p>
+              )}
+            </div>
           )}
         </div>
       ))}
