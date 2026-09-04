@@ -4,11 +4,11 @@ CONFIRME (reutilise rules.captures, deja construit pour la validation) et
 de la config declarative du profil -- pur, sans I/O, sans reseau."""
 from __future__ import annotations
 
+import pytest
+
 from nfogen import c411_upload_options as options_engine
 from nfogen import profile_store as ps
 from nfogen.registry import unregister_profile
-
-import pytest
 
 
 @pytest.fixture(autouse=True)
