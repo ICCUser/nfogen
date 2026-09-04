@@ -1435,6 +1435,55 @@ def test_prepare_upload_commit_real_flow(reload_api, tmp_path):
     assert (staging_dir / "Movie.2020.1080p.x264-TEAM.nfo").is_file()
 
 
+def test_prepare_upload_send_creates_a_draft(reload_api, tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(
+        mod.upload_prep, "send_to_tracker",
+        lambda **kwargs: mod.upload_prep.SendResult(draft_id=555, draft_url="https://c411.org/user/drafts/555"),
+    )
+    client = TestClient(mod.app)
+
+    resp = client.post(
+        "/gapscan/prepare-upload/send",
+        json={
+            "release_name": "Movie.2020.BluRay-TEAM",
+            "staged_path": str(staged), "torrent_path": str(torrent), "nfo_path": str(nfo),
+            "profile": "c411", "media_type": "movie", "radarr_movie_id": 42, "tmdb_id": 603,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["draft_id"] == 555
+    assert body["draft_url"] == "https://c411.org/user/drafts/555"
+    assert body["duplicate_warning"] is None
+
+
+def test_prepare_upload_send_requires_auth_when_token_configured(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN="secret123")
+    client = TestClient(mod.app)
+    resp = client.post("/gapscan/prepare-upload/send", json={
+        "release_name": "X", "staged_path": "/x.mkv", "torrent_path": "/x.torrent", "nfo_path": "/x.nfo",
+    })
+    assert resp.status_code == 401
+
+
+def test_prepare_upload_send_requires_gapscan_available(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod, "_GAPSCAN_AVAILABLE", False)
+    client = TestClient(mod.app)
+    resp = client.post("/gapscan/prepare-upload/send", json={
+        "release_name": "X", "staged_path": "/x.mkv", "torrent_path": "/x.torrent", "nfo_path": "/x.nfo",
+    })
+    assert resp.status_code == 501
+
+
 def test_gapscan_run_rejects_when_c411_not_configured(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY=None)
     client = TestClient(mod.app)

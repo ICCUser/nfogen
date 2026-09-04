@@ -952,6 +952,38 @@ def gapscan_prepare_upload_commit(req: PrepareUploadCommitRequest) -> dict[str, 
     return asdict(result)
 
 
+class PrepareUploadSendRequest(BaseModel):
+    release_name: str
+    staged_path: str
+    torrent_path: str
+    nfo_path: str
+    profile: str = "c411"
+    media_type: str = "movie"
+    radarr_movie_id: Optional[int] = None
+    sonarr_series_id: Optional[int] = None
+    tmdb_id: Optional[int] = None
+    tvdb_id: Optional[int] = None
+    genre: Optional[str] = None
+    season_number: Optional[int] = None
+    draft_id: Optional[Any] = None
+
+
+@app.post("/gapscan/prepare-upload/send", dependencies=[Depends(require_token)])
+def gapscan_prepare_upload_send(req: PrepareUploadSendRequest) -> dict[str, Any]:
+    """Cree (ou met a jour) un BROUILLON C411 -- jamais une soumission
+    reelle en moderation (voir AUTOMATION.md, sous-projet 5, decision 6)."""
+    _require_gapscan_available()
+    result = _run_upload_prep(
+        upload_prep.send_to_tracker,
+        release_name=req.release_name, staged_path=req.staged_path, torrent_path=req.torrent_path,
+        nfo_path=req.nfo_path, profile=req.profile, media_type=req.media_type,
+        radarr_movie_id=req.radarr_movie_id, sonarr_series_id=req.sonarr_series_id,
+        tmdb_id=req.tmdb_id, tvdb_id=req.tvdb_id, genre=req.genre, season_number=req.season_number,
+        draft_id=req.draft_id,
+    )
+    return asdict(result)
+
+
 # Frontend builde, optionnel (NFOGEN_FRONTEND_DIST) : enregistre en dernier,
 # les routes API ci-dessus restent prioritaires.
 _frontend_dist = os.environ.get("NFOGEN_FRONTEND_DIST")
