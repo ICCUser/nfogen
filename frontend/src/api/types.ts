@@ -153,6 +153,11 @@ export interface GapResult {
   /** "anime"/"documentaire" d'apres la categorie C411 du premier match
    * trouve ; null si standard OU si aucun match (voir GAPSCAN.md). */
   genre: "anime" | "documentaire" | null;
+  /** Identifiant Radarr/Sonarr interne (l'un ou l'autre selon media_type)
+   * -- permet de recuperer des metadonnees de presentation a la demande
+   * au moment d'un envoi vers un tracker (AUTOMATION.md, sous-projet 5). */
+  radarr_movie_id: number | null;
+  sonarr_series_id: number | null;
 }
 
 /** GET /gapscan/results : pagination cote serveur (voir GAPSCAN.md,
@@ -229,4 +234,13 @@ export interface UploadCommitResult {
   staged_path: string;
   torrent_path: string;
   nfo_path: string;
+}
+
+/** POST /gapscan/prepare-upload/send : cree/met a jour un BROUILLON C411
+ * -- n'entre jamais en file de moderation tout seul (voir AUTOMATION.md,
+ * sous-projet 5, decision 6). */
+export interface SendToTrackerResult {
+  draft_id: number | string;
+  draft_url: string;
+  duplicate_warning: string | null;
 }

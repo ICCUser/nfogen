@@ -15,6 +15,7 @@ import {
   prepareUploadPreview,
   previewGenerate,
   proposeReleaseName,
+  sendToTracker,
   writeManagedProfile,
 } from "./client";
 import { ApiError } from "./types";
@@ -274,6 +275,47 @@ describe("prepareUploadPreview / prepareUploadCommit", () => {
       files,
       profile: "c411",
     });
+  });
+});
+
+describe("sendToTracker", () => {
+  it("POST le bon corps et renvoie le resultat", async () => {
+    const sendResult = { draft_id: 555, draft_url: "https://c411.org/user/drafts/555", duplicate_warning: null };
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(sendResult));
+
+    const result = await sendToTracker({
+      releaseName: "Movie.2020.BluRay-TEAM",
+      stagedPath: "/staging/Movie.2020.BluRay-TEAM.mkv",
+      torrentPath: "/staging/Movie.2020.BluRay-TEAM.torrent",
+      nfoPath: "/staging/Movie.2020.BluRay-TEAM.nfo",
+      profile: "c411",
+      mediaType: "movie",
+      radarrMovieId: 42,
+      tmdbId: 603,
+    });
+
+    expect(result).toEqual(sendResult);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/prepare-upload/send");
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.release_name).toBe("Movie.2020.BluRay-TEAM");
+    expect(body.radarr_movie_id).toBe(42);
+    expect(body.tmdb_id).toBe(603);
+  });
+
+  it("envoie draft_id quand fourni (mise a jour)", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({ draft_id: 555, draft_url: "https://c411.org/user/drafts/555", duplicate_warning: null }),
+    );
+
+    await sendToTracker({
+      releaseName: "X", stagedPath: "/x", torrentPath: "/x.torrent", nfoPath: "/x.nfo",
+      profile: "c411", mediaType: "movie", draftId: 555,
+    });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.draft_id).toBe(555);
   });
 });
 

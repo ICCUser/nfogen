@@ -9,6 +9,7 @@ import type {
   NameProposal,
   ProfilesByCategory,
   RulesDocument,
+  SendToTrackerResult,
   TemplatesDocument,
   UploadCommitResult,
   UploadGroupProposal,
@@ -395,5 +396,43 @@ export function prepareUploadCommit(
   return request<UploadCommitResult>("/gapscan/prepare-upload/commit", {
     method: "POST",
     body: JSON.stringify({ release_name: releaseName, files, profile }),
+  });
+}
+
+/** Cree (ou met a jour si draftId deja connu) un BROUILLON sur le tracker
+ * pour UN groupe deja confirme -- n'entre JAMAIS en file de moderation
+ * tout seul (voir AUTOMATION.md, sous-projet 5, decision 6). */
+export function sendToTracker(params: {
+  releaseName: string;
+  stagedPath: string;
+  torrentPath: string;
+  nfoPath: string;
+  profile?: string;
+  mediaType?: "movie" | "series";
+  radarrMovieId?: number;
+  sonarrSeriesId?: number;
+  tmdbId?: number;
+  tvdbId?: number;
+  genre?: "anime" | "documentaire";
+  seasonNumber?: number;
+  draftId?: number | string;
+}): Promise<SendToTrackerResult> {
+  return request<SendToTrackerResult>("/gapscan/prepare-upload/send", {
+    method: "POST",
+    body: JSON.stringify({
+      release_name: params.releaseName,
+      staged_path: params.stagedPath,
+      torrent_path: params.torrentPath,
+      nfo_path: params.nfoPath,
+      profile: params.profile ?? "c411",
+      media_type: params.mediaType ?? "movie",
+      radarr_movie_id: params.radarrMovieId,
+      sonarr_series_id: params.sonarrSeriesId,
+      tmdb_id: params.tmdbId,
+      tvdb_id: params.tvdbId,
+      genre: params.genre,
+      season_number: params.seasonNumber,
+      draft_id: params.draftId,
+    }),
   });
 }
