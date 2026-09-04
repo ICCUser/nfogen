@@ -8,12 +8,16 @@ import { ProfileProvider } from "../ProfileContext";
 vi.mock("../api/client", () => ({
   prepareUploadPreview: vi.fn(),
   prepareUploadCommit: vi.fn(),
+  commitJobStatus: vi.fn(),
+  cancelCommitJob: vi.fn(),
   sendToTracker: vi.fn(),
   listAllProfiles: vi.fn(),
   readManagedProfile: vi.fn(),
 }));
 
 import {
+  cancelCommitJob,
+  commitJobStatus,
   listAllProfiles,
   prepareUploadCommit,
   prepareUploadPreview,
@@ -66,9 +70,22 @@ const BLOCKED_GROUP: UploadGroupProposal[] = [
   { release_name: null, files: [], warnings: ["Aucune année ni tag de saison détecté."], blocked: true },
 ];
 
+const DONE_JOB = {
+  job_id: "job-1", release_name: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
+  state: "done" as const, percent: 100, started_at: 1000, finished_at: 1001, error: null,
+  result: {
+    release_name: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
+    staged_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.mkv",
+    torrent_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.torrent",
+    nfo_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.nfo",
+  },
+};
+
 beforeEach(() => {
   vi.mocked(prepareUploadPreview).mockReset();
   vi.mocked(prepareUploadCommit).mockReset();
+  vi.mocked(commitJobStatus).mockReset();
+  vi.mocked(cancelCommitJob).mockReset();
   vi.mocked(sendToTracker).mockReset();
   vi.mocked(listAllProfiles).mockResolvedValue({ c411: ["video"], ygg: ["video"] });
   vi.mocked(readManagedProfile).mockResolvedValue({
@@ -103,14 +120,10 @@ it("un groupe bloque n'a pas de bouton Confirmer, affiche l'avertissement", asyn
   expect(screen.queryByRole("button", { name: /Confirmer/i })).not.toBeInTheDocument();
 });
 
-it("Confirmer appelle prepareUploadCommit et affiche le resultat", async () => {
+it("Confirmer demarre une tache, affiche le resultat une fois terminee (done)", async () => {
   vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
-  vi.mocked(prepareUploadCommit).mockResolvedValue({
-    release_name: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
-    staged_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.mkv",
-    torrent_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.torrent",
-    nfo_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.nfo",
-  });
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   const user = userEvent.setup();
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
@@ -125,17 +138,67 @@ it("Confirmer appelle prepareUploadCommit et affiche le resultat", async () => {
     ONE_GROUP[0].files,
     "c411",
   );
+  expect(commitJobStatus).toHaveBeenCalledWith("job-1");
+});
+
+it("affiche une barre de progression et un bouton Annuler pendant une tache en cours", async () => {
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue({
+    job_id: "job-1", release_name: "X", state: "staging", percent: 42,
+    started_at: 1000, finished_at: null, error: null, result: null,
+  });
+  const user = userEvent.setup();
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(screen.getByRole("button", { name: /Confirmer/i }));
+
+  expect(await screen.findByText(/42\s*%/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Annuler/i })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Confirmer/i })).not.toBeInTheDocument();
+});
+
+it("Annuler appelle cancelCommitJob avec le job_id en cours", async () => {
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue({
+    job_id: "job-1", release_name: "X", state: "staging", percent: 10,
+    started_at: 1000, finished_at: null, error: null, result: null,
+  });
+  vi.mocked(cancelCommitJob).mockResolvedValue({ status: "cancelling" });
+  const user = userEvent.setup();
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(await screen.findByRole("button", { name: /Annuler/i }));
+
+  expect(cancelCommitJob).toHaveBeenCalledWith("job-1");
+});
+
+it("etat error : affiche le message et fait reapparaitre Confirmer", async () => {
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue({
+    job_id: "job-1", release_name: "X", state: "error", percent: 0,
+    started_at: 1000, finished_at: 1001, error: "NAS déconnecté", result: null,
+  });
+  const user = userEvent.setup();
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(screen.getByRole("button", { name: /Confirmer/i }));
+
+  expect(await screen.findByText(/NAS déconnecté/)).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /Confirmer/i })).toBeInTheDocument();
 });
 
 it("affiche le bouton Envoyer a C411 seulement apres confirmation, et affiche le lien du brouillon", async () => {
   const user = userEvent.setup();
   vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
-  vi.mocked(prepareUploadCommit).mockResolvedValue({
-    release_name: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
-    staged_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.mkv",
-    torrent_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.torrent",
-    nfo_path: "/staging/Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM.nfo",
-  });
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(sendToTracker).mockResolvedValue({
     draft_id: 555, draft_url: "https://c411.org/user/drafts/555", duplicate_warning: null,
   });
@@ -166,10 +229,8 @@ it("affiche le bouton Envoyer a C411 seulement apres confirmation, et affiche le
 it("affiche l'avertissement anti-doublon quand present", async () => {
   const user = userEvent.setup();
   vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
-  vi.mocked(prepareUploadCommit).mockResolvedValue({
-    release_name: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
-    staged_path: "/staging/x.mkv", torrent_path: "/staging/x.torrent", nfo_path: "/staging/x.nfo",
-  });
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(sendToTracker).mockResolvedValue({
     draft_id: 555, draft_url: "https://c411.org/user/drafts/555",
     duplicate_warning: "1 release(s) déjà approuvée(s) pour cet identifiant TMDB...",

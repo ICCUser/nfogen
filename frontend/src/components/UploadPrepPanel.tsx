@@ -1,8 +1,16 @@
-import { useEffect, useState } from "react";
-import { prepareUploadCommit, prepareUploadPreview, sendToTracker } from "../api/client";
+import { useEffect, useRef, useState } from "react";
+import { cancelCommitJob, commitJobStatus, prepareUploadCommit, prepareUploadPreview, sendToTracker } from "../api/client";
 import { ApiError } from "../api/types";
-import type { SendToTrackerResult, UploadCommitResult, UploadGroupProposal } from "../api/types";
+import type { CommitJob, SendToTrackerResult, UploadCommitResult, UploadGroupProposal } from "../api/types";
 import { useProfile } from "../ProfileContext";
+
+const STEP_LABELS: Record<string, string> = {
+  staging: "Mise en scène",
+  generating_nfo: "Génération du .nfo",
+  building_torrent: "Génération du torrent",
+};
+
+const TERMINAL_STATES = ["done", "error", "cancelled"];
 
 /** Apercu (sans ecriture disque) puis confirmation par groupe de la mise
  * en scene + generation de .torrent (AUTOMATION.md, sous-projet 4). Un
@@ -10,7 +18,12 @@ import { useProfile } from "../ProfileContext";
  * releases devient plusieurs groupes independants (voir
  * nfogen/upload_prep.py:group_by_team). Jamais de "tout confirmer" :
  * chaque groupe se confirme individuellement, coherent avec la decision
- * "upload un par un" (AUTOMATION.md, "Decisions deja prises"). */
+ * "upload un par un" (AUTOMATION.md, "Decisions deja prises").
+ *
+ * "Confirmer" demarre une tache de fond suivie en polling (AUTOMATION.md,
+ * sous-projet 4c) -- une mise en scene par copie (volumes differents) ou
+ * un hachage de torrent peuvent prendre plusieurs minutes, jamais bloquer
+ * la page pendant ce temps. */
 export default function UploadPrepPanel({
   localPaths,
   title,
@@ -35,28 +48,18 @@ export default function UploadPrepPanel({
   onClose: () => void;
 }) {
   const { profile: globalProfile, profiles } = useProfile();
-  // Le profil actif global s'applique par defaut, mais peut etre remplace
-  // juste pour CET upload sans changer le profil actif de l'appli (retour
-  // utilisateur, 2026-08-29 : "selection de profil unitaire par media" --
-  // ex. scanne avec le profil A, mais upload ce titre-la vers le profil B).
   const [profile, setProfile] = useState(globalProfile);
   const [groups, setGroups] = useState<UploadGroupProposal[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recalculating, setRecalculating] = useState(false);
-  // Titre corrige (AUTOMATION.md, sous-projet 5, Livraison 1) : pre-rempli
-  // avec le titre DEJA CONNU (GapResult.title, Sonarr/Radarr -- le meme
-  // que celui affiche dans l'en-tete du panneau juste au-dessus) plutot
-  // que de redecouvrir un titre depuis le nom de fichier alors qu'on en a
-  // deja un sous la main -- retour utilisateur, 2026-08-28 ("Les Fils du
-  // vent" : le titre FR etait deja connu, mais jamais reutilise pour le
-  // nommage). Reste editable si meme celui-la est incorrect.
   const [titleOverride, setTitleOverride] = useState(title);
-  const [committing, setCommitting] = useState<number | null>(null);
+  const [commitJobs, setCommitJobs] = useState<Record<number, CommitJob>>({});
   const [commitResults, setCommitResults] = useState<Record<number, UploadCommitResult>>({});
   const [commitErrors, setCommitErrors] = useState<Record<number, string>>({});
   const [sending, setSending] = useState<number | null>(null);
   const [sendResults, setSendResults] = useState<Record<number, SendToTrackerResult>>({});
   const [sendErrors, setSendErrors] = useState<Record<number, string>>({});
+  const pollRefs = useRef<Record<number, number>>({});
 
   async function loadPreview(override?: string, profileOverride: string = profile) {
     setRecalculating(true);
@@ -76,25 +79,77 @@ export default function UploadPrepPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localPaths]);
 
+  useEffect(() => {
+    return () => {
+      Object.values(pollRefs.current).forEach((id) => window.clearInterval(id));
+    };
+  }, []);
+
   function handleProfileChange(next: string) {
     setProfile(next);
     loadPreview(titleOverride, next);
   }
 
+  function stopPolling(index: number) {
+    const id = pollRefs.current[index];
+    if (id !== undefined) {
+      window.clearInterval(id);
+      delete pollRefs.current[index];
+    }
+  }
+
+  async function pollCommitJob(index: number, jobId: string) {
+    try {
+      const job = await commitJobStatus(jobId);
+      setCommitJobs((prev) => ({ ...prev, [index]: job }));
+      if (!TERMINAL_STATES.includes(job.state)) return;
+      stopPolling(index);
+      setCommitJobs((prev) => {
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
+      if (job.state === "done" && job.result) {
+        setCommitResults((prev) => ({ ...prev, [index]: job.result as UploadCommitResult }));
+      } else if (job.state === "error") {
+        setCommitErrors((prev) => ({ ...prev, [index]: job.error ?? "Confirmation impossible." }));
+      } else {
+        setCommitErrors((prev) => ({ ...prev, [index]: "Annulé." }));
+      }
+    } catch (e) {
+      stopPolling(index);
+      setCommitErrors((prev) => ({
+        ...prev,
+        [index]: e instanceof ApiError ? e.message : "Suivi de la tâche impossible.",
+      }));
+    }
+  }
+
   async function handleConfirm(index: number, group: UploadGroupProposal) {
     if (!group.release_name) return;
-    setCommitting(index);
     setCommitErrors((prev) => ({ ...prev, [index]: "" }));
     try {
-      const result = await prepareUploadCommit(group.release_name, group.files, profile);
-      setCommitResults((prev) => ({ ...prev, [index]: result }));
+      const { job_id } = await prepareUploadCommit(group.release_name, group.files, profile);
+      // L'intervalle est enregistre AVANT le premier appel : si ce premier
+      // appel atteint deja un etat terminal (job termine tres vite), son
+      // propre stopPolling() doit pouvoir le retrouver et l'annuler.
+      pollRefs.current[index] = window.setInterval(() => pollCommitJob(index, job_id), 1500);
+      await pollCommitJob(index, job_id);
     } catch (e) {
       setCommitErrors((prev) => ({
         ...prev,
         [index]: e instanceof ApiError ? e.message : "Confirmation impossible.",
       }));
-    } finally {
-      setCommitting(null);
+    }
+  }
+
+  async function handleCancel(index: number) {
+    const job = commitJobs[index];
+    if (!job) return;
+    try {
+      await cancelCommitJob(job.job_id);
+    } catch {
+      // best effort -- le prochain polling reflete l'etat reel de toute facon
     }
   }
 
@@ -202,15 +257,33 @@ export default function UploadPrepPanel({
             </ul>
           )}
 
-          {!group.blocked && group.release_name && !commitResults[index] && (
+          {!group.blocked && group.release_name && !commitResults[index] && !commitJobs[index] && (
             <button
               type="button"
               onClick={() => handleConfirm(index, group)}
-              disabled={committing === index}
               className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-surface hover:opacity-90 disabled:opacity-50"
             >
-              {committing === index ? "Confirmation…" : "Confirmer"}
+              Confirmer
             </button>
+          )}
+          {commitJobs[index] && (
+            <div className="space-y-1">
+              <div className="h-2 w-full overflow-hidden rounded bg-surface-2">
+                <div
+                  className="h-full bg-accent transition-all"
+                  style={{ width: `${commitJobs[index].percent}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-xs text-ink-dim">
+                <span>
+                  {STEP_LABELS[commitJobs[index].state] ?? commitJobs[index].state} —{" "}
+                  {Math.round(commitJobs[index].percent)}%
+                </span>
+                <button type="button" onClick={() => handleCancel(index)} className="text-crit underline">
+                  Annuler
+                </button>
+              </div>
+            </div>
           )}
           {commitErrors[index] && <p className="text-xs text-crit">{commitErrors[index]}</p>}
           {commitResults[index] && (
