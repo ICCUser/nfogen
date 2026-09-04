@@ -60,6 +60,7 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 | 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md) |
 | 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | **Livré (2026-08-28)**, voir [le plan](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md) |
 | 4b | Généralisation tracker-agnostique (retrofit des sous-projets 2/4 + GapScan) | **Livré (2026-08-29)**, voir [le plan](docs/superpowers/plans/2026-08-29-tracker-agnostic-generalization.md) |
+| 4c | Suivi d'avancement asynchrone de "Confirmer" (copie + hash torrent en tâche de fond, annulation) | **Livré (2026-09-04)**, voir [le plan](docs/superpowers/plans/2026-09-04-async-commit-progress.md) |
 | 5 | Upload vers C411 | Livré (2026-09-04), voir sa section ci-dessous |
 | 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
 | 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
@@ -612,6 +613,45 @@ pour le détail tâche par tâche) :
   du tout (pas seulement un profil existant sans section `tracker`) —
   corrigé pour dégrader proprement dans les deux cas (jamais de
   supposition, jamais de plantage).
+
+## Sous-projet 4c : Suivi d'avancement asynchrone de "Confirmer" (2026-09-04)
+
+**Problème déclencheur** (retour utilisateur, 2026-09-04) : `POST
+/gapscan/prepare-upload/commit` (mise en scène + génération du `.torrent`)
+était synchrone — sur un repli copie (volumes NAS/staging différents) ou
+un gros fichier, le navigateur restait bloqué plusieurs minutes sans
+aucun retour, l'utilisateur pensant à tort que rien ne se passait
+("je croist qu'il copie le film... je reste sur la page à rien faire").
+
+**Conçu** :
+[docs/superpowers/specs/2026-09-04-async-commit-progress-design.md](docs/superpowers/specs/2026-09-04-async-commit-progress-design.md).
+**Livré** selon le plan
+[docs/superpowers/plans/2026-09-04-async-commit-progress.md](docs/superpowers/plans/2026-09-04-async-commit-progress.md)
+(8 tâches TDD).
+
+Résumé : `POST /gapscan/prepare-upload/commit` renvoie désormais un
+`job_id` immédiatement (registre de tâches en mémoire,
+`nfogen/commit_job_runner.py`, indexé par `job_id` — plusieurs tâches en
+parallèle, contrairement au verrou global de GapScan). Suivi en
+pourcentage précis pour les trois étapes (copie, `.nfo`, hash du
+torrent) — `file_staging.py` recopie désormais par blocs de 16 Mio avec
+callback de progression, `torrent_builder.py` relaie le callback natif de
+`torf`. Annulation possible via `threading.Event`. Nouveau bouton
+"Annuler" + barre de progression dans "Préparer l'upload", et nouvel
+encart "Transferts en cours" (`ActiveTransfersTray.tsx`) sur la page
+GapScan, indépendant de tout panneau ouvert — visible même après un
+rechargement de page.
+
+**Déviation assumée par rapport à la spec** : `torf.Torrent.generate()`
+utilise `interval=0` (callback à chaque pièce hachée) au lieu du
+`interval=1.0` initialement suggéré — rend le comportement déterministe
+et testable sans dépendre du timing, la spec elle-même flaguait cette
+valeur comme "à ajuster".
+
+**Non-objectif assumé, à savoir avant d'utiliser cette fonctionnalité** :
+une tâche interrompue par un **redémarrage du serveur** (ex.
+`scripts/update.sh`) est simplement perdue — comme un scan GapScan en
+cours, pas de reprise automatique. Il faut relancer "Confirmer".
 
 ## Sous-projet 5 : Upload vers C411 (conception 2026-08-28 → 2026-09-04, livré 2026-09-04)
 

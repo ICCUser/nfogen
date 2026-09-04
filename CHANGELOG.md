@@ -105,6 +105,16 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   best-effort (`GET /api/torrents/by-tmdb`) avant l'envoi, jamais
   bloquante — dégrade en avertissement pour les séries (pas d'identifiant
   TMDB connu aujourd'hui) ou en cas d'échec réseau.
+- **"Confirmer" s'exécute en tâche de fond avec suivi de progression**
+  (AUTOMATION.md, sous-projet 4c) : la mise en scène (copie, quand le
+  hardlink est impossible entre volumes différents) et la génération du
+  `.torrent` (hash complet du contenu) pouvaient bloquer la page sans
+  retour pendant plusieurs minutes sur un gros fichier — retour
+  utilisateur, 2026-09-04. Désormais une tâche de fond suivie en
+  pourcentage précis pour chaque étape (copie, `.nfo`, hash torrent),
+  plusieurs tâches possibles en parallèle, annulable à tout moment.
+  Nouvel encart "Transferts en cours" sur la page GapScan, indépendant du
+  panneau d'upload — visible même après un rechargement de page.
 
 ### Corrigé
 
