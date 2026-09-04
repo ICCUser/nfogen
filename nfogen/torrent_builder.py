@@ -51,6 +51,7 @@ def build_torrent(
     piece_sizes: list[dict[str, int]],
     on_progress: Optional[Callable[[int, int], None]] = None,
     cancel_event: Optional[threading.Event] = None,
+    threads: Optional[int] = None,
 ) -> None:
     """Construit un .torrent prive a partir de `staged_path` (fichier ou
     dossier -- un dossier pour un pack multi-fichiers -- deja mis en scene
@@ -59,7 +60,12 @@ def build_torrent(
     bareme `piece_sizes` du profil (voir tracker_profile.torrent_piece_sizes).
     `cancel_event` positionne pendant le hachage -> OperationCancelled, le
     fichier .torrent n'est jamais ecrit (write() n'est appele qu'apres un
-    generate() reussi)."""
+    generate() reussi) -- l'arret n'est pas instantane, torf peut avoir
+    deja termine le hachage de tres petites pieces avant le premier appel
+    du callback (voir tests). `threads` (avance, `None` = defaut torf, un
+    thread par coeur) : expose surtout pour forcer `threads=1` dans les
+    tests d'annulation deterministes, sans effet sur le comportement de
+    production par defaut."""
     total_bytes = _total_size(staged_path)
     torrent = torf.Torrent(
         path=staged_path,
@@ -78,7 +84,7 @@ def build_torrent(
                 on_progress(pieces_done, pieces_total)
             return None
 
-    success = torrent.generate(callback=callback, interval=0)
+    success = torrent.generate(threads=threads, callback=callback, interval=0)
     if not success:
         raise OperationCancelled(f"Génération du torrent annulée : {staged_path}")
     torrent.write(output_path)

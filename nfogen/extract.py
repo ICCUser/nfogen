@@ -18,12 +18,32 @@ VIDEO_EXTS = {".mkv", ".mp4", ".avi", ".m2ts", ".ts", ".mov", ".wmv", ".m4v"}
 _COMPLETE_NAME_RE = re.compile(r"^(Complete name\s*:\s*).*$", re.MULTILINE)
 
 
-def _video_bit_rate_present(mi: Any) -> bool:
-    """Vrai si un debit de piste video a ete isole dans un resultat
-    MediaInfo deja analyse (voir extract_video_text/extract_video_metadata) --
-    decide s'il faut escalader vers une analyse complete (parse_speed=1.0)."""
+def _needs_full_scan(mi: Any) -> bool:
+    """Vrai si le resultat d'une analyse RAPIDE de MediaInfo ne fournit pas
+    encore tout ce dont extract_video_text/extract_video_metadata ont
+    besoin sur la piste video -- decide s'il faut escalader vers une
+    analyse COMPLETE (parse_speed=1.0). Verifie le debit ET la frequence
+    d'images (pas seulement le debit) : un clip court ou un encodage
+    inhabituel peut laisser l'un ou l'autre incomplet en analyse rapide,
+    meme quand le debit seul est deja present."""
     video = next((t for t in mi.tracks if t.track_type == "Video"), None)
-    return video is not None and bool(video.bit_rate)
+    if video is None:
+        return True
+    return not (video.bit_rate and video.frame_rate)
+
+
+def _quick_scan(path: str) -> Any:
+    """Analyse RAPIDE (parse_speed=0.5, defaut pymediainfo) -- renvoie
+    `None` si elle echoue (fichier/encodage pour lequel le mode rapide de
+    MediaInfo est moins robuste que le mode complet), pour toujours
+    degrader proprement vers l'analyse complete plutot que de laisser une
+    exception se propager depuis cette seule verification preliminaire."""
+    from pymediainfo import MediaInfo
+
+    try:
+        return MediaInfo.parse(path, parse_speed=0.5)
+    except Exception:
+        return None
 
 
 def _video_files(source: Path) -> list[Path]:
@@ -51,8 +71,8 @@ def extract_video_text(source: Path, *, full: bool = False) -> str:
     # minutes") -- lecture integrale de chaque fichier a chaque extraction,
     # meme quand l'analyse rapide suffisait deja (l'immense majorite des
     # cas). L'analyse complete ne se declenche desormais que si necessaire.
-    quick = MediaInfo.parse(str(source), parse_speed=0.5)
-    parse_speed = 0.5 if _video_bit_rate_present(quick) else 1.0
+    quick = _quick_scan(str(source))
+    parse_speed = 1.0 if (quick is None or _needs_full_scan(quick)) else 0.5
     text = MediaInfo.parse(str(source), output="", full=full, parse_speed=parse_speed)
     if not isinstance(text, str):
         text = str(text)
@@ -80,8 +100,8 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
     # manque (consomme par l'heuristique anti-upscale,
     # rules.upscale_warnings) -- reutilise directement l'objet de l'analyse
     # rapide quand elle suffit deja (une seule analyse dans le cas courant).
-    mi = MediaInfo.parse(str(source), parse_speed=0.5)
-    if not _video_bit_rate_present(mi):
+    mi = _quick_scan(str(source))
+    if mi is None or _needs_full_scan(mi):
         mi = MediaInfo.parse(str(source), parse_speed=1.0)
     video = next((t for t in mi.tracks if t.track_type == "Video"), None)
     general = next((t for t in mi.tracks if t.track_type == "General"), None)

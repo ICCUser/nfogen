@@ -106,8 +106,13 @@ def test_build_torrent_reports_progress_as_pieces_are_hashed(tmp_path):
 
 
 def test_build_torrent_cancellation_stops_hashing_and_writes_nothing(tmp_path):
+    """threads=1 (hachage sequentiel, une seule piece a la fois) rend
+    l'annulation deterministe : sans ca, torf peut distribuer un petit
+    nombre de pieces sur plusieurs threads et les hacher toutes avant le
+    premier appel du callback -- flaky reel observe en CI (2026-09-04),
+    le job se terminait "avec succes" malgre cancel_event deja positionne."""
     staged = tmp_path / "Release.Name.mkv"
-    staged.write_bytes(b"x" * (4 * _MIN_PIECE_SIZE))
+    staged.write_bytes(b"x" * (16 * _MIN_PIECE_SIZE))  # assez de pieces pour laisser le temps d'intercepter
     output = tmp_path / "output.torrent"
     cancel_event = threading.Event()
     cancel_event.set()
@@ -115,7 +120,7 @@ def test_build_torrent_cancellation_stops_hashing_and_writes_nothing(tmp_path):
     with pytest.raises(OperationCancelled):
         build_torrent(
             str(staged), "https://c411.org/announce/SECRET", str(output), [{"piece_size": _MIN_PIECE_SIZE}],
-            cancel_event=cancel_event,
+            cancel_event=cancel_event, threads=1,
         )
 
     assert not output.exists()

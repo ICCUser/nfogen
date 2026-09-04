@@ -71,13 +71,14 @@ def test_video_raw_text_passthrough():
     assert nfo.endswith("\n")
 
 
-def test_extract_video_text_stays_fast_when_bit_rate_already_present(tmp_path: Path, monkeypatch):
+def test_extract_video_text_stays_fast_when_video_metadata_already_complete(tmp_path: Path, monkeypatch):
     """Regression reelle (2026-09-04) : forcer parse_speed=1.0
     systematiquement faisait relire l'integralite de chaque fichier a
     chaque extraction (jusqu'a ~10 minutes sur un NAS pour un gros film,
     retour utilisateur), meme quand l'analyse rapide donne deja un debit
-    video exploitable -- corrige : l'analyse complete ne se declenche
-    desormais que si necessaire (voir le test suivant pour ce cas)."""
+    et une frequence d'images video exploitables -- corrige : l'analyse
+    complete ne se declenche desormais que si necessaire (voir les tests
+    suivants pour ces cas)."""
     from nfogen import extract
 
     mkv = tmp_path / "t.mkv"
@@ -87,6 +88,7 @@ def test_extract_video_text_stays_fast_when_bit_rate_already_present(tmp_path: P
     class _VideoTrack:
         track_type = "Video"
         bit_rate = 5_000_000  # deja isole en analyse rapide
+        frame_rate = "24.000"
 
     def fake_parse(path, **kwargs):
         calls.append(kwargs)
@@ -123,6 +125,7 @@ def test_extract_video_text_escalates_to_full_scan_when_bit_rate_missing(tmp_pat
     class _VideoTrackNoBitRate:
         track_type = "Video"
         bit_rate = None  # non isole en analyse rapide (incident reel)
+        frame_rate = "24.000"
 
     def fake_parse(path, **kwargs):
         calls.append(kwargs)
@@ -141,7 +144,70 @@ def test_extract_video_text_escalates_to_full_scan_when_bit_rate_missing(tmp_pat
     assert text_calls and text_calls[-1].get("parse_speed") == 1.0
 
 
-def test_extract_video_metadata_stays_fast_when_bit_rate_already_present(tmp_path: Path, monkeypatch):
+def test_extract_video_text_escalates_to_full_scan_when_frame_rate_missing(tmp_path: Path, monkeypatch):
+    """Un clip court/inhabituel (ex. le clip de test genere par ffmpeg en
+    CI, 1 seconde) peut laisser la frequence d'images incomplete en
+    analyse rapide meme quand le debit est deja present -- escalade sur
+    N'IMPORTE LEQUEL des deux champs manquants, pas seulement le debit."""
+    from nfogen import extract
+
+    mkv = tmp_path / "t.mkv"
+    mkv.write_bytes(b"x")
+    calls: list[dict] = []
+
+    class _VideoTrackNoFrameRate:
+        track_type = "Video"
+        bit_rate = 5_000_000
+        frame_rate = None  # non isole en analyse rapide
+
+    def fake_parse(path, **kwargs):
+        calls.append(kwargs)
+        if kwargs.get("output") == "":
+            return "General\nComplete name : orig.mkv\n"
+
+        class _Result:
+            tracks = [_VideoTrackNoFrameRate()]
+
+        return _Result()
+
+    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
+    extract.extract_video_text(mkv)
+
+    text_calls = [c for c in calls if c.get("output") == ""]
+    assert text_calls and text_calls[-1].get("parse_speed") == 1.0
+
+
+def test_extract_video_text_falls_back_to_full_scan_when_quick_scan_raises(tmp_path: Path, monkeypatch):
+    """Si l'analyse rapide leve une exception (fichier/encodage pour
+    lequel le mode rapide de MediaInfo est instable), jamais de plantage
+    propage -- degrade proprement vers l'analyse complete, connue fiable."""
+    from nfogen import extract
+
+    mkv = tmp_path / "t.mkv"
+    mkv.write_bytes(b"x")
+    calls: list[dict] = []
+
+    def fake_parse(path, **kwargs):
+        calls.append(kwargs)
+        if kwargs.get("output") == "":
+            return "General\nComplete name : orig.mkv\n"
+        if kwargs.get("parse_speed") == 0.5:
+            raise RuntimeError("analyse rapide instable sur ce fichier")
+
+        class _Result:
+            tracks = []
+
+        return _Result()
+
+    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
+    text = extract.extract_video_text(mkv)
+
+    assert "General" in text
+    text_calls = [c for c in calls if c.get("output") == ""]
+    assert text_calls and text_calls[-1].get("parse_speed") == 1.0
+
+
+def test_extract_video_metadata_stays_fast_when_video_metadata_already_complete(tmp_path: Path, monkeypatch):
     """Meme regression/correctif que extract_video_text (voir la-bas), pour
     les donnees structurees consommees par l'heuristique anti-upscale
     (rules.upscale_warnings). Une seule analyse necessaire dans ce cas
@@ -226,6 +292,39 @@ def test_extract_video_metadata_escalates_to_full_scan_when_bit_rate_missing(tmp
 
     assert meta["video_bit_rate"] == 5_000_000  # recupere via le scan complet
     assert len(calls) == 2
+    assert calls[-1].get("parse_speed") == 1.0
+
+
+def test_extract_video_metadata_falls_back_to_full_scan_when_quick_scan_raises(tmp_path: Path, monkeypatch):
+    """Meme filet de securite que extract_video_text (voir la-bas)."""
+    from nfogen import extract
+
+    mkv = tmp_path / "t.mkv"
+    mkv.write_bytes(b"x")
+    calls: list[dict] = []
+
+    class _VideoTrack:
+        track_type = "Video"
+        bit_rate = 5_000_000
+        height = 1080
+        width = 1920
+        format = "AVC"
+        frame_rate = "24.000"
+
+    def fake_parse(path, **kwargs):
+        calls.append(kwargs)
+        if kwargs.get("parse_speed") == 0.5:
+            raise RuntimeError("analyse rapide instable sur ce fichier")
+
+        class _Result:
+            tracks = [_VideoTrack()]
+
+        return _Result()
+
+    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
+    meta = extract.extract_video_metadata(mkv)
+
+    assert meta["video_bit_rate"] == 5_000_000
     assert calls[-1].get("parse_speed") == 1.0
 
 
