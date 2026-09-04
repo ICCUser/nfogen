@@ -60,7 +60,7 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 | 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md) |
 | 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | **Livré (2026-08-28)**, voir [le plan](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md) |
 | 4b | Généralisation tracker-agnostique (retrofit des sous-projets 2/4 + GapScan) | **Livré (2026-08-29)**, voir [le plan](docs/superpowers/plans/2026-08-29-tracker-agnostic-generalization.md) |
-| 5 | Upload vers C411 | Conçu (2026-09-04), voir sa section ci-dessous |
+| 5 | Upload vers C411 | Livré (2026-09-04), voir sa section ci-dessous |
 | 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
 | 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
 | 8 | Lidarr (musique) | Facultatif, en dernier |
@@ -613,7 +613,7 @@ pour le détail tâche par tâche) :
   corrigé pour dégrader proprement dans les deux cas (jamais de
   supposition, jamais de plantage).
 
-## Sous-projet 5 : Upload vers C411 (conception, 2026-08-28 → 2026-09-04)
+## Sous-projet 5 : Upload vers C411 (conception 2026-08-28 → 2026-09-04, livré 2026-09-04)
 
 Pas encore conçu formellement, mais plusieurs découvertes réelles pendant
 les tests du sous-projet 4 réduisent significativement le périmètre
@@ -986,3 +986,44 @@ marche.
 - **File d'attente + email d'approbation** (sous-projet 7) — "Envoyer à
   C411" reste un clic manuel explicite pour l'instant, pas une file
   automatique.
+
+### Livré (2026-09-04)
+
+Implémenté tel que conçu ci-dessus, plan détaillé :
+[docs/superpowers/plans/2026-09-04-c411-upload-draft.md](docs/superpowers/plans/2026-09-04-c411-upload-draft.md)
+(16 tâches TDD). Écarts découverts en implémentant :
+
+- **Décision 1 précisée pendant l'implémentation** (déjà notée plus haut,
+  confirmée en pratique) : `GapResult` ne porte que
+  `radarr_movie_id`/`sonarr_series_id` (deux `int` optionnels) — jamais
+  les métadonnées de présentation elles-mêmes, récupérées à la demande
+  via `RadarrClient.get_movie_details()`/`SonarrClient.get_series_details()`
+  au moment de l'envoi, jamais pendant le scan GapScan.
+- **Extraction source/langue depuis le nom confirmé** : plutôt que de
+  redemander au moteur de nommage ou de faire circuler le dict `fields`
+  de `NameProposal` jusqu'à `send_to_tracker()`, la catégorie/les options
+  C411 sont calculées en ré-appliquant `rules.captures()` (déjà construit
+  pour la validation, sous-projet 4b) directement sur le `release_name`
+  déjà confirmé — un seul mécanisme d'extraction, jamais dupliqué.
+- **Clé "qualité" composée** : le marqueur `HDLight` (avertissement
+  non-bloquant, voir plus haut dans ce document) n'est pas capturé comme
+  partie du token `source` — la clé de recherche dans
+  `quality_values` est donc construite comme `"{source}.HDLight"` si la
+  chaîne `hdlight` apparaît (insensible à la casse) dans le
+  `release_name`, `"{source}"` sinon.
+
+**Deux points non vérifiés en conditions réelles, à la charge de
+l'utilisateur avant un premier envoi réel** (voir aussi la note "à
+vérifier" plus haut dans ce document) :
+1. Les noms exacts des champs du corps JSON de `POST`/`PATCH
+   /api/user/drafts` — le code suppose les mêmes noms que le formulaire
+   multipart documenté (`torrent`, `nfo`, `title`, `description`,
+   `categoryId`, `subcategoryId`, `options`…), fichiers encodés en
+   base64. À confirmer en créant un vrai brouillon.
+2. `subcategory_id["movie:documentaire"]`/`["series:documentaire"]`
+   pointent tous les deux vers `4` (seule valeur "Documentaire" donnée,
+   pas de distinction film/série dans la liste fournie) — à confirmer via
+   `GET /api/categories`.
+3. Le scope de la clé API tracker existante couvre-t-il
+   upload/brouillons (`https://c411.org/user/integrations`) ? Le code
+   remonte une erreur 401/403 claire si non, plutôt que de supposer.

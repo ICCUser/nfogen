@@ -87,6 +87,25 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   ("le débit vidéo … est inférieur au seuil … ajoute HDLight"). Jamais
   bloquant, même esprit que l'heuristique anti-upscale existante.
 
+### Ajouté
+
+- **Envoi vers C411 sous forme de brouillon** (AUTOMATION.md, sous-projet
+  5) : nouveau bouton "Envoyer à C411" dans "Préparer l'upload", visible
+  après confirmation locale (sous-projet 4) — crée (ou met à jour) un
+  **brouillon** via `POST`/`PATCH /api/user/drafts`, jamais une
+  soumission réelle : un brouillon reste privé, lié au compte, et
+  nécessite une finalisation manuelle sur le site C411 (aucun endpoint
+  "soumettre" n'existe côté API). Description BBCode générée depuis un
+  nouveau gabarit (`upload_description.j2`) alimenté par des métadonnées
+  Radarr/Sonarr récupérées **à la demande** (`get_movie_details`/
+  `get_series_details`, jamais pendant le scan GapScan). Catégorie/
+  sous-catégorie/options C411 calculées depuis le `release_name` déjà
+  confirmé (réutilise `rules.captures()`) via un mapping déclaratif par
+  profil (`rules.json` → `tracker.upload`). Vérification anti-doublon
+  best-effort (`GET /api/torrents/by-tmdb`) avant l'envoi, jamais
+  bloquante — dégrade en avertissement pour les séries (pas d'identifiant
+  TMDB connu aujourd'hui) ou en cas d'échec réseau.
+
 ### Corrigé
 
 - **"Débit vidéo" absent du `.nfo`, upload C411 rejeté** : `pymediainfo`
