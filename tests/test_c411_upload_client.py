@@ -4,6 +4,9 @@ Torznab, voir decision 4) -- verification anti-doublon dans cette tache,
 creation/mise a jour de brouillon dans la Tache 10."""
 from __future__ import annotations
 
+import base64
+import json
+
 import httpx
 import pytest
 
@@ -69,3 +72,83 @@ def test_error_message_never_contains_the_api_key():
 def test_client_requires_api_key():
     with pytest.raises(C411UploadError, match="[Cc]l[eé]"):
         C411UploadClient(api_key="")
+
+
+def test_create_draft_sends_base64_files_and_returns_response():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/user/drafts"
+        assert request.method == "POST"
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"id": 555, "url": "https://c411.org/user/drafts/555"})
+
+    client = _client_with_handler(handler)
+    result = client.create_draft(
+        torrent_bytes=b"torrent-bytes",
+        nfo_bytes=b"nfo-bytes",
+        title="Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM",
+        description="[h2]Synopsis[/h2]...",
+        category_id=1,
+        subcategory_id=6,
+        options={"1": [4], "2": 10},
+    )
+
+    assert result == {"id": 555, "url": "https://c411.org/user/drafts/555"}
+    body = captured["body"]
+    assert body["title"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM"
+    assert body["categoryId"] == 1
+    assert body["subcategoryId"] == 6
+    assert body["options"] == {"1": [4], "2": 10}
+    assert body["descriptionFormat"] == "standard"
+    assert base64.b64decode(body["torrent"]) == b"torrent-bytes"
+    assert base64.b64decode(body["nfo"]) == b"nfo-bytes"
+
+
+def test_create_draft_includes_optional_fields_when_given():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"id": 555, "url": "https://c411.org/user/drafts/555"})
+
+    client = _client_with_handler(handler)
+    client.create_draft(
+        torrent_bytes=b"t", nfo_bytes=b"n", title="X", description="X" * 20,
+        category_id=1, subcategory_id=6, options={},
+        uploader_note="Note test", tmdb_data={"id": 27205, "type": "movie"},
+    )
+
+    assert captured["body"]["uploaderNote"] == "Note test"
+    assert captured["body"]["tmdbData"] == {"id": 27205, "type": "movie"}
+
+
+def test_create_draft_raises_a_clear_message_on_401():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"message": "Invalid token"})
+
+    client = _client_with_handler(handler)
+    with pytest.raises(C411UploadError, match="scope"):
+        client.create_draft(
+            torrent_bytes=b"t", nfo_bytes=b"n", title="X", description="X" * 20,
+            category_id=1, subcategory_id=6, options={},
+        )
+
+
+def test_update_draft_patches_the_existing_draft():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/user/drafts/555"
+        assert request.method == "PATCH"
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"id": 555, "url": "https://c411.org/user/drafts/555"})
+
+    client = _client_with_handler(handler)
+    result = client.update_draft(
+        555, torrent_bytes=b"t", nfo_bytes=b"n", title="X updated", description="X" * 20,
+        category_id=1, subcategory_id=6, options={},
+    )
+
+    assert result == {"id": 555, "url": "https://c411.org/user/drafts/555"}
+    assert captured["body"]["title"] == "X updated"

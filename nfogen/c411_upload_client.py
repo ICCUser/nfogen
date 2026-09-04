@@ -10,6 +10,7 @@ jour).
 """
 from __future__ import annotations
 
+import base64
 from typing import Any, Optional
 
 import httpx
@@ -70,3 +71,112 @@ class C411UploadClient:
         except httpx.HTTPError as exc:
             raise C411UploadError(f"Vérification des doublons échouée : {self._redact(exc)}") from exc
         return response.json().get("releases", [])
+
+    def _draft_body(
+        self,
+        *,
+        torrent_bytes: bytes,
+        nfo_bytes: bytes,
+        title: str,
+        description: str,
+        category_id: int,
+        subcategory_id: int,
+        options: dict[str, Any],
+        description_format: str,
+        uploader_note: Optional[str],
+        tmdb_data: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "torrent": base64.b64encode(torrent_bytes).decode("ascii"),
+            "nfo": base64.b64encode(nfo_bytes).decode("ascii"),
+            "title": title,
+            "description": description,
+            "descriptionFormat": description_format,
+            "categoryId": category_id,
+            "subcategoryId": subcategory_id,
+            "options": options,
+        }
+        if uploader_note:
+            body["uploaderNote"] = uploader_note
+        if tmdb_data:
+            body["tmdbData"] = tmdb_data
+        return body
+
+    def _handle_draft_response(self, request_desc: str, send) -> dict[str, Any]:
+        try:
+            response = send()
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (401, 403):
+                raise C411UploadError(
+                    "Authentification refusée par C411 (401/403) — vérifie que ta clé API a le "
+                    "scope upload/brouillons sur https://c411.org/user/integrations."
+                ) from exc
+            detail = None
+            try:
+                payload = exc.response.json()
+                detail = payload.get("message") or payload.get("error")
+            except Exception:  # noqa: BLE001 -- corps non-JSON ou inattendu, repli generique
+                pass
+            raise C411UploadError(detail or f"{request_desc} échouée : {self._redact(exc)}") from exc
+        except httpx.HTTPError as exc:
+            raise C411UploadError(f"{request_desc} échouée : {self._redact(exc)}") from exc
+        return response.json()
+
+    def create_draft(
+        self,
+        *,
+        torrent_bytes: bytes,
+        nfo_bytes: bytes,
+        title: str,
+        description: str,
+        category_id: int,
+        subcategory_id: int,
+        options: dict[str, Any],
+        description_format: str = "standard",
+        uploader_note: Optional[str] = None,
+        tmdb_data: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """`POST /api/user/drafts` : cree un NOUVEAU brouillon -- n'entre
+        JAMAIS en file de moderation tout seul (voir AUTOMATION.md,
+        decision 6). `torrent_bytes`/`nfo_bytes` encodes en base64 dans le
+        corps JSON (comportement documente par C411 pour cet endpoint)."""
+        body = self._draft_body(
+            torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=title, description=description,
+            category_id=category_id, subcategory_id=subcategory_id, options=options,
+            description_format=description_format, uploader_note=uploader_note, tmdb_data=tmdb_data,
+        )
+        return self._handle_draft_response(
+            "Création du brouillon",
+            lambda: self._client.post(f"{self._base_url}/user/drafts", json=body, headers=self._headers()),
+        )
+
+    def update_draft(
+        self,
+        draft_id: Any,
+        *,
+        torrent_bytes: bytes,
+        nfo_bytes: bytes,
+        title: str,
+        description: str,
+        category_id: int,
+        subcategory_id: int,
+        options: dict[str, Any],
+        description_format: str = "standard",
+        uploader_note: Optional[str] = None,
+        tmdb_data: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """`PATCH /api/user/drafts/{draft_id}` : met a jour un brouillon
+        DEJA CREE (evite d'en accumuler des doublons vers la limite de 15
+        -- voir AUTOMATION.md, decision 6)."""
+        body = self._draft_body(
+            torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=title, description=description,
+            category_id=category_id, subcategory_id=subcategory_id, options=options,
+            description_format=description_format, uploader_note=uploader_note, tmdb_data=tmdb_data,
+        )
+        return self._handle_draft_response(
+            "Mise à jour du brouillon",
+            lambda: self._client.patch(
+                f"{self._base_url}/user/drafts/{draft_id}", json=body, headers=self._headers()
+            ),
+        )
