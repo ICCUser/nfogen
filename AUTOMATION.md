@@ -776,7 +776,9 @@ données plutôt qu'une hypothèse :
   releases déjà approuvées pour cet identifiant TMDB (10 max, 30
   requêtes/min) — vérification anti-doublon avant upload.
 - **Brouillons** (`/api/user/drafts`, CRUD complet, 15 max/utilisateur) :
-  hors scope pour ce sous-projet (voir "Pas dans ce sous-projet").
+  **mécanisme retenu pour l'envoi** (voir décision 6) — un brouillon
+  n'entre jamais en modération tout seul, la finalisation reste manuelle
+  sur le site C411.
 
 **Découverte qui change le périmètre attendu** : contrairement à
 l'hypothèse du 2026-08-28 ("C411 se charge de tout via Généré
@@ -901,36 +903,63 @@ figées dans le profil, voir "Décisions") :
    sautée avec un avertissement explicite ("doublon non vérifiable, tmdb_id
    inconnu pour cette série"), jamais bloquant, jamais deviné.
 
-6. **Déclenchement de l'envoi réel : nouveau bouton explicite, jamais
-   fusionné avec "Confirmer".** "Confirmer" (sous-projet 4) reste
-   strictement local (mise en scène + `.torrent`, aucun appel réseau
-   externe). Un nouveau bouton **"Envoyer à C411"**, visible seulement
-   après une confirmation locale réussie : vérifie les doublons, affiche
-   un aperçu complet (titre, description rendue, catégorie/sous-
-   catégorie, options) et n'envoie le vrai `POST` qu'après un second clic
-   explicite sur cet aperçu — jamais de surprise réseau sur un bouton qui
-   ne le faisait pas avant.
+6. **"Envoyer à C411" crée un BROUILLON (`POST /api/user/drafts`), jamais
+   une soumission réelle.** Revu le 2026-09-04 (retour utilisateur) :
+   contrairement à l'hypothèse initiale de ce sous-projet, un brouillon
+   n'entre **jamais** en file de modération tout seul — c'est un objet
+   privé, lié au compte, sans aucun effet sur le tracker tant que
+   l'utilisateur ne le finalise pas **lui-même sur le site C411** (aucun
+   endpoint "soumettre le brouillon" n'existe côté API — confirmé par
+   l'utilisateur : "si draft, pas de soumission modération, c'est lié au
+   compte user"). Ça simplifie et sécurise le flux prévu à l'origine (plus
+   besoin d'un "second clic qui déclenche vraiment la modération" dans
+   nfogen) :
+   - "Confirmer" (sous-projet 4) reste strictement local (mise en scène +
+     `.torrent`, aucun appel réseau externe).
+   - Nouveau bouton **"Envoyer à C411"**, visible après une confirmation
+     locale réussie : vérifie les doublons (décision 5), rend la
+     description, puis `POST /api/user/drafts` avec `.torrent`/`.nfo`
+     encodés en base64 dans le corps JSON (comportement documenté par
+     C411 pour cet endpoint) + titre/description/catégorie/options.
+   - Réponse affichée à l'utilisateur : lien direct vers le brouillon créé
+     sur `c411.org` — **c'est lui qui le finalise et le soumet en
+     modération**, à son rythme, avec une dernière relecture sur le vrai
+     site avant que quoi que ce soit devienne public. nfogen ne tente
+     jamais d'automatiser cette dernière étape.
+   - Si un brouillon a déjà été créé pour ce groupe (nouvel essai après
+     correction), `PATCH /api/user/drafts/{id}` avec l'`id` déjà connu
+     plutôt qu'un nouveau `POST` — évite d'accumuler des doublons de
+     brouillons vers la limite de 15. `id` conservé côté nfogen tant que
+     le panneau "Préparer l'upload" reste ouvert (pas persisté au-delà,
+     cohérent avec le reste de ce panneau).
 
-7. **Gestion des réponses** : succès → C411 renvoie l'upload en file
-   "Team Pending" (modération humaine, jamais auto-approuvé sauf statut
-   "uploader certifié" — hors scope, pas supposé). Erreur 401/403 →
-   message explicite pointant vers le scope de la clé API (voir point à
-   vérifier ci-dessous), jamais une erreur générique. Erreur 4xx de
-   validation (champ manquant/trop court, catégorie invalide) → détail
-   du message C411 remonté tel quel à l'utilisateur, jamais réinterprété.
+7. **Gestion des réponses** : succès → nfogen affiche le lien du
+   brouillon (`https://c411.org/...`, à confirmer sur la vraie réponse
+   JSON de `POST /api/user/drafts`). **Limite réelle à gérer** : 15
+   brouillons max par utilisateur (documenté) — une erreur à ce sujet doit
+   pointer explicitement vers la page brouillons de C411 pour en
+   supprimer, jamais un message générique. Erreur 401/403 → message
+   explicite pointant vers le scope de la clé API (voir point à vérifier
+   ci-dessous). Erreur 4xx de validation (champ manquant/trop court,
+   catégorie invalide) → détail du message C411 remonté tel quel,
+   jamais réinterprété.
 
-**À vérifier avant le premier envoi réel (utilisateur, pas de code
+**À vérifier avant le premier essai réel (utilisateur, pas de code
 concerné)** : la clé API existante (déjà utilisée pour Torznab/RSS,
-`gapscan_config_store.effective_tracker`) a-t-elle le **scope upload** sur
-`https://c411.org/user/integrations` ? La doc ne précise le scope requis
-que pour l'endpoint anti-doublon ("Torznab/RSS, accordé par défaut") — pas
-explicitement pour `POST /api/torrents`. Le code utilisera la même clé
-existante par défaut et remontera clairement une erreur 401/403 si elle
-manque de scope, plutôt que de supposer que ça marche.
+`gapscan_config_store.effective_tracker`) a-t-elle le **scope upload/
+brouillons** sur `https://c411.org/user/integrations` ? La doc ne précise
+le scope requis que pour l'endpoint anti-doublon ("Torznab/RSS, accordé
+par défaut") — pas explicitement pour `POST /api/user/drafts`. Le code
+utilisera la même clé existante par défaut et remontera clairement une
+erreur 401/403 si elle manque de scope, plutôt que de supposer que ça
+marche.
 
 **Pas dans ce sous-projet** (delta volontairement laissé de côté, YAGNI) :
-- **API Brouillons** (`/api/user/drafts`) — reprendre un envoi interrompu
-  n'a pas de cas d'usage identifié tant que l'envoi lui-même n'existe pas.
+- **Gestion complète du CRUD brouillons** (`GET`/lister,
+  `DELETE`/supprimer un brouillon existant depuis nfogen) — seule la
+  création (`POST`, décision 6) est dans ce sous-projet ; nettoyer/
+  reprendre un brouillon abandonné reste une action manuelle sur le site
+  C411 pour l'instant (pas de cas d'usage identifié côté nfogen).
 - **Requêter `GET /api/categories`/`GET /api/categories/{id}/options` en
   direct à l'exécution** — les valeurs sont figées dans le profil (voir
   décision 3) ; les requêter resterait utile en outil de diagnostic
