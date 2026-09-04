@@ -813,18 +813,33 @@ figées dans le profil, voir "Décisions") :
 **Décisions** :
 
 1. **Métadonnées de présentation (synopsis, affiche, genres, réalisateur/
-   casting) : réutiliser Radarr/Sonarr, pas un client TMDB dédié.**
-   `RadarrMovieFile`/`SonarrSeasonFile` gagnent `overview`, `poster_url`,
-   `genres`, `directors`, `cast` — Radarr/Sonarr interrogent déjà TMDB/
-   TVDB pour leur propre usage et exposent ces champs sur leurs propres
-   endpoints (`/api/v3/movie`, `/api/v3/series`), jamais extraits jusqu'ici
-   côté `radarr_client.py`/`sonarr_client.py`. Confirme l'intuition de
-   l'utilisateur du 2026-08-28 ("je suis sûr que via les API de radarr et
-   sonarr on peut chopper les informations sans forcément taper l'API de
-   TMDB en direct") : zéro nouveau secret, zéro nouvelle dépendance
-   externe. La Livraison 2 TMDB (mise de côté, voir plus haut) reste
-   pertinente uniquement pour les cas où `GapResult.title` lui-même est
-   faux — sans rapport avec ce sous-projet.
+   casting) : réutiliser Radarr/Sonarr, pas un client TMDB dédié — mais
+   récupérées À LA DEMANDE, pas ajoutées au scan GapScan.** Affiner en
+   écrivant ce plan : `RadarrMovieFile`/`SonarrSeasonFile` (le modèle du
+   scan GapScan, potentiellement 1000+ items, persisté sur disque) ne
+   doivent PAS porter ces champs — inutile pour l'écrasante majorité des
+   items jamais envoyés à un tracker. À la place :
+   - `GapResult` gagne deux champs légers (des entiers, pas les
+     métadonnées elles-mêmes) : `radarr_movie_id: Optional[int]`
+     (l'`id` interne Radarr, pas `tmdb_id`) et `sonarr_series_id:
+     Optional[int]` — l'un des deux selon `media_type`, déjà disponibles
+     sans coût supplémentaire (`movie["id"]`/`series["id"]`, déjà lus par
+     `radarr_client.py`/`sonarr_client.py` mais jamais reportés jusqu'ici).
+   - Nouvelles méthodes `RadarrClient.get_movie_details(movie_id) ->
+     RadarrMovieDetails` (`GET /api/v3/movie/{id}`) et
+     `SonarrClient.get_series_details(series_id) -> SonarrSeriesDetails`
+     (`GET /api/v3/series/{id}`), chacune avec `overview`, `poster_url`,
+     `genres`, `directors`, `cast` — un seul appel, uniquement au moment
+     où "Envoyer à C411" est cliqué pour CET item précis, jamais pendant
+     le scan.
+   Radarr/Sonarr interrogent déjà TMDB/TVDB pour leur propre usage et
+   exposent ces champs sur ces mêmes endpoints, jamais extraits jusqu'ici.
+   Confirme l'intuition de l'utilisateur du 2026-08-28 ("je suis sûr que
+   via les API de radarr et sonarr on peut chopper les informations sans
+   forcément taper l'API de TMDB en direct") : zéro nouveau secret, zéro
+   nouvelle dépendance externe. La Livraison 2 TMDB (mise de côté, voir
+   plus haut) reste pertinente uniquement pour les cas où
+   `GapResult.title` lui-même est faux — sans rapport avec ce sous-projet.
 
 2. **Gabarit de description BBCode, mécanisme parallèle aux `.nfo` — pas
    une 6ᵉ catégorie.** Un nouveau fichier
