@@ -110,6 +110,7 @@ def _make_validator(category: str, schema: dict[str, Any]) -> Callable[[RenderCo
                 rules_engine.cross_check_warnings(capture_values, meta, schema)
                 + rules_engine.upscale_warnings(capture_values, meta, schema)
                 + rules_engine.track_language_warnings(meta, schema, capture_values)
+                + rules_engine.source_marker_warnings(value, capture_values, meta, schema)
             )
             warnings.extend(f"{prefix}{w}" for w in meta_warnings)
         return warnings

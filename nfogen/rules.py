@@ -282,6 +282,49 @@ def upscale_warnings(
     ]
 
 
+def source_marker_warnings(
+    value: str, capture_values: dict[str, str], metadata: dict[str, Any], schema: dict[str, Any]
+) -> list[str]:
+    """Avertit quand une source (ex. BluRay) a un debit reel sous le seuil
+    attendu par le tracker pour cette source, sans le marqueur de qualite
+    correspondant deja present dans le nom (ex. 'HDLight') -- incident reel
+    (2026-08-30) : upload C411 refuse ("le debit video est inferieur au
+    seuil ... ajoute HDLight"). Jamais bloquant, silencieux des que l'info
+    necessaire manque (mieux vaut se taire que deviner)."""
+    source_val = capture_values.get("source")
+    if not source_val:
+        return []
+    bit_rate = metadata.get("video_bit_rate")
+    if not bit_rate:
+        return []
+    try:
+        bitrate_kbps = float(bit_rate) / 1000
+    except (TypeError, ValueError):
+        return []
+
+    found: list[str] = []
+    for check in schema.get("source_marker_checks", []):
+        if source_val not in check.get("sources", []):
+            continue
+        threshold = check.get("max_bit_rate_kbps")
+        if threshold is None or bitrate_kbps >= threshold:
+            continue
+        marker = check.get("marker", "")
+        if marker and marker.lower() in value.lower():
+            continue
+        message = check.get(
+            "message",
+            "Débit ({bitrate} kb/s) < {threshold} kb/s pour une source {source} : "
+            "ajoute '{marker}' après '{source}'.",
+        )
+        found.append(
+            message.format(
+                bitrate=int(bitrate_kbps), threshold=int(threshold), source=source_val, marker=marker,
+            )
+        )
+    return found
+
+
 def render_filename(data: dict[str, Any], schema: dict[str, Any]) -> str:
     template = schema.get("filename_template")
     if not template:

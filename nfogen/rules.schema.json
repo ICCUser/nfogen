@@ -67,6 +67,10 @@
           "type": "array",
           "items": { "$ref": "#/$defs/track_language_check" }
         },
+        "source_marker_checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source_marker_check" }
+        },
         "name_proposal": { "$ref": "#/$defs/name_proposal" }
       },
       "additionalProperties": false
@@ -107,6 +111,18 @@
         },
         "message": { "type": "string" }
       },
+      "additionalProperties": false
+    },
+    "source_marker_check": {
+      "type": "object",
+      "description": "Avertit quand une source (ex. BluRay, capturee par un token nomme 'source') a un debit reel sous le seuil attendu par le tracker pour cette source, sans le marqueur de qualite correspondant deja present dans le nom (ex. 'HDLight'). Jamais bloquant (nfogen/rules.py:source_marker_warnings).",
+      "properties": {
+        "sources": { "type": "array", "items": { "type": "string" } },
+        "max_bit_rate_kbps": { "type": "number" },
+        "marker": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["sources", "max_bit_rate_kbps", "marker", "message"],
       "additionalProperties": false
     },
     "token": {

@@ -77,6 +77,16 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   `video_codec` vide (et le champ manquant révélait au passage le bug du
   point traînant avant `-TEAM` corrigé ci-dessous).
 
+### Ajouté
+
+- **Avertissement "marqueur de qualité manquant"** (`rules.py:source_marker_warnings`,
+  nouvelle clé `source_marker_checks` dans `rules.json`) : un BluRay dont
+  le débit vidéo réel passe sous un seuil configuré (profil c411 : 8000
+  kb/s) sans le marqueur attendu (`HDLight`) déjà présent dans le nom est
+  signalé avant confirmation — incident réel, upload C411 refusé
+  ("le débit vidéo … est inférieur au seuil … ajoute HDLight"). Jamais
+  bloquant, même esprit que l'heuristique anti-upscale existante.
+
 ### Corrigé
 
 - **"Débit vidéo" absent du `.nfo`, upload C411 rejeté** : `pymediainfo`

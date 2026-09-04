@@ -58,6 +58,12 @@
         "pattern": "\\.(?P<resolution>\\d{3,4})p\\.",
         "level": "recommended",
         "warning": "aucune resolution (ex: 1080p) trouvee ; admis seulement si la qualite est < 720p"
+      },
+      {
+        "name": "source",
+        "pattern": "\\.(?P<source>BluRay\\.REMUX|BluRay|BDRip|WEB\\.[A-Za-z]+|WEB|HDTV|DVDRip)\\.",
+        "level": "recommended",
+        "warning": "aucune source reconnue (BluRay/BDRip/WEB/HDTV/DVDRip...) trouvee dans le nom"
       }
     ],
     "require_one_of_groups": {
@@ -74,6 +80,14 @@
       },
       "message": "Débit ({bitrate} kb/s) anormalement bas pour du {codec} en {resolution}p ({bpp} bit/pixel, seuil {threshold}) : upscale possible, à vérifier visuellement."
     },
+    "source_marker_checks": [
+      {
+        "sources": ["BluRay"],
+        "max_bit_rate_kbps": 8000,
+        "marker": "HDLight",
+        "message": "Débit ({bitrate} kb/s) < {threshold} kb/s pour une source {source} : ajoute '{marker}' après '{source}' dans le titre (ex: {source}.{marker})."
+      }
+    ],
     "cross_checks": [
       {
         "capture": "resolution",

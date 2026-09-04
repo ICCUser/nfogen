@@ -275,6 +275,54 @@ def test_upscale_warning_flags_abnormally_low_bitrate_for_real_c411_profile():
     assert any("upscale" in w.lower() for w in warnings)
 
 
+def test_source_marker_warning_flags_bluray_below_threshold_for_real_c411_profile():
+    """Cas reel (2026-08-30) : upload refuse par C411 -- "le debit video de
+    [ 1619 kb/s ] est inferieur au seuil ... ajoute [ HDLight ] apres
+    [ BluRay ]". Prouve le cablage complet (rules.json -> declarative_profile
+    -> rules.source_marker_warnings), pas seulement la fonction isolee."""
+    warnings: list[str] = []
+    nfogen.generate(
+        category="video",
+        data={
+            "raw_text": "General\nFormat : Matroska",
+            "release_name": "Joker.2015.MULTI.VFF.1080p.BluRay.AC3.5.1.x264-NOTAG",
+            "video_metadata": {
+                "video_height": 1080,
+                "video_width": 1920,
+                "video_format": "AVC",
+                "video_bit_rate": 1_619_000,
+                "frame_rate": 24.0,
+                "audio_languages": ["fre", "eng"],
+                "subtitle_languages": [None],
+            },
+        },
+        warnings=warnings,
+    )
+    assert any("HDLight" in w for w in warnings)
+
+
+def test_no_source_marker_warning_once_hdlight_is_added():
+    warnings: list[str] = []
+    nfogen.generate(
+        category="video",
+        data={
+            "raw_text": "General\nFormat : Matroska",
+            "release_name": "Joker.2015.MULTI.VFF.1080p.BluRay.HDLight.AC3.5.1.x264-NOTAG",
+            "video_metadata": {
+                "video_height": 1080,
+                "video_width": 1920,
+                "video_format": "AVC",
+                "video_bit_rate": 1_619_000,
+                "frame_rate": 24.0,
+                "audio_languages": ["fre", "eng"],
+                "subtitle_languages": [None],
+            },
+        },
+        warnings=warnings,
+    )
+    assert not any("HDLight" in w for w in warnings)
+
+
 def test_no_upscale_warning_for_a_comfortable_bitrate():
     warnings: list[str] = []
     nfogen.generate(
