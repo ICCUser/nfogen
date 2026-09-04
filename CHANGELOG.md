@@ -136,6 +136,14 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   différente sans fermer la précédente** : React réutilisait la même
   instance du panneau, gardant le titre corrigé et l'aperçu de la ligne
   d'avant au lieu de repartir de la nouvelle.
+- **"Calcul de l'aperçu" jusqu'à ~10 minutes** : régression introduite par
+  le correctif "Débit vidéo" ci-dessus — forcer `parse_speed=1.0`
+  systématiquement faisait relire l'intégralité de chaque fichier à
+  chaque extraction MediaInfo (coûteux sur un NAS pour un gros fichier),
+  même quand l'analyse rapide (`0.5`, défaut) donnait déjà un débit vidéo
+  exploitable. Corrigé : analyse rapide d'abord, analyse complète
+  seulement si le débit vidéo manque réellement (retour utilisateur,
+  2026-09-04).
 - **GapScan classait à tort des titres en "Qualité supérieure
   disponible"** quand une release C411 strictement équivalente existait
   déjà (`quality.py:SOURCE_RANK`) : une version locale scene taguée
