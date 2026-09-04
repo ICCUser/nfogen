@@ -151,6 +151,42 @@ def test_series_without_episode_files_produces_no_season():
     assert _client(handler).list_season_files() == []
 
 
+def test_get_series_details_parses_overview_poster_genres():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/series/99"
+        return httpx.Response(
+            200,
+            json={
+                "id": 99,
+                "overview": "Walter White, professeur de chimie...",
+                "genres": ["Drama", "Crime"],
+                "images": [
+                    {"coverType": "banner", "remoteUrl": "https://image.tmdb.org/banner.jpg"},
+                    {"coverType": "poster", "remoteUrl": "https://image.tmdb.org/poster.jpg"},
+                ],
+            },
+        )
+
+    details = _client(handler).get_series_details(99)
+
+    assert details.overview == "Walter White, professeur de chimie..."
+    assert details.genres == ["Drama", "Crime"]
+    assert details.poster_url == "https://image.tmdb.org/poster.jpg"
+    assert details.directors == []
+    assert details.cast == []
+
+
+def test_get_series_details_degrades_gracefully_when_fields_absent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"id": 99})
+
+    details = _client(handler).get_series_details(99)
+
+    assert details.overview == ""
+    assert details.poster_url is None
+    assert details.genres == []
+
+
 def test_requires_base_url_and_api_key():
     with pytest.raises(SonarrError):
         SonarrClient(base_url="", api_key="x")

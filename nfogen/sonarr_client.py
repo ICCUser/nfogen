@@ -48,6 +48,19 @@ class SonarrSeasonFile:
     remote_paths: list[str] = field(default_factory=list)
 
 
+@dataclass
+class SonarrSeriesDetails:
+    """Meme role que RadarrMovieDetails, cote series -- voir la-bas. Sonarr
+    n'expose pas de credits structures (realisateur/casting) comme Radarr :
+    `directors`/`cast` restent toujours vides pour une serie."""
+
+    overview: str = ""
+    poster_url: Optional[str] = None
+    genres: list[str] = field(default_factory=list)
+    directors: list[str] = field(default_factory=list)
+    cast: list[str] = field(default_factory=list)
+
+
 class SonarrClient:
     """Client HTTP pour l'API v3 de Sonarr."""
 
@@ -142,3 +155,18 @@ class SonarrClient:
                     )
                 )
         return seasons
+
+    def get_series_details(self, series_id: int) -> SonarrSeriesDetails:
+        """`GET /api/v3/series/{id}` : metadonnees de presentation d'UNE
+        serie -- jamais appele en boucle pendant un scan, uniquement au
+        moment de preparer un envoi vers un tracker (voir upload_prep.py)."""
+        series = self._get(f"/api/v3/series/{series_id}")
+        poster_url = next(
+            (img.get("remoteUrl") for img in series.get("images", []) if img.get("coverType") == "poster"),
+            None,
+        )
+        return SonarrSeriesDetails(
+            overview=series.get("overview") or "",
+            poster_url=poster_url,
+            genres=series.get("genres") or [],
+        )
