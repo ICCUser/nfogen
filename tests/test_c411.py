@@ -71,57 +71,203 @@ def test_video_raw_text_passthrough():
     assert nfo.endswith("\n")
 
 
-def test_extract_video_text_uses_full_parse_speed(tmp_path: Path, monkeypatch):
+def test_extract_video_text_stays_fast_when_bit_rate_already_present(tmp_path: Path, monkeypatch):
+    """Regression reelle (2026-09-04) : forcer parse_speed=1.0
+    systematiquement faisait relire l'integralite de chaque fichier a
+    chaque extraction (jusqu'a ~10 minutes sur un NAS pour un gros film,
+    retour utilisateur), meme quand l'analyse rapide donne deja un debit
+    video exploitable -- corrige : l'analyse complete ne se declenche
+    desormais que si necessaire (voir le test suivant pour ce cas)."""
+    from nfogen import extract
+
+    mkv = tmp_path / "t.mkv"
+    mkv.write_bytes(b"x")
+    calls: list[dict] = []
+
+    class _VideoTrack:
+        track_type = "Video"
+        bit_rate = 5_000_000  # deja isole en analyse rapide
+
+    def fake_parse(path, **kwargs):
+        calls.append(kwargs)
+        if kwargs.get("output") == "":
+            return "General\nComplete name : orig.mkv\n"
+
+        class _Result:
+            tracks = [_VideoTrack()]
+
+        return _Result()
+
+    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
+    extract.extract_video_text(mkv)
+
+    assert all(c.get("parse_speed") != 1.0 for c in calls)
+
+
+def test_extract_video_text_escalates_to_full_scan_when_bit_rate_missing(tmp_path: Path, monkeypatch):
     """Incident reel (2026-08-30) : le "Bit rate" de la piste Video est
     absent du rapport MediaInfo pour un fichier CRF (HandBrake) a plusieurs
     pistes audio, en analyse partielle (parse_speed par defaut de
     pymediainfo, 0.5) -- la meme commande avec --ParseSpeed=1.0 sur le
     fichier reel de l'utilisateur fait apparaitre la valeur. C411 rejette
     l'upload ("Champ non renseigne : Debit video") car sa description
-    "Generee automatiquement" lit ce rapport. Corrige : analyse complete
-    systematique."""
+    "Generee automatiquement" lit ce rapport. Corrige par un scan complet,
+    mais UNIQUEMENT quand l'analyse rapide ne suffit pas (voir le test
+    precedent pour le cas courant, desormais rapide)."""
     from nfogen import extract
 
     mkv = tmp_path / "t.mkv"
     mkv.write_bytes(b"x")
-    captured: dict = {}
+    calls: list[dict] = []
+
+    class _VideoTrackNoBitRate:
+        track_type = "Video"
+        bit_rate = None  # non isole en analyse rapide (incident reel)
 
     def fake_parse(path, **kwargs):
-        captured.update(kwargs)
-        return "General\nComplete name : orig.mkv\n"
-
-    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
-    extract.extract_video_text(mkv)
-
-    assert captured.get("parse_speed") == 1.0
-
-
-def test_extract_video_metadata_uses_full_parse_speed(tmp_path: Path, monkeypatch):
-    """Meme correctif que extract_video_text, pour les donnees structurees
-    consommees par l'heuristique anti-upscale (rules.upscale_warnings) --
-    un video_bit_rate manque a tort en analyse partielle laisse
-    l'heuristique silencieusement inactive plutot que de devine."""
-    from nfogen import extract
-
-    mkv = tmp_path / "t.mkv"
-    mkv.write_bytes(b"x")
-    captured: dict = {}
-
-    class _FakeTrack:
-        track_type = "General"
-
-    def fake_parse(path, **kwargs):
-        captured.update(kwargs)
+        calls.append(kwargs)
+        if kwargs.get("output") == "":
+            return "General\nComplete name : orig.mkv\n"
 
         class _Result:
-            tracks = [_FakeTrack()]
+            tracks = [_VideoTrackNoBitRate()]
 
         return _Result()
 
     monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
-    extract.extract_video_metadata(mkv)
+    extract.extract_video_text(mkv)
 
-    assert captured.get("parse_speed") == 1.0
+    text_calls = [c for c in calls if c.get("output") == ""]
+    assert text_calls and text_calls[-1].get("parse_speed") == 1.0
+
+
+def test_extract_video_metadata_stays_fast_when_bit_rate_already_present(tmp_path: Path, monkeypatch):
+    """Meme regression/correctif que extract_video_text (voir la-bas), pour
+    les donnees structurees consommees par l'heuristique anti-upscale
+    (rules.upscale_warnings). Une seule analyse necessaire dans ce cas
+    courant -- reutilise directement l'objet de l'analyse rapide."""
+    from nfogen import extract
+
+    mkv = tmp_path / "t.mkv"
+    mkv.write_bytes(b"x")
+    calls: list[dict] = []
+
+    class _VideoTrack:
+        track_type = "Video"
+        bit_rate = 5_000_000
+        height = 1080
+        width = 1920
+        format = "AVC"
+        frame_rate = "24.000"
+
+    class _GeneralTrack:
+        track_type = "General"
+        title = None
+
+    def fake_parse(path, **kwargs):
+        calls.append(kwargs)
+
+        class _Result:
+            tracks = [_GeneralTrack(), _VideoTrack()]
+
+        return _Result()
+
+    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
+    meta = extract.extract_video_metadata(mkv)
+
+    assert meta["video_bit_rate"] == 5_000_000
+    assert len(calls) == 1  # une seule analyse necessaire
+    assert all(c.get("parse_speed") != 1.0 for c in calls)
+
+
+def test_extract_video_metadata_escalates_to_full_scan_when_bit_rate_missing(tmp_path: Path, monkeypatch):
+    """Un video_bit_rate manque a tort en analyse partielle laisse
+    l'heuristique anti-upscale silencieusement inactive plutot que de
+    deviner -- escalade en analyse complete pour le recuperer, UNIQUEMENT
+    dans ce cas (voir le test precedent pour le cas courant)."""
+    from nfogen import extract
+
+    mkv = tmp_path / "t.mkv"
+    mkv.write_bytes(b"x")
+    calls: list[dict] = []
+
+    class _VideoTrackNoBitRate:
+        track_type = "Video"
+        bit_rate = None
+        height = 1080
+        width = 1920
+        format = "AVC"
+        frame_rate = "24.000"
+
+    class _VideoTrackWithBitRate:
+        track_type = "Video"
+        bit_rate = 5_000_000
+        height = 1080
+        width = 1920
+        format = "AVC"
+        frame_rate = "24.000"
+
+    def fake_parse(path, **kwargs):
+        calls.append(kwargs)
+        if kwargs.get("parse_speed") == 1.0:
+
+            class _Result:
+                tracks = [_VideoTrackWithBitRate()]
+
+            return _Result()
+
+        class _Result:
+            tracks = [_VideoTrackNoBitRate()]
+
+        return _Result()
+
+    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
+    meta = extract.extract_video_metadata(mkv)
+
+    assert meta["video_bit_rate"] == 5_000_000  # recupere via le scan complet
+    assert len(calls) == 2
+    assert calls[-1].get("parse_speed") == 1.0
+
+
+def test_audio_tech_never_needs_a_full_scan(tmp_path: Path, monkeypatch):
+    """Un fichier audio n'a pas de piste Video a isoler -- l'analyse
+    complete (necessaire uniquement pour un video_bit_rate manquant,
+    voir extract_video_text/extract_video_metadata) n'a jamais ete
+    pertinente ici, meme si le code la forcait par erreur avant ce
+    correctif (2026-09-04)."""
+    from nfogen import extract
+
+    mp3 = tmp_path / "t.mp3"
+    mp3.write_bytes(b"x")
+    calls: list[dict] = []
+
+    class _AudioTrack:
+        track_type = "Audio"
+        format = "MP3"
+        format_version = None
+        format_profile = None
+        bit_rate = 320_000
+        bit_rate_mode = "CBR"
+        channel_s = 2
+        sampling_rate = 44100
+        bit_depth = None
+        compression_mode = None
+        writing_library = None
+        encoding_settings = None
+
+    def fake_parse(path, **kwargs):
+        calls.append(kwargs)
+
+        class _Result:
+            tracks = [_AudioTrack()]
+
+        return _Result()
+
+    monkeypatch.setattr("pymediainfo.MediaInfo.parse", fake_parse)
+    extract._audio_tech(mp3)
+
+    assert len(calls) == 1
+    assert calls[0].get("parse_speed") != 1.0
 
 
 @pytest.mark.skipif(not (HAS_FFMPEG and HAS_MEDIAINFO), reason="ffmpeg/libmediainfo requis")

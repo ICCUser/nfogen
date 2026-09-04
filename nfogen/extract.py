@@ -18,6 +18,14 @@ VIDEO_EXTS = {".mkv", ".mp4", ".avi", ".m2ts", ".ts", ".mov", ".wmv", ".m4v"}
 _COMPLETE_NAME_RE = re.compile(r"^(Complete name\s*:\s*).*$", re.MULTILINE)
 
 
+def _video_bit_rate_present(mi: Any) -> bool:
+    """Vrai si un debit de piste video a ete isole dans un resultat
+    MediaInfo deja analyse (voir extract_video_text/extract_video_metadata) --
+    decide s'il faut escalader vers une analyse complete (parse_speed=1.0)."""
+    video = next((t for t in mi.tracks if t.track_type == "Video"), None)
+    return video is not None and bool(video.bit_rate)
+
+
 def _video_files(source: Path) -> list[Path]:
     return sorted(p for p in source.iterdir() if p.suffix.lower() in VIDEO_EXTS)
 
@@ -30,14 +38,22 @@ def extract_video_text(source: Path, *, full: bool = False) -> str:
     source = Path(source)
     if not source.is_file():
         raise FileNotFoundError(f"Fichier introuvable : {source}")
-    # parse_speed=1.0 (analyse complete, pas la valeur par defaut de
-    # pymediainfo 0.5) : incident reel (2026-08-30) -- un fichier CRF
-    # (HandBrake) a plusieurs pistes audio n'a pas de "Bit rate" video en
-    # analyse partielle (MediaInfo n'arrive pas a isoler la taille du flux
-    # video seul), meme si la valeur est parfaitement calculable en scannant
-    # tout le fichier. C411 rejette l'upload car sa description "Generee
-    # automatiquement" lit ce champ dans le .nfo.
-    text = MediaInfo.parse(str(source), output="", full=full, parse_speed=1.0)
+    # Analyse RAPIDE d'abord (parse_speed=0.5, defaut pymediainfo) : verifie
+    # si le debit de la piste video est deja isole avant d'escalader vers
+    # une analyse COMPLETE (parse_speed=1.0). Incident reel (2026-08-30) :
+    # un fichier CRF (HandBrake) a plusieurs pistes audio n'a pas de
+    # "Bit rate" video en analyse partielle (MediaInfo n'arrive pas a
+    # isoler la taille du flux video seul), meme si la valeur est
+    # parfaitement calculable en scannant tout le fichier -- C411 rejette
+    # l'upload car sa description "Generee automatiquement" lit ce champ
+    # dans le .nfo. MAIS forcer l'analyse complete SYSTEMATIQUEMENT causait
+    # une regression reelle (2026-09-04, retour utilisateur : "ca fait 10
+    # minutes") -- lecture integrale de chaque fichier a chaque extraction,
+    # meme quand l'analyse rapide suffisait deja (l'immense majorite des
+    # cas). L'analyse complete ne se declenche desormais que si necessaire.
+    quick = MediaInfo.parse(str(source), parse_speed=0.5)
+    parse_speed = 0.5 if _video_bit_rate_present(quick) else 1.0
+    text = MediaInfo.parse(str(source), output="", full=full, parse_speed=parse_speed)
     if not isinstance(text, str):
         text = str(text)
     text = text.replace("\r\n", "\n").strip("\n") + "\n"
@@ -59,11 +75,14 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
     from pymediainfo import MediaInfo
 
     source = Path(source)
-    # parse_speed=1.0 : voir extract_video_text -- meme incident, cette
-    # fois sur video_bit_rate (consomme par l'heuristique anti-upscale,
-    # rules.upscale_warnings), qui reste silencieusement None en analyse
-    # partielle plutot que d'etre calcule.
-    mi = MediaInfo.parse(str(source), parse_speed=1.0)
+    # Meme logique que extract_video_text (voir la-bas) : analyse rapide
+    # d'abord, escalade en analyse complete UNIQUEMENT si le debit video
+    # manque (consomme par l'heuristique anti-upscale,
+    # rules.upscale_warnings) -- reutilise directement l'objet de l'analyse
+    # rapide quand elle suffit deja (une seule analyse dans le cas courant).
+    mi = MediaInfo.parse(str(source), parse_speed=0.5)
+    if not _video_bit_rate_present(mi):
+        mi = MediaInfo.parse(str(source), parse_speed=1.0)
     video = next((t for t in mi.tracks if t.track_type == "Video"), None)
     general = next((t for t in mi.tracks if t.track_type == "General"), None)
     frame_rate = None
@@ -197,8 +216,10 @@ def _audio_tech(path: Path) -> dict[str, Any]:
     try:
         from pymediainfo import MediaInfo
 
-        # parse_speed=1.0 : meme raison que extract_video_text/extract_video_metadata.
-        mi = MediaInfo.parse(str(path), parse_speed=1.0)
+        # Analyse rapide (defaut pymediainfo) : un fichier audio n'a pas de
+        # piste Video a isoler, l'analyse complete (voir extract_video_text)
+        # n'a jamais ete pertinente ici.
+        mi = MediaInfo.parse(str(path), parse_speed=0.5)
     except Exception:
         return {}
     g = next((t for t in mi.tracks if t.track_type == "General"), None)
