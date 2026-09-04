@@ -11,13 +11,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from . import engine, extract, file_staging, gapscan_config_store, tracker_profile
+from . import c411_upload_options, engine, extract, file_staging, gapscan_config_store, tracker_profile
+from .c411_upload_client import C411UploadClient, C411UploadError
 from .engine import propose_release_name
 from .models import RenderContext
 from .name_proposal import extract_team_tag, strip_ext
+from .profile_store import read_profile
+from .radarr_client import RadarrClient
 from .registry import get_validator
+from .rules import captures as rules_captures
+from .sonarr_client import SonarrClient
+from .upload_description import render_upload_description
 
 try:
     from . import torrent_builder
@@ -50,6 +56,20 @@ class GroupProposal:
     files: list[ProposedFile] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     blocked: bool = False
+
+
+@dataclass
+class SendResult:
+    """Resultat de `send_to_tracker()` : le brouillon cree/mis a jour
+    n'entre JAMAIS en file de moderation tout seul (voir AUTOMATION.md,
+    sous-projet 5, decision 6) -- c'est a l'utilisateur de le finaliser
+    sur le site du tracker. `duplicate_warning` : non None si la
+    verification anti-doublon n'a pas pu avoir lieu ou a trouve une
+    release existante -- jamais bloquant."""
+
+    draft_id: Any
+    draft_url: str
+    duplicate_warning: Optional[str] = None
 
 
 @dataclass
@@ -249,4 +269,130 @@ def commit_upload(release_name: str, files: list[ProposedFile], profile: str = "
     torrent_builder.build_torrent(staged_path, announce_url, torrent_path, piece_sizes)
     return CommitResult(
         release_name=release_name, staged_path=staged_path, torrent_path=torrent_path, nfo_path=nfo_path
+    )
+
+
+def send_to_tracker(
+    *,
+    release_name: str,
+    staged_path: str,
+    torrent_path: str,
+    nfo_path: str,
+    profile: str = "c411",
+    media_type: str = "movie",
+    radarr_movie_id: Optional[int] = None,
+    sonarr_series_id: Optional[int] = None,
+    tmdb_id: Optional[int] = None,
+    tvdb_id: Optional[int] = None,
+    genre: Optional[str] = None,
+    season_number: Optional[int] = None,
+    draft_id: Optional[Any] = None,
+) -> SendResult:
+    """Cree (ou met a jour si `draft_id` deja connu) un BROUILLON C411
+    pour un groupe deja confirme par `commit_upload()` -- jamais une
+    soumission reelle (voir AUTOMATION.md, sous-projet 5, decision 6).
+    Recupere les metadonnees de presentation (synopsis/affiche/genres) A
+    LA DEMANDE aupres de Radarr/Sonarr (jamais pendant le scan GapScan),
+    rend la description BBCode, calcule categorie/sous-categorie/options
+    depuis le release_name deja confirme, verifie les doublons (best
+    effort, jamais bloquant), puis appelle l'API."""
+    tracker_config = gapscan_config_store.effective_tracker(profile)
+    if tracker_config is None:
+        raise ValueError(
+            f"Clé API du tracker '{profile}' non configurée (PUT /gapscan/config)."
+        )
+    api_key, base_url = tracker_config
+
+    # Metadonnees de presentation : a la demande, jamais pendant le scan
+    # (voir AUTOMATION.md, decision 1).
+    overview, poster_url, genres, directors, cast = "", None, [], [], []
+    if media_type == "movie" and radarr_movie_id is not None:
+        radarr_config = gapscan_config_store.effective_radarr()
+        if radarr_config:
+            radarr = RadarrClient(*radarr_config)
+            try:
+                details = radarr.get_movie_details(radarr_movie_id)
+                overview, poster_url = details.overview, details.poster_url
+                genres, directors, cast = details.genres, details.directors, details.cast
+            finally:
+                radarr.close()
+    elif media_type == "series" and sonarr_series_id is not None:
+        sonarr_config = gapscan_config_store.effective_sonarr()
+        if sonarr_config:
+            sonarr = SonarrClient(*sonarr_config)
+            try:
+                details = sonarr.get_series_details(sonarr_series_id)
+                overview, poster_url = details.overview, details.poster_url
+                genres, directors, cast = details.genres, details.directors, details.cast
+            finally:
+                sonarr.close()
+
+    # Infos qualite (source/langue/codec/resolution) : extraites du
+    # release_name DEJA CONFIRME via les memes tokens que la validation
+    # (sous-projet 4b), pas redemandees au moteur de nommage.
+    schema = read_profile(profile)["rules"].get("video", {})
+    capture_values = rules_captures(release_name, schema)
+
+    description = render_upload_description(
+        profile,
+        {
+            "title": release_name, "overview": overview, "poster_url": poster_url,
+            "genres": genres, "directors": directors, "cast": cast,
+            "resolution": capture_values.get("resolution", ""),
+            "source": capture_values.get("source", ""),
+            "video_codec": capture_values.get("video_codec", ""),
+            "audio_languages": [],
+        },
+    )
+
+    category_id, subcategory_id = c411_upload_options.build_category_ids(profile, media_type, genre)
+    if category_id is None or subcategory_id is None:
+        raise ValueError(
+            f"Catégorie/sous-catégorie non configurées pour le profil '{profile}' "
+            f"(rules.json -> tracker.upload.subcategory_id, media_type='{media_type}')."
+        )
+    options = c411_upload_options.build_options(profile, capture_values, release_name, season_number)
+
+    torrent_bytes = Path(torrent_path).read_bytes()
+    nfo_bytes = Path(nfo_path).read_bytes()
+
+    upload_client = C411UploadClient(api_key, base_url=base_url.rstrip("/") + "/api")
+    try:
+        duplicate_warning = None
+        if tmdb_id is not None:
+            tmdb_type = "movie" if media_type == "movie" else "tv"
+            try:
+                releases = upload_client.check_duplicates(tmdb_id, tmdb_type)
+                if releases:
+                    duplicate_warning = (
+                        f"{len(releases)} release(s) déjà approuvée(s) pour cet identifiant TMDB "
+                        "sur le tracker — vérifie qu'il ne s'agit pas d'un doublon avant de finaliser."
+                    )
+            except C411UploadError as exc:
+                duplicate_warning = f"Vérification des doublons impossible : {exc}"
+        else:
+            duplicate_warning = (
+                "Vérification des doublons non effectuée : identifiant TMDB inconnu pour ce média."
+            )
+
+        tmdb_data = {"id": tmdb_id, "type": "movie" if media_type == "movie" else "tv"} if tmdb_id else None
+
+        if draft_id is not None:
+            response = upload_client.update_draft(
+                draft_id, torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=release_name,
+                description=description, category_id=category_id, subcategory_id=subcategory_id,
+                options=options, tmdb_data=tmdb_data,
+            )
+        else:
+            response = upload_client.create_draft(
+                torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=release_name,
+                description=description, category_id=category_id, subcategory_id=subcategory_id,
+                options=options, tmdb_data=tmdb_data,
+            )
+    finally:
+        upload_client.close()
+
+    return SendResult(
+        draft_id=response.get("id"), draft_url=response.get("url", ""),
+        duplicate_warning=duplicate_warning,
     )

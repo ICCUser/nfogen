@@ -14,6 +14,7 @@ from nfogen.upload_prep import (
     commit_upload,
     group_by_team,
     preview_upload,
+    send_to_tracker,
 )
 
 
@@ -338,3 +339,198 @@ def test_preview_upload_uses_real_audio_tracks_when_filename_has_no_language_tag
     assert len(proposals) == 1
     assert "MULTI.VFF" in proposals[0].release_name
     assert not any("langue" in w.lower() for w in proposals[0].warnings)
+
+
+# --------------------------------------------------------------------------- #
+# send_to_tracker (AUTOMATION.md, sous-projet 5) : cree/met a jour un
+# BROUILLON C411 -- jamais une soumission reelle.
+# --------------------------------------------------------------------------- #
+def test_send_to_tracker_movie_creates_a_draft(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+
+    class FakeRadarrClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_movie_details(self, movie_id):
+            from nfogen.radarr_client import RadarrMovieDetails
+            assert movie_id == 42
+            return RadarrMovieDetails(overview="Synopsis test.", genres=["Action"])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.RadarrClient", FakeRadarrClient)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_radarr",
+        lambda: ("http://radarr.local", "radarr-key"),
+    )
+
+    captured: dict = {}
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            captured["duplicates_checked"] = (tmdb_id, tmdb_type)
+            return []
+
+        def create_draft(self, **kwargs):
+            captured["create_draft_kwargs"] = kwargs
+            return {"id": 555, "url": "https://c411.org/user/drafts/555"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", radarr_movie_id=42, tmdb_id=603,
+    )
+
+    assert result.draft_id == 555
+    assert result.draft_url == "https://c411.org/user/drafts/555"
+    assert result.duplicate_warning is None
+    assert captured["duplicates_checked"] == (603, "movie")
+    kwargs = captured["create_draft_kwargs"]
+    assert kwargs["title"] == "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM"
+    assert "Synopsis test." in kwargs["description"]
+    assert kwargs["category_id"] == 1
+    assert kwargs["subcategory_id"] == 6
+    assert kwargs["options"] == {"1": [2], "2": 413}  # VFF (MULTI.VFF) + BluRay.HDLight
+
+
+def test_send_to_tracker_series_without_tmdb_id_skips_duplicate_check_with_a_warning(tmp_path, monkeypatch):
+    staged = tmp_path / "Show.S01.MULTI.VFF.1080p.WEB.AC3.x264-TEAM"
+    staged.mkdir()
+    torrent = tmp_path / "Show.S01.MULTI.VFF.1080p.WEB.AC3.x264-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Show.S01.MULTI.VFF.1080p.WEB.AC3.x264-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+
+    class FakeSonarrClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_series_details(self, series_id):
+            from nfogen.sonarr_client import SonarrSeriesDetails
+            return SonarrSeriesDetails(overview="Synopsis serie.")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.SonarrClient", FakeSonarrClient)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_sonarr",
+        lambda: ("http://sonarr.local", "sonarr-key"),
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_draft(self, **kwargs):
+            return {"id": 556, "url": "https://c411.org/user/drafts/556"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    result = send_to_tracker(
+        release_name="Show.S01.MULTI.VFF.1080p.WEB.AC3.x264-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="series", sonarr_series_id=99, season_number=1,
+        # tmdb_id absent : cas normal cote series, voir AUTOMATION.md decision 5
+    )
+
+    assert result.draft_id == 556
+    assert result.duplicate_warning is not None
+    assert "doublon" in result.duplicate_warning.lower()
+
+
+def test_send_to_tracker_updates_an_existing_draft_when_draft_id_given(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+
+    class FakeRadarrClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_movie_details(self, movie_id):
+            from nfogen.radarr_client import RadarrMovieDetails
+            return RadarrMovieDetails()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.RadarrClient", FakeRadarrClient)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_radarr",
+        lambda: ("http://radarr.local", "radarr-key"),
+    )
+
+    captured: dict = {}
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def update_draft(self, draft_id, **kwargs):
+            captured["draft_id"] = draft_id
+            return {"id": draft_id, "url": f"https://c411.org/user/drafts/{draft_id}"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", radarr_movie_id=1, tmdb_id=1, draft_id=555,
+    )
+
+    assert captured["draft_id"] == 555
+    assert result.draft_id == 555
+
+
+def test_send_to_tracker_requires_tracker_credentials(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker", lambda profile: None
+    )
+    with pytest.raises(ValueError, match="[Cc]l[eé]"):
+        send_to_tracker(
+            release_name="X", staged_path="/x.mkv", torrent_path="/x.torrent", nfo_path="/x.nfo",
+            profile="c411", media_type="movie",
+        )
