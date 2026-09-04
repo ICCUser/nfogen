@@ -60,7 +60,7 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 | 3 | Rendre `name_proposal.py` agnostique du tracker (source/codecs déclaratifs) | **Livré (2026-08-27)**, voir [le plan](docs/superpowers/plans/2026-08-27-name-proposal-agnostic.md) |
 | 4 | Orchestration du nommage → mise en scène + `.torrent` (utilise les sous-projets 2 et 3) | **Livré (2026-08-28)**, voir [le plan](docs/superpowers/plans/2026-08-28-automation-upload-orchestration.md) |
 | 4b | Généralisation tracker-agnostique (retrofit des sous-projets 2/4 + GapScan) | **Livré (2026-08-29)**, voir [le plan](docs/superpowers/plans/2026-08-29-tracker-agnostic-generalization.md) |
-| 5 | Upload vers C411 | À concevoir |
+| 5 | Upload vers C411 | Conçu (2026-09-04), voir sa section ci-dessous |
 | 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
 | 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
 | 8 | Lidarr (musique) | Facultatif, en dernier |
@@ -613,7 +613,7 @@ pour le détail tâche par tâche) :
   corrigé pour dégrader proprement dans les deux cas (jamais de
   supposition, jamais de plantage).
 
-## Sous-projet 5 : Upload vers C411 (notes préliminaires, 2026-08-28)
+## Sous-projet 5 : Upload vers C411 (conception, 2026-08-28 → 2026-09-04)
 
 Pas encore conçu formellement, mais plusieurs découvertes réelles pendant
 les tests du sous-projet 4 réduisent significativement le périmètre
@@ -748,3 +748,197 @@ saison par saison), ou est-ce toujours l'un des deux selon un critère à
 définir ? Touche le modèle de données GapScan, l'UI de sélection, et le
 gabarit de nommage — un vrai sous-projet à concevoir, pas un correctif.
 Pas de code écrit, décisions à prendre quand ce chantier sera repris.
+
+### Conception complète (2026-09-04)
+
+**Doc API officielle obtenue de l'utilisateur (page "Guide complet des
+intégrations", `c411.org/user/integrations`)** — résout la "Piste à
+approfondir" ci-dessus sur les règles API par tracker, avec de vraies
+données plutôt qu'une hypothèse :
+
+- **Endpoint** : `POST https://c411.org/api/torrents`,
+  `Authorization: Bearer <clé API>`, `multipart/form-data`.
+- **Champs requis** : `torrent` (fichier, max 10 Mo), `nfo` (fichier, max
+  5 Mo), `title` (3-200 car.), `description` (BBCode ou HTML, min 20
+  car.), `categoryId`, `subcategoryId`.
+- **Champs optionnels** : `descriptionFormat` (`standard` par défaut ou
+  `html` — ce dernier nécessite la permission `torrent:use_html_prez`,
+  réservée aux grades internes G0/G3, voir note du 2026-08-28 plus haut ;
+  **toujours `standard`** pour nfogen), `options` (JSON,
+  `{optionTypeId: optionValueId | [optionValueId, ...]}`), `uploaderNote`,
+  `tmdbData`/`rawgData` (JSON, métadonnées affichées sur la page).
+- **`GET /api/categories`** : catégories + sous-catégories.
+  **`GET /api/categories/{subcategoryId}/options`** : types d'option +
+  valeurs disponibles pour une sous-catégorie (dynamique — voir
+  "Décisions" ci-dessous pour le choix de les figer dans le profil plutôt
+  que de les requêter à chaque fois).
+- **`GET /api/torrents/by-tmdb?tmdbId={id}&tmdbType={movie|tv}`** :
+  releases déjà approuvées pour cet identifiant TMDB (10 max, 30
+  requêtes/min) — vérification anti-doublon avant upload.
+- **Brouillons** (`/api/user/drafts`, CRUD complet, 15 max/utilisateur) :
+  hors scope pour ce sous-projet (voir "Pas dans ce sous-projet").
+
+**Découverte qui change le périmètre attendu** : contrairement à
+l'hypothèse du 2026-08-28 ("C411 se charge de tout via Généré
+automatiquement"), l'API exige un champ `description` **rempli par
+l'appelant** (BBCode réel, pas juste un ID TMDB à associer) — ce
+comportement "Généré automatiquement" n'existe que côté **formulaire web**
+(upload manuel), pas côté API. nfogen doit donc composer lui-même une
+vraie description.
+
+**Catégories/sous-catégories réelles (copiées par l'utilisateur,
+2026-09-04)** — pertinentes pour nfogen (catégorie 1, "Films & Vidéos") :
+
+| categoryId | subcategoryId | Nom |
+|---|---|---|
+| 1 | 1 | Animation (film) |
+| 1 | 2 | Animation Série |
+| 1 | 4 | Documentaire |
+| 1 | 6 | Film |
+| 1 | 7 | Série TV |
+
+**Types d'option pertinents** (`GET /api/categories/{subcategoryId}/options`
+donne la liste complète et à jour — table ci-dessous : valeurs observées,
+figées dans le profil, voir "Décisions") :
+
+| optionTypeId | Nom | Multi-select | Valeurs observées |
+|---|---|---|---|
+| 1 | Langue | oui | 1=Anglais, 2=Français (VFF), 3=Muet, 4=Multi (FR inclus), 5=Multi (QC inclus), 6=Québécois (VFQ), 7=VFSTFR, 8=VOSTFR, 422=Multi VF2 (FR+QC) |
+| 2 | Qualité | non | 10=BluRay 4K, 11=BluRay Full, 12=BluRay Remux, 16=HDRip 1080, 24=WEB-DL, 25=WEB-DL 1080, 26=WEB-DL 4K, 413=Bluray.HDLight 1080 |
+| 7 | Saison | non | 118=Série intégrale, 119=Hors saison, 120=Non communiqué, 121-150=Saison 01-30 |
+| 6 | Épisode | non | 96=Saison complète, 97-116=Épisode 01-20, 117=Non communiqué |
+
+**Décisions** :
+
+1. **Métadonnées de présentation (synopsis, affiche, genres, réalisateur/
+   casting) : réutiliser Radarr/Sonarr, pas un client TMDB dédié.**
+   `RadarrMovieFile`/`SonarrSeasonFile` gagnent `overview`, `poster_url`,
+   `genres`, `directors`, `cast` — Radarr/Sonarr interrogent déjà TMDB/
+   TVDB pour leur propre usage et exposent ces champs sur leurs propres
+   endpoints (`/api/v3/movie`, `/api/v3/series`), jamais extraits jusqu'ici
+   côté `radarr_client.py`/`sonarr_client.py`. Confirme l'intuition de
+   l'utilisateur du 2026-08-28 ("je suis sûr que via les API de radarr et
+   sonarr on peut chopper les informations sans forcément taper l'API de
+   TMDB en direct") : zéro nouveau secret, zéro nouvelle dépendance
+   externe. La Livraison 2 TMDB (mise de côté, voir plus haut) reste
+   pertinente uniquement pour les cas où `GapResult.title` lui-même est
+   faux — sans rapport avec ce sous-projet.
+
+2. **Gabarit de description BBCode, mécanisme parallèle aux `.nfo` — pas
+   une 6ᵉ catégorie.** Un nouveau fichier
+   `profiles/c411/templates/upload_description.j2` (Jinja2, comme les
+   `.nfo` existants), rendu avec le contexte (titre, synopsis, affiche,
+   genres, casting, infos qualité tirées de `video_metadata`). La
+   description n'est pas un "type de média" comme `video`/`audio`/etc.
+   (`CATEGORIES` dans `declarative_profile.py`) — plutôt qu'élargir cette
+   liste pour un concept qui n'en est pas un, un petit rendu Jinja2
+   dédié et autonome (nouvelle fonction, ex.
+   `nfogen/upload_description.py:render_upload_description()`), en dehors
+   du système `register`/`registry` par catégorie. Éditable comme
+   n'importe quel template de profil, jamais de BBCode généré en dur en
+   Python.
+
+3. **Catégorie/sous-catégorie/options : déclaratifs dans le profil
+   (`rules.json` → `tracker.upload`), pas requêtés dynamiquement à
+   chaque envoi, pas câblés en Python.** Répond explicitement à la
+   question ouverte du 2026-08-29 ("faut-il un jeu de règles API par
+   tracker ?") : **oui**. Les valeurs de la table ci-dessus, figées dans
+   le profil c411 :
+   ```json
+   "tracker": {
+     ...,
+     "upload": {
+       "category_id": 1,
+       "subcategory_id_by_media_type": {"movie": 6, "series": 7},
+       "language_option_id": 1,
+       "language_values": {
+         "VFF": 2, "MULTI.VFF": 4, "VO": 1, "VOSTFR": 8
+       },
+       "quality_option_id": 2,
+       "quality_values": {
+         "BluRay.HDLight": 413, "BluRay": 11, "BluRay.REMUX": 12,
+         "WEB": 25, "WEB.4K": 26
+       },
+       "season_option_id": 7,
+       "season_values": {"INTEGRALE": 118, "S01": 121, "S02": 122, "S30": 150},
+       "episode_option_id": 6,
+       "full_season_episode_value": 96
+     }
+   }
+   ```
+   `language_values`/`quality_values` sont indexés par les mêmes chaînes
+   que celles déjà produites par `name_proposal.py`
+   (`language_aliases`/`source_aliases` — voir sous-projet 3), pas
+   redéfinies séparément : `fields["language"]`/`fields["source"]` (+
+   marqueur `HDLight` si présent, voir sous-projet 4b tout juste livré)
+   servent directement de clé de correspondance. `GET /api/categories/*`
+   reste utile en développement pour vérifier que la table n'a pas dérivé
+   (voir "Pas dans ce sous-projet"), mais n'est jamais appelée au moment
+   de l'envoi réel.
+   **Non résolu, à vérifier avant d'écrire le mapping final** : la liste
+   donnée par l'utilisateur n'a qu'UN SEUL "Documentaire" (subcategoryId
+   4), pas de distinction film/série contrairement aux codes Torznab de
+   recherche (2070 vs 5080, voir sous-projet 4b/GAPSCAN.md) — à confirmer
+   via `GET /api/categories` en conditions réelles avant d'écrire cette
+   partie du mapping (jamais deviner une correspondance).
+
+4. **`nfogen/c411_upload_client.py` — délibérément *pas* générique,
+   contrairement à `torznab_client.py`.** Cette API REST (endpoints,
+   champs, format `options`) est propre à C411, sans standard équivalent
+   partagé par d'autres trackers (rappel du principe directeur, sous-
+   projet 4b : Torznab est un vrai standard partagé, ceci ne l'est pas).
+   Reste nommé et pensé comme spécifique à ce tracker jusqu'à preuve du
+   contraire (un deuxième tracker à intégrer un jour) — même discipline
+   YAGNI déjà appliquée aux regex de détection de `name_proposal.py`.
+
+5. **Vérification anti-doublon best-effort, jamais bloquante.**
+   `GET /api/torrents/by-tmdb` juste avant l'envoi réel (pas pendant
+   GapScan, qui a déjà son propre mécanisme via Torznab — sous-projet
+   4b/GAPSCAN.md). Pour un film, `tmdb_id` est déjà connu
+   (`RadarrMovieFile.tmdb_id`). **Pour une série, généralement absent**
+   (`GapResult.tmdb_id` est toujours `None` côté série, seul `tvdb_id`
+   est connu — voir `gapscan.py`) : la vérification est alors simplement
+   sautée avec un avertissement explicite ("doublon non vérifiable, tmdb_id
+   inconnu pour cette série"), jamais bloquant, jamais deviné.
+
+6. **Déclenchement de l'envoi réel : nouveau bouton explicite, jamais
+   fusionné avec "Confirmer".** "Confirmer" (sous-projet 4) reste
+   strictement local (mise en scène + `.torrent`, aucun appel réseau
+   externe). Un nouveau bouton **"Envoyer à C411"**, visible seulement
+   après une confirmation locale réussie : vérifie les doublons, affiche
+   un aperçu complet (titre, description rendue, catégorie/sous-
+   catégorie, options) et n'envoie le vrai `POST` qu'après un second clic
+   explicite sur cet aperçu — jamais de surprise réseau sur un bouton qui
+   ne le faisait pas avant.
+
+7. **Gestion des réponses** : succès → C411 renvoie l'upload en file
+   "Team Pending" (modération humaine, jamais auto-approuvé sauf statut
+   "uploader certifié" — hors scope, pas supposé). Erreur 401/403 →
+   message explicite pointant vers le scope de la clé API (voir point à
+   vérifier ci-dessous), jamais une erreur générique. Erreur 4xx de
+   validation (champ manquant/trop court, catégorie invalide) → détail
+   du message C411 remonté tel quel à l'utilisateur, jamais réinterprété.
+
+**À vérifier avant le premier envoi réel (utilisateur, pas de code
+concerné)** : la clé API existante (déjà utilisée pour Torznab/RSS,
+`gapscan_config_store.effective_tracker`) a-t-elle le **scope upload** sur
+`https://c411.org/user/integrations` ? La doc ne précise le scope requis
+que pour l'endpoint anti-doublon ("Torznab/RSS, accordé par défaut") — pas
+explicitement pour `POST /api/torrents`. Le code utilisera la même clé
+existante par défaut et remontera clairement une erreur 401/403 si elle
+manque de scope, plutôt que de supposer que ça marche.
+
+**Pas dans ce sous-projet** (delta volontairement laissé de côté, YAGNI) :
+- **API Brouillons** (`/api/user/drafts`) — reprendre un envoi interrompu
+  n'a pas de cas d'usage identifié tant que l'envoi lui-même n'existe pas.
+- **Requêter `GET /api/categories`/`GET /api/categories/{id}/options` en
+  direct à l'exécution** — les valeurs sont figées dans le profil (voir
+  décision 3) ; les requêter resterait utile en outil de diagnostic
+  ponctuel (vérifier que la table n'a pas dérivé), pas dans le flux
+  d'envoi normal.
+- **Séries terminées, INTEGRALE vs par saison** — sous-projet séparé (voir
+  note du 2026-08-30 ci-dessus), la valeur `season_values.INTEGRALE`
+  existe déjà dans le mapping ci-dessus mais rien ne la déclenche encore.
+- **File d'attente + email d'approbation** (sous-projet 7) — "Envoyer à
+  C411" reste un clic manuel explicite pour l'instant, pas une file
+  automatique.
