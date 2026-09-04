@@ -87,6 +87,13 @@ def _movie(**overrides) -> RadarrMovieFile:
     return RadarrMovieFile(**base)
 
 
+def test_scan_movie_result_includes_radarr_movie_id():
+    c411 = FakeC411(movie_results=[])
+    result = scan_movie(_movie(movie_id=42), c411)
+    assert result.radarr_movie_id == 42
+    assert result.sonarr_series_id is None
+
+
 def test_scan_movie_absent_when_no_c411_match():
     c411 = FakeC411(movie_results=[])
     result = scan_movie(_movie(), c411)
@@ -445,6 +452,13 @@ def _season(**overrides) -> SonarrSeasonFile:
     )
     base.update(overrides)
     return SonarrSeasonFile(**base)
+
+
+def test_scan_series_season_result_includes_sonarr_series_id():
+    c411 = FakeC411(tv_results=[])
+    result = scan_series_season(_season(series_id=99), c411)
+    assert result.sonarr_series_id == 99
+    assert result.radarr_movie_id is None
 
 
 def test_scan_series_season_absent_when_no_match():

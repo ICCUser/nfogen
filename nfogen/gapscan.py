@@ -61,6 +61,14 @@ class GapResult:
     local_paths: list[str] = field(default_factory=list)
     path_resolved: bool = False
     path_error: Optional[str] = None
+    # Identifiant Radarr/Sonarr interne (l'un ou l'autre selon media_type,
+    # jamais les deux) -- permet de recuperer des metadonnees de
+    # presentation A LA DEMANDE au moment d'un envoi vers un tracker (voir
+    # radarr_client.get_movie_details/sonarr_client.get_series_details),
+    # sans jamais les charger pendant le scan lui-meme (AUTOMATION.md,
+    # sous-projet 5, decision 1).
+    radarr_movie_id: Optional[int] = None
+    sonarr_series_id: Optional[int] = None
 
 
 _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
@@ -174,7 +182,8 @@ def scan_movie(
         )
     base = dict(
         media_type="movie", title=movie.title, year=movie.year, season_number=None,
-        imdb_id=movie.imdb_id, tmdb_id=tmdb_id, tvdb_id=None, local_quality=local_quality,
+        imdb_id=movie.imdb_id, tmdb_id=tmdb_id, tvdb_id=None, radarr_movie_id=movie.movie_id,
+        local_quality=local_quality,
         local_paths=local_paths, path_resolved=path_resolved, path_error=path_error,
     )
     # Une erreur C411 (429, 520, timeout...) sur CE titre ne doit pas
@@ -237,7 +246,7 @@ def scan_series_season(
     base = dict(
         media_type="series", title=season.title, year=season.year,
         season_number=season.season_number, imdb_id=season.imdb_id, tmdb_id=None,
-        tvdb_id=season.tvdb_id, local_quality=local_quality,
+        tvdb_id=season.tvdb_id, sonarr_series_id=season.series_id, local_quality=local_quality,
         local_paths=local_paths, path_resolved=path_resolved, path_error=path_error,
     )
     try:
