@@ -19,10 +19,14 @@ vi.mock("../api/client", () => ({
 }));
 
 vi.mock("../components/UploadPrepPanel", () => ({
-  default: ({ title, onClose }: { title: string; onClose: () => void }) => (
+  default: (props: {
+    title: string; onClose: () => void; mediaType?: string; tmdbId?: number | null;
+  }) => (
     <div>
-      <p>Panneau upload pour {title}</p>
-      <button onClick={onClose}>Fermer le panneau</button>
+      <p>Panneau upload pour {props.title}</p>
+      <p>media_type={props.mediaType}</p>
+      <p>tmdb_id={String(props.tmdbId)}</p>
+      <button onClick={props.onClose}>Fermer le panneau</button>
     </div>
   ),
 }));
@@ -79,6 +83,8 @@ const MATRIX_GAP: GapResult = {
   local_paths: [],
   path_resolved: true,
   path_error: null,
+  radarr_movie_id: null,
+  sonarr_series_id: null,
 };
 
 function renderPage() {
@@ -169,6 +175,22 @@ describe("GapScanPage", () => {
     await user.click(button);
 
     expect(await screen.findByText("Panneau upload pour Matrix")).toBeInTheDocument();
+  });
+
+  it("transmet media_type/tmdb_id/radarr_movie_id au panneau Préparer l'upload", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanResults).mockResolvedValue({
+      items: [{ ...MATRIX_GAP, local_paths: ["/media/matrix.mkv"], path_resolved: true, radarr_movie_id: 42 }],
+      total: 1,
+    });
+
+    renderPage();
+
+    const button = await screen.findByRole("button", { name: /Préparer l'upload/i });
+    await user.click(button);
+
+    expect(await screen.findByText("media_type=movie")).toBeInTheDocument();
+    expect(await screen.findByText("tmdb_id=603")).toBeInTheDocument();
   });
 
   it("n'affiche pas de bouton Préparer l'upload si le chemin n'est pas résolu", async () => {

@@ -93,7 +93,17 @@ export default function GapScanPage() {
   const [total, setTotal] = useState(0);
   const PAGE_SIZE = 50;
   const [error, setError] = useState<string | null>(null);
-  const [activeUpload, setActiveUpload] = useState<{ title: string; localPaths: string[] } | null>(null);
+  const [activeUpload, setActiveUpload] = useState<{
+    title: string;
+    localPaths: string[];
+    mediaType: "movie" | "series";
+    radarrMovieId: number | null;
+    sonarrSeriesId: number | null;
+    tmdbId: number | null;
+    tvdbId: number | null;
+    genre: "anime" | "documentaire" | null;
+    seasonNumber: number | null;
+  } | null>(null);
   const [starting, setStarting] = useState(false);
   // Scan rapide (mode incremental) : coche par defaut des qu'un scan
   // precedent existe (voir handleRun / GAPSCAN.md, "Persistance des
@@ -614,7 +624,19 @@ export default function GapScanPage() {
                   {r.path_resolved && r.local_paths.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setActiveUpload({ title: r.title, localPaths: r.local_paths })}
+                      onClick={() =>
+                        setActiveUpload({
+                          title: r.title,
+                          localPaths: r.local_paths,
+                          mediaType: r.media_type,
+                          radarrMovieId: r.radarr_movie_id,
+                          sonarrSeriesId: r.sonarr_series_id,
+                          tmdbId: r.tmdb_id ? Number(r.tmdb_id) : null,
+                          tvdbId: r.tvdb_id,
+                          genre: r.genre,
+                          seasonNumber: r.season_number,
+                        })
+                      }
                       className="ml-3 text-sm text-accent-ink underline"
                     >
                       Préparer l'upload
@@ -662,6 +684,13 @@ export default function GapScanPage() {
           key={activeUpload.localPaths.join("|")}
           localPaths={activeUpload.localPaths}
           title={activeUpload.title}
+          mediaType={activeUpload.mediaType}
+          radarrMovieId={activeUpload.radarrMovieId}
+          sonarrSeriesId={activeUpload.sonarrSeriesId}
+          tmdbId={activeUpload.tmdbId}
+          tvdbId={activeUpload.tvdbId}
+          genre={activeUpload.genre}
+          seasonNumber={activeUpload.seasonNumber}
           onClose={() => setActiveUpload(null)}
         />
       )}
