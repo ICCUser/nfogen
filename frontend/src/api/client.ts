@@ -1,5 +1,6 @@
 import { getBaseUrl } from "./settings";
 import type {
+  CommitJob,
   GapscanConfig,
   GapscanConfigWrite,
   GapscanResultsPage,
@@ -11,7 +12,6 @@ import type {
   RulesDocument,
   SendToTrackerResult,
   TemplatesDocument,
-  UploadCommitResult,
   UploadGroupProposal,
   UploadPrepFile,
 } from "./types";
@@ -385,17 +385,31 @@ export function prepareUploadPreview(
   });
 }
 
-/** Met en scene (hardlink/copie) et genere le .torrent pour UN groupe deja
- * renvoye par `prepareUploadPreview` -- renvoyer exactement ce que
- * l'apercu a produit pour ce groupe (voir nfogen/upload_prep.py:commit_upload). */
+/** Demarre la mise en scene + generation de .torrent EN TACHE DE FOND
+ * (AUTOMATION.md, sous-projet 4c) -- renvoie un job_id immediatement,
+ * suivi via commitJobStatus(). */
 export function prepareUploadCommit(
   releaseName: string,
   files: UploadPrepFile[],
   profile = "c411",
-): Promise<UploadCommitResult> {
-  return request<UploadCommitResult>("/gapscan/prepare-upload/commit", {
+): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>("/gapscan/prepare-upload/commit", {
     method: "POST",
     body: JSON.stringify({ release_name: releaseName, files, profile }),
+  });
+}
+
+export function commitJobStatus(jobId: string): Promise<CommitJob> {
+  return request<CommitJob>(`/gapscan/commit-jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function listCommitJobs(): Promise<CommitJob[]> {
+  return request<CommitJob[]>("/gapscan/commit-jobs");
+}
+
+export function cancelCommitJob(jobId: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/gapscan/commit-jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
   });
 }
 

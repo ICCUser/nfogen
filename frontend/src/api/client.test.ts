@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  cancelCommitJob,
+  commitJobStatus,
   deleteManagedProfile,
   downloadAsFile,
   gapscanConfig,
@@ -11,6 +13,7 @@ import {
   generateFromMetadata,
   generateUpload,
   listAllProfiles,
+  listCommitJobs,
   prepareUploadCommit,
   prepareUploadPreview,
   previewGenerate,
@@ -255,19 +258,13 @@ describe("prepareUploadPreview / prepareUploadCommit", () => {
     });
   });
 
-  it("commit envoie release_name/files/profile, renvoie le resultat", async () => {
-    const commitResult = {
-      release_name: "Movie.2020.1080p.x264-TEAM",
-      staged_path: "/staging/Movie.2020.1080p.x264-TEAM.mkv",
-      torrent_path: "/staging/Movie.2020.1080p.x264-TEAM.torrent",
-      nfo_path: "/staging/Movie.2020.1080p.x264-TEAM.nfo",
-    };
-    vi.mocked(fetch).mockResolvedValue(jsonResponse(commitResult));
+  it("commit envoie release_name/files/profile, renvoie un job_id", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ job_id: "abc123" }));
 
     const files = [{ source_path: "/a.mkv", staged_name: "Movie.2020.1080p.x264-TEAM.mkv" }];
     const result = await prepareUploadCommit("Movie.2020.1080p.x264-TEAM", files);
 
-    expect(result).toEqual(commitResult);
+    expect(result).toEqual({ job_id: "abc123" });
     const [url, init] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain("/gapscan/prepare-upload/commit");
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
@@ -275,6 +272,44 @@ describe("prepareUploadPreview / prepareUploadCommit", () => {
       files,
       profile: "c411",
     });
+  });
+});
+
+describe("commitJobStatus / listCommitJobs / cancelCommitJob", () => {
+  const JOB = {
+    job_id: "abc123", release_name: "Movie.2020.1080p.x264-TEAM", state: "staging", percent: 42,
+    started_at: 1000, finished_at: null, error: null, result: null,
+  };
+
+  it("commitJobStatus GET le bon chemin, renvoie la tache", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(JOB));
+
+    const result = await commitJobStatus("abc123");
+
+    expect(result).toEqual(JOB);
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/commit-jobs/abc123");
+  });
+
+  it("listCommitJobs renvoie la liste complete", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([JOB]));
+
+    const result = await listCommitJobs();
+
+    expect(result).toEqual([JOB]);
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/commit-jobs");
+  });
+
+  it("cancelCommitJob POST vers /cancel", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ status: "cancelling" }));
+
+    const result = await cancelCommitJob("abc123");
+
+    expect(result).toEqual({ status: "cancelling" });
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/commit-jobs/abc123/cancel");
+    expect((init as RequestInit).method).toBe("POST");
   });
 });
 

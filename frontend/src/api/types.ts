@@ -236,6 +236,28 @@ export interface UploadCommitResult {
   nfo_path: string;
 }
 
+/** POST /gapscan/prepare-upload/commit ne bloque plus : cree une tache de
+ * fond suivie via job_id (AUTOMATION.md, sous-projet 4c). */
+export type CommitJobState =
+  | "staging"
+  | "generating_nfo"
+  | "building_torrent"
+  | "done"
+  | "error"
+  | "cancelled";
+
+export interface CommitJob {
+  job_id: string;
+  release_name: string;
+  state: CommitJobState;
+  /** 0-100, relatif a l'ETAPE EN COURS (state). */
+  percent: number;
+  started_at: number;
+  finished_at: number | null;
+  error: string | null;
+  result: UploadCommitResult | null;
+}
+
 /** POST /gapscan/prepare-upload/send : cree/met a jour un BROUILLON C411
  * -- n'entre jamais en file de moderation tout seul (voir AUTOMATION.md,
  * sous-projet 5, decision 6). */
