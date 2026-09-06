@@ -1782,6 +1782,76 @@ def test_gapscan_results_filterable_by_status_query_param(reload_api, monkeypatc
     assert client.get("/gapscan/results", params={"status": "covered"}).json() == {"items": [], "total": 0}
 
 
+# --------------------------------------------------------------------------- #
+# GET /gapscan/library (AUTOMATION.md, sous-projet 8) : inventaire local,
+# ZERO appel tracker -- pas de TorznabClient/_FakeGapscanC411 implique ici.
+# --------------------------------------------------------------------------- #
+def test_gapscan_library_returns_items_from_radarr(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
+    client = TestClient(mod.app)
+
+    resp = client.get("/gapscan/library")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["title"] == "Matrix"
+    assert body["items"][0]["media_type"] == "movie"
+
+
+def test_gapscan_library_400_without_sonarr_or_radarr(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None, NFOGEN_RADARR_URL=None, NFOGEN_SONARR_URL=None)
+    client = TestClient(mod.app)
+    resp = client.get("/gapscan/library")
+    assert resp.status_code == 400
+
+
+def test_gapscan_library_filters_by_media_type(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+        NFOGEN_SONARR_URL="http://sonarr.local", NFOGEN_SONARR_API_KEY="z",
+    )
+    monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
+    monkeypatch.setattr(mod, "SonarrClient", _FakeGapscanSonarr)
+    client = TestClient(mod.app)
+
+    resp = client.get("/gapscan/library", params={"media_type": "series"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["media_type"] == "series"
+
+
+def test_gapscan_library_filters_by_text_search(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
+    client = TestClient(mod.app)
+
+    assert client.get("/gapscan/library", params={"q": "matrix"}).json()["total"] == 1
+    assert client.get("/gapscan/library", params={"q": "nothing-like-this"}).json()["total"] == 0
+
+
+def test_gapscan_library_paginates(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarrThreeMovies)
+    client = TestClient(mod.app)
+
+    resp = client.get("/gapscan/library", params={"page": 1, "page_size": 2})
+    body = resp.json()
+    assert body["total"] == 3
+    assert len(body["items"]) == 2
+
+
 class _FakeGapscanRadarrThreeMovies(_FakeGapscanRadarr):
     def list_movie_files(self):
         return [
