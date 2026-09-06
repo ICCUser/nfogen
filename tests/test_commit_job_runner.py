@@ -221,6 +221,31 @@ def test_start_without_identifiers_does_not_record_history(monkeypatch, tmp_path
     assert not upload_history_store.is_processed(("movie", 42))
 
 
+def test_start_records_staged_path_for_later_seed_queue_lookup(monkeypatch, tmp_path):
+    """AUTOMATION.md, sous-projet 6 : le chemin de mise en scene doit
+    survivre bien apres le Confirmer d'origine, pour la file d'attente
+    'A mettre en seed' (la moderation C411 n'est pas immediate)."""
+    monkeypatch.setenv("NFOGEN_UPLOAD_HISTORY_FILE", str(tmp_path / "history.json"))
+    _stub_resolve_staging_config(monkeypatch)
+
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
+        return CommitResult(
+            release_name=release_name, staged_path=str(tmp_path / "staging" / "R.mkv"),
+            torrent_path="t", nfo_path="n",
+        )
+
+    monkeypatch.setattr("nfogen.commit_job_runner.upload_prep.commit_upload", fake_commit_upload)
+
+    job_id = commit_job_runner.start("R", FILES, media_type="movie", radarr_movie_id=42)
+    _wait_until_terminal(job_id)
+
+    upload_history_store.record(
+        upload_history_store.processed_key("movie", 42, None), kind="sent", release_name="R"
+    )
+    entries = upload_history_store.pending_seed_entries()
+    assert entries[0]["staged_path"] == str(tmp_path / "staging" / "R.mkv")
+
+
 # --------------------------------------------------------------------------- #
 # Registre / liste
 # --------------------------------------------------------------------------- #

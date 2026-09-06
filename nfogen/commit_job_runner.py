@@ -120,7 +120,9 @@ def _run(
             media_type, radarr_movie_id, sonarr_series_id, season_number
         )
         if key is not None:
-            upload_history_store.record(key, kind="committed", release_name=release_name)
+            upload_history_store.record(
+                key, kind="committed", release_name=release_name, staged_path=result.staged_path
+            )
         with _lock:
             job = _jobs[job_id]
             job.state = JobState.DONE
