@@ -108,7 +108,9 @@ def _run(
 
     try:
         result = upload_prep.commit_upload(
-            release_name, files, profile, on_progress=on_progress, cancel_event=cancel_event
+            release_name, files, profile, on_progress=on_progress, cancel_event=cancel_event,
+            media_type=media_type, radarr_movie_id=radarr_movie_id,
+            sonarr_series_id=sonarr_series_id, season_number=season_number,
         )
         # Enregistre l'historique AVANT de faire passer la tache a DONE :
         # un appelant qui observe DONE (via status(), voir _wait_until_terminal

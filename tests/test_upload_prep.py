@@ -273,6 +273,76 @@ def test_commit_without_staging_dir_configured_raises(monkeypatch):
         commit_upload("X", [ProposedFile(source_path="/x.mkv", staged_name="X.mkv")])
 
 
+def _configure_staging(monkeypatch, staging_dir, extract_text="General\nFormat : Matroska\n"):
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
+    )
+    monkeypatch.setattr("nfogen.upload_prep.extract.extract_video_text", lambda path: extract_text)
+
+
+def test_commit_regenerates_a_stale_unprocessed_staged_file(tmp_path, monkeypatch):
+    """Incident reel signale par l'utilisateur (2026-09-06) : un fichier
+    laisse par un essai precedent (jamais confirme/envoye avec succes)
+    faisait planter "Confirmer" avec un OSError brut ('[Errno 17] File
+    exists'). Un tel dechet, jamais enregistre dans l'historique, est
+    considere sur comme regenerable -- toujours DEPUIS LA SOURCE LOCALE
+    deja sur le NAS, jamais un nouveau telechargement."""
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    _configure_staging(monkeypatch, staging_dir)
+    (staging_dir / "Movie.2020.1080p.x264-TEAM.mkv").write_bytes(b"dechet d'un essai precedent")
+    source = _make_source(tmp_path, "source.mkv", b"contenu reel")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+
+    result = commit_upload(
+        "Movie.2020.1080p.x264-TEAM", files, media_type="movie", radarr_movie_id=42,
+    )
+
+    assert _Path(result.staged_path).read_bytes() == b"contenu reel"
+
+
+def test_commit_raises_a_clear_error_when_target_exists_and_already_processed(tmp_path, monkeypatch):
+    monkeypatch.setenv("NFOGEN_UPLOAD_HISTORY_FILE", str(tmp_path / "history.json"))
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    _configure_staging(monkeypatch, staging_dir)
+    (staging_dir / "Movie.2020.1080p.x264-TEAM.mkv").write_bytes(b"deja envoye, potentiellement en seed")
+    source = _make_source(tmp_path, "source.mkv")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+    upload_history_store.record(
+        upload_history_store.processed_key("movie", 42, None),
+        kind="sent", release_name="Movie.2020.1080p.x264-TEAM",
+    )
+
+    with pytest.raises(FileExistsError, match="déjà été confirmé/envoyé"):
+        commit_upload("Movie.2020.1080p.x264-TEAM", files, media_type="movie", radarr_movie_id=42)
+
+    # Le fichier existant (potentiellement en seed) n'est jamais touche.
+    staged = staging_dir / "Movie.2020.1080p.x264-TEAM.mkv"
+    assert staged.read_bytes() == b"deja envoye, potentiellement en seed"
+
+
+def test_commit_without_identifiers_still_regenerates_a_stale_file(tmp_path, monkeypatch):
+    """Sans identifiant Radarr/Sonarr (comportement historique, avant le
+    sous-projet 8) : impossible de savoir si c'est deja traite -- traite
+    comme "pas encore traite", donc regenerable (comportement le moins
+    surprenant : ne bloque jamais un appelant qui n'a pas ces champs)."""
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    _configure_staging(monkeypatch, staging_dir)
+    (staging_dir / "Movie.2020.1080p.x264-TEAM.mkv").write_bytes(b"dechet")
+    source = _make_source(tmp_path, "source.mkv", b"reel")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+
+    result = commit_upload("Movie.2020.1080p.x264-TEAM", files)
+
+    assert _Path(result.staged_path).read_bytes() == b"reel"
+
+
 def test_commit_without_announce_url_configured_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(tmp_path)

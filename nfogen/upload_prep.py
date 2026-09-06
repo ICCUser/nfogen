@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -254,6 +255,10 @@ def commit_upload(
     profile: str = "c411",
     on_progress: Optional[Callable[[str, float], None]] = None,
     cancel_event: Optional[threading.Event] = None,
+    media_type: str = "movie",
+    radarr_movie_id: Optional[int] = None,
+    sonarr_series_id: Optional[int] = None,
+    season_number: Optional[int] = None,
 ) -> CommitResult:
     """Met en scene (hardlink/copie, `file_staging.py`) et genere le
     `.torrent` (`torrent_builder.py`) pour UN groupe deja propose par
@@ -267,32 +272,64 @@ def commit_upload(
     file_staging.py (bytes_done, bytes_total) et torrent_builder.py
     (pieces_done, pieces_total) en pourcentages 0-100 relayes a
     on_progress(step_name, percent). Omis : comportement 100% synchrone
-    inchange (aucun test existant ne casse)."""
+    inchange (aucun test existant ne casse).
+
+    `media_type`/`radarr_movie_id`/`sonarr_series_id`/`season_number`
+    (AUTOMATION.md, sous-projet 8, tous optionnels) : decident si un
+    fichier deja present dans le dossier de mise en scene peut etre
+    regenere sans risque -- incident reel, 2026-09-06 ("[Errno 17] File
+    exists" sur un dechet d'un essai precedent). Un titre JAMAIS enregistre
+    comme confirme/envoye (voir upload_history_store.py) est considere
+    comme un dechet sur a regenerer (toujours depuis la source locale,
+    jamais un nouveau telechargement). Un titre DEJA confirme/envoye
+    -- potentiellement en cours de seed -- fait lever une erreur claire
+    plutot que d'ecraser silencieusement (l'integration qBittorrent/
+    Transmission, sous-projet 6, n'existe pas encore pour verifier
+    reellement l'etat de seed)."""
     staging_dir, announce_url = resolve_staging_config(profile)
+
+    history_key = upload_history_store.processed_key(
+        media_type, radarr_movie_id, sonarr_series_id, season_number
+    )
+    already_processed = history_key is not None and upload_history_store.is_processed(history_key)
+    overwrite = not already_processed
 
     def _staging_progress(done: int, total: int) -> None:
         if on_progress:
             pct = (done / total * 100) if total else 100.0
             on_progress("staging", pct)
 
-    if len(files) == 1:
-        staged_path = str(Path(staging_dir) / files[0].staged_name)
-        file_staging.stage_file(
-            files[0].source_path, staged_path,
-            on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
-        )
-        raw_text = extract.extract_video_text(Path(staged_path))
-    else:
-        target_dir = str(Path(staging_dir) / release_name)
-        file_staging.stage_files(
-            [f.source_path for f in files], target_dir, [f.staged_name for f in files],
-            on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
-        )
-        staged_path = target_dir
-        # Un seul .nfo pour tout le pack (pas un par episode) : coherent
-        # avec un seul release_name / .torrent par groupe (confirme par
-        # l'utilisateur, 2026-08-28).
-        raw_text = extract.extract_video_dir_text(Path(staged_path))
+    try:
+        if len(files) == 1:
+            staged_path = str(Path(staging_dir) / files[0].staged_name)
+            file_staging.stage_file(
+                files[0].source_path, staged_path,
+                on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
+                overwrite=overwrite,
+            )
+            raw_text = extract.extract_video_text(Path(staged_path))
+        else:
+            target_dir = str(Path(staging_dir) / release_name)
+            file_staging.stage_files(
+                [f.source_path for f in files], target_dir, [f.staged_name for f in files],
+                on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
+                overwrite=overwrite,
+            )
+            staged_path = target_dir
+            # Un seul .nfo pour tout le pack (pas un par episode) : coherent
+            # avec un seul release_name / .torrent par groupe (confirme par
+            # l'utilisateur, 2026-08-28).
+            raw_text = extract.extract_video_dir_text(Path(staged_path))
+    except FileExistsError as exc:
+        when = ""
+        last_at = upload_history_store.last_processed_at(history_key) if history_key else None
+        if last_at is not None:
+            when = f" le {datetime.fromtimestamp(last_at).strftime('%Y-%m-%d %H:%M')}"
+        raise FileExistsError(
+            f"Le fichier de mise en scène existe déjà pour « {release_name} » et ce titre a déjà été "
+            f"confirmé/envoyé{when} — vérifie qu'il n'est pas en cours de seed avant de le supprimer "
+            "manuellement, puis relance Confirmer."
+        ) from exc
 
     if on_progress:
         on_progress("generating_nfo", 0.0)

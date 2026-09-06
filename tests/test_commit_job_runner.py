@@ -63,7 +63,7 @@ def test_start_returns_a_job_id_immediately_without_waiting(monkeypatch):
     _stub_resolve_staging_config(monkeypatch)
     release_gate = threading.Event()
 
-    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None):
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
         release_gate.wait(timeout=5)
         return CommitResult(release_name=release_name, staged_path="p", torrent_path="t", nfo_path="n")
 
@@ -87,7 +87,7 @@ def test_on_progress_updates_job_state_and_percent(monkeypatch):
     reached_50 = threading.Event()
     release_gate = threading.Event()
 
-    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None):
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
         on_progress("staging", 50.0)
         reached_50.set()
         release_gate.wait(timeout=5)
@@ -113,7 +113,7 @@ def test_cancel_sets_the_event_and_job_reaches_cancelled_state(monkeypatch):
     _stub_resolve_staging_config(monkeypatch)
     started = threading.Event()
 
-    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None):
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
         started.set()
         while not cancel_event.is_set():
             time.sleep(0.01)
@@ -136,7 +136,7 @@ def test_cancel_unknown_job_returns_false():
 def test_cancel_already_finished_job_returns_false(monkeypatch):
     _stub_resolve_staging_config(monkeypatch)
 
-    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None):
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
         return CommitResult(release_name=release_name, staged_path="p", torrent_path="t", nfo_path="n")
 
     monkeypatch.setattr("nfogen.commit_job_runner.upload_prep.commit_upload", fake_commit_upload)
@@ -152,7 +152,7 @@ def test_cancel_already_finished_job_returns_false(monkeypatch):
 def test_error_during_commit_sets_error_state_with_message(monkeypatch):
     _stub_resolve_staging_config(monkeypatch)
 
-    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None):
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
         raise RuntimeError("NAS déconnecté")
 
     monkeypatch.setattr("nfogen.commit_job_runner.upload_prep.commit_upload", fake_commit_upload)
@@ -170,7 +170,7 @@ def test_start_records_history_on_done(monkeypatch, tmp_path):
     monkeypatch.setenv("NFOGEN_UPLOAD_HISTORY_FILE", str(tmp_path / "history.json"))
     _stub_resolve_staging_config(monkeypatch)
 
-    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None):
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
         return CommitResult(release_name=release_name, staged_path="p", torrent_path="t", nfo_path="n")
 
     monkeypatch.setattr("nfogen.commit_job_runner.upload_prep.commit_upload", fake_commit_upload)
@@ -182,11 +182,35 @@ def test_start_records_history_on_done(monkeypatch, tmp_path):
     assert upload_history_store.is_processed(key)
 
 
+def test_start_relays_identifiers_to_commit_upload(monkeypatch, tmp_path):
+    """Necessaire pour que commit_upload() puisse decider si un fichier de
+    mise en scene deja present est un dechet regenerable ou un titre deja
+    traite (incident reel, 2026-09-06 : '[Errno 17] File exists')."""
+    monkeypatch.setenv("NFOGEN_UPLOAD_HISTORY_FILE", str(tmp_path / "history.json"))
+    _stub_resolve_staging_config(monkeypatch)
+    captured: dict = {}
+
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
+        captured.update(kwargs)
+        return CommitResult(release_name=release_name, staged_path="p", torrent_path="t", nfo_path="n")
+
+    monkeypatch.setattr("nfogen.commit_job_runner.upload_prep.commit_upload", fake_commit_upload)
+
+    job_id = commit_job_runner.start(
+        "R", FILES, media_type="series", sonarr_series_id=7, season_number=2,
+    )
+    _wait_until_terminal(job_id)
+
+    assert captured["media_type"] == "series"
+    assert captured["sonarr_series_id"] == 7
+    assert captured["season_number"] == 2
+
+
 def test_start_without_identifiers_does_not_record_history(monkeypatch, tmp_path):
     monkeypatch.setenv("NFOGEN_UPLOAD_HISTORY_FILE", str(tmp_path / "history.json"))
     _stub_resolve_staging_config(monkeypatch)
 
-    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None):
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
         return CommitResult(release_name=release_name, staged_path="p", torrent_path="t", nfo_path="n")
 
     monkeypatch.setattr("nfogen.commit_job_runner.upload_prep.commit_upload", fake_commit_upload)
@@ -207,7 +231,7 @@ def test_status_of_unknown_job_is_none():
 def test_list_jobs_includes_multiple_concurrent_and_finished_jobs(monkeypatch):
     _stub_resolve_staging_config(monkeypatch)
 
-    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None):
+    def fake_commit_upload(release_name, files, profile, on_progress=None, cancel_event=None, **kwargs):
         return CommitResult(release_name=release_name, staged_path="p", torrent_path="t", nfo_path="n")
 
     monkeypatch.setattr("nfogen.commit_job_runner.upload_prep.commit_upload", fake_commit_upload)
