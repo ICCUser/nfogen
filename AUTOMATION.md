@@ -1103,3 +1103,19 @@ inchangé et coexiste avec le scan ciblé.
 
 Voir [docs/superpowers/specs/2026-09-06-library-targeted-scan-design.md](docs/superpowers/specs/2026-09-06-library-targeted-scan-design.md)
 et [docs/superpowers/plans/2026-09-06-library-targeted-scan.md](docs/superpowers/plans/2026-09-06-library-targeted-scan.md).
+
+**Fusion avec "Scan C411" (retour utilisateur, 2026-09-06, même jour)** :
+"je trouve qu'elle sert pas en fait [...] ca fait doublon" — les deux
+pages affichaient un tableau presque identique pour un seul besoin (voir
+la bibliothèque, savoir ce qui manque sur le tracker, choisir quoi
+vérifier/uploader). La page "Scan C411" disparaît : `GET /gapscan/library`
+reprend désormais aussi le statut du **dernier scan connu** (bulk ou
+ciblé) pour chaque titre — `null`/"Non vérifié" pour un titre jamais
+scanné, jamais une nouvelle interrogation de C411 juste pour l'afficher
+(retrouvé via la même clé stable `movie_key`/`series_key` que la
+sélection). "Bibliothèque" (`/library`) est désormais la seule vue :
+filtres complets (recherche, type, genre bibliothèque **et** genre
+tracker — les deux classifications restent indépendantes —, statut,
+ajouté depuis, déjà traité), configuration Sonarr/Radarr/tracker, scan
+complet (bulk) **et** scan ciblé (sélection) au même endroit — la
+vérification ciblée reste désormais sur place (plus de redirection).

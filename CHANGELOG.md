@@ -129,6 +129,16 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   titres déjà confirmés/envoyés (`nfogen/upload_history_store.py`), jamais
   basé sur le contenu du dossier staging. Le scan bulk existant ("Lancer
   un scan") reste inchangé et coexiste avec le scan ciblé.
+- **Fusion de "Scan C411" dans "Bibliothèque"** (retour utilisateur,
+  2026-09-06 : "ça fait doublon") : une seule page (`/library`)
+  désormais — elle affiche le statut du **dernier scan connu** pour
+  chaque titre ("Non vérifié" sinon, sans jamais réinterroger le
+  tracker juste pour l'afficher), garde tous les filtres des deux
+  anciennes pages (recherche, type, genre bibliothèque **et** genre
+  tracker — distincts —, statut, ajouté depuis, déjà traité), la
+  configuration Sonarr/Radarr/tracker, le scan complet (bulk) et le scan
+  ciblé (sélection) — qui reste désormais sur place au lieu de rediriger
+  vers une autre page.
 
 ### Corrigé
 
