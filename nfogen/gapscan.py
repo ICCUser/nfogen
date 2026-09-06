@@ -274,14 +274,38 @@ def scan_series_season(
     )
 
 
+def movie_key(imdb_id: Optional[str], tmdb_id: Optional[str], title: str, year: Optional[int]) -> tuple:
+    """Identifiant stable d'un film, reutilise a la fois par le mode
+    incremental (_result_key) et par gapscan_library.py (meme calcul des
+    deux cotes, pour qu'une selection faite en bibliotheque retrouve
+    exactement le bon item ici)."""
+    return ("movie", imdb_id or tmdb_id or title, year)
+
+
+def series_key(tvdb_id: Optional[int], imdb_id: Optional[str], title: str, season_number: Optional[int]) -> tuple:
+    """Meme role que movie_key, cote serie/saison."""
+    return ("series", tvdb_id or imdb_id or title, season_number)
+
+
 def _result_key(r: GapResult) -> tuple:
     """Identifiant stable d'un titre (ou saison) entre deux scans, pour
-    retrouver son resultat precedent en mode incremental : prefere les
-    identifiants externes (stables meme si le titre change de casse/
-    ponctuation), repli sur titre(+annee) sinon."""
+    retrouver son resultat precedent en mode incremental -- voir
+    movie_key/series_key (extraites pour etre reutilisees telles quelles
+    par gapscan_library.py)."""
     if r.media_type == "movie":
-        return ("movie", r.imdb_id or r.tmdb_id or r.title, r.year)
-    return ("series", r.tvdb_id or r.imdb_id or r.title, r.season_number)
+        return movie_key(r.imdb_id, r.tmdb_id, r.title, r.year)
+    return series_key(r.tvdb_id, r.imdb_id, r.title, r.season_number)
+
+
+def _item_key(kind: str, item: object) -> tuple:
+    """Meme calcul que _result_key, mais depuis un item BRUT (RadarrMovieFile/
+    SonarrSeasonFile) avant meme d'avoir construit un GapResult -- utilise
+    par run_gapscan pour retrouver un resultat precedent ET pour filtrer
+    selon `selection`, sans dupliquer la logique de cle a deux endroits."""
+    if kind == "movie":
+        tmdb_id = str(item.tmdb_id) if item.tmdb_id else None  # type: ignore[attr-defined]
+        return movie_key(item.imdb_id, tmdb_id, item.title, item.year)  # type: ignore[attr-defined]
+    return series_key(item.tvdb_id, item.imdb_id, item.title, item.season_number)  # type: ignore[attr-defined]
 
 
 def run_gapscan(
@@ -294,6 +318,7 @@ def run_gapscan(
     max_age_seconds: Optional[float] = None,
     sonarr_path_mappings: Optional[dict[str, str]] = None,
     radarr_path_mappings: Optional[dict[str, str]] = None,
+    selection: Optional[set[tuple]] = None,
 ) -> list[GapResult]:
     """Lance un scan. `radarr`/`sonarr` optionnels (l'un ou l'autre, ou les
     deux). `on_progress(traites, total)`, appele apres chaque item -- utilise
@@ -309,6 +334,15 @@ def run_gapscan(
     -- pour repartir la charge sur plusieurs sessions (limite C411 confirmee :
     15 requetes/min). Retour utilisateur, 2026-08-27.
 
+    `selection` (AUTOMATION.md, sous-projet 8, optionnel) : ensemble de cles
+    (`movie_key`/`series_key`) -- si fourni, seuls les items dont la cle est
+    dans cet ensemble sont reellement interroges sur C411 ; TOUS les autres
+    items (locaux, hors selection) sont repris tels quels depuis
+    `previous_results` s'ils y figurent, sinon simplement absents du
+    resultat (jamais recalcules a vide). A priorite sur `only` si les deux
+    sont fournis -- combiner les deux n'a pas de sens. Retour utilisateur,
+    2026-09-06 : "pour eviter de scan comme un porc toute la bibliotech".
+
     `sonarr_path_mappings`/`radarr_path_mappings` : tables de resolution de
     chemin distant -> local, une par connexion (voir AUTOMATION.md,
     sous-projet 1)."""
@@ -323,12 +357,24 @@ def run_gapscan(
         for r in previous_results:
             previous_by_key[_result_key(r)] = r
 
+    carried_over: list[GapResult] = []
+    if selection is not None:
+        # Tout item LOCAL qui existe mais n'est pas selectionne : repris tel
+        # quel depuis previous_results s'il y figure deja -- jamais recalcule,
+        # jamais supprime (meme garde-fou que `only` plus bas, mais au niveau
+        # titre individuel plutot que bibliotheque entiere).
+        carried_over = [
+            previous_by_key[_item_key(kind, item)]
+            for kind, item in items
+            if _item_key(kind, item) not in selection and _item_key(kind, item) in previous_by_key
+        ]
+        items = [(kind, item) for kind, item in items if _item_key(kind, item) in selection]
+
     total = len(items)
     results: list[GapResult] = []
     for index, (kind, item) in enumerate(items, start=1):
+        key = _item_key(kind, item)
         if kind == "movie":
-            tmdb_id = str(item.tmdb_id) if item.tmdb_id else None  # type: ignore[attr-defined]
-            key = ("movie", item.imdb_id or tmdb_id or item.title, item.year)  # type: ignore[attr-defined]
             results.append(
                 scan_movie(
                     item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
@@ -336,7 +382,6 @@ def run_gapscan(
                 )
             )  # type: ignore[arg-type]
         else:
-            key = ("series", item.tvdb_id or item.imdb_id or item.title, item.season_number)  # type: ignore[attr-defined]
             results.append(
                 scan_series_season(
                     item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
@@ -345,14 +390,18 @@ def run_gapscan(
             )  # type: ignore[arg-type]
         if on_progress is not None:
             on_progress(index, total)
+    results.extend(carried_over)
     # `only` restreint ce qui est REINTERROGE cette passe, jamais ce qui est
     # CONSERVE du dernier scan -- incident reel signale par l'utilisateur
     # (2026-08-28) : un scan "Films seulement" effacait les series deja
     # scannees precedemment (et vice versa) au lieu de les laisser intactes.
-    if only == "movies":
-        results.extend(r for r in (previous_results or []) if r.media_type == "series")
-    elif only == "series":
-        results.extend(r for r in (previous_results or []) if r.media_type == "movie")
+    # Non applicable quand `selection` est fourni (deja gere ci-dessus, a
+    # la granularite du titre individuel plutot que de la bibliotheque).
+    if selection is None:
+        if only == "movies":
+            results.extend(r for r in (previous_results or []) if r.media_type == "series")
+        elif only == "series":
+            results.extend(r for r in (previous_results or []) if r.media_type == "movie")
     return results
 
 

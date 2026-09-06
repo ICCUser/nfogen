@@ -15,9 +15,11 @@ from nfogen.gapscan import (
     GapResult,
     GapStatus,
     genre_of,
+    movie_key,
     run_gapscan,
     scan_movie,
     scan_series_season,
+    series_key,
     sort_by_priority,
 )
 from nfogen.quality import ReleaseQuality
@@ -652,6 +654,68 @@ def test_run_gapscan_only_series_preserves_previously_scanned_movies():
     assert previous_movie in results
     assert any(r.media_type == "series" for r in results)
     assert not any(call[0] == "movie" for call in c411.calls)  # toujours pas reinterroge
+
+
+def test_movie_key_prefers_imdb_then_tmdb_then_title():
+    assert movie_key("tt123", "456", "Title", 2020) == ("movie", "tt123", 2020)
+    assert movie_key(None, "456", "Title", 2020) == ("movie", "456", 2020)
+    assert movie_key(None, None, "Title", 2020) == ("movie", "Title", 2020)
+
+
+def test_series_key_prefers_tvdb_then_imdb_then_title():
+    assert series_key(789, "tt123", "Title", 1) == ("series", 789, 1)
+    assert series_key(None, "tt123", "Title", 1) == ("series", "tt123", 1)
+    assert series_key(None, None, "Title", 1) == ("series", "Title", 1)
+
+
+class _FakeRadarrNamedMovies:
+    def __init__(self, movies: list[RadarrMovieFile]):
+        self._movies = movies
+
+    def list_movie_files(self):
+        return self._movies
+
+
+def test_run_gapscan_selection_restricts_c411_calls_to_selected_item():
+    """AUTOMATION.md, sous-projet 8 : `selection` (ensemble de cles
+    movie_key/series_key) restreint les items REELLEMENT interroges sur
+    C411 -- ici seul "A" doit declencher un appel, "B" est repris tel quel
+    depuis previous_results sans jamais etre reinterroge."""
+    movie_a = _movie(title="A", imdb_id="tt001", tmdb_id=1, year=2020)
+    movie_b = _movie(title="B", imdb_id="tt002", tmdb_id=2, year=2021)
+    c411 = FakeC411(movie_results=[])
+    previous_b = GapResult(
+        media_type="movie", title="B", year=2021, season_number=None,
+        imdb_id="tt002", tmdb_id="2", tvdb_id=None, status=GapStatus.COVERED,
+        local_quality=ReleaseQuality(raw=""),
+    )
+    selection = {movie_key("tt001", "1", "A", 2020)}
+
+    results = run_gapscan(
+        c411, radarr=_FakeRadarrNamedMovies([movie_a, movie_b]),
+        previous_results=[previous_b], selection=selection,
+    )
+
+    assert not any(call[2] == "tt002" for call in c411.calls)  # B jamais reinterroge
+    assert any(call[2] == "tt001" for call in c411.calls)  # A bien interroge
+    assert previous_b in results
+    assert any(r.title == "A" for r in results)
+
+
+def test_run_gapscan_selection_excludes_unselected_items_without_previous_result():
+    """Un item local hors selection ET sans resultat precedent connu :
+    simplement absent du resultat (jamais recalcule a vide, jamais une
+    exception)."""
+    movie_a = _movie(title="A", imdb_id="tt001", tmdb_id=1, year=2020)
+    movie_b = _movie(title="B", imdb_id="tt002", tmdb_id=2, year=2021)
+    c411 = FakeC411(movie_results=[])
+    selection = {movie_key("tt001", "1", "A", 2020)}
+
+    results = run_gapscan(
+        c411, radarr=_FakeRadarrNamedMovies([movie_a, movie_b]), selection=selection,
+    )
+
+    assert [r.title for r in results] == ["A"]
 
 
 def test_run_gapscan_reuses_previous_results_for_unchanged_covered_items():
