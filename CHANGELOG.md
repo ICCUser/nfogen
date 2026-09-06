@@ -234,6 +234,15 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   reconnaissent désormais un fichier déjà en place et de la même taille
   que sa source : ni hardlink ni copie refaits dans ce cas, régénération
   réservée au vrai déchet (taille différente).
+- **"Confirmer" plantait encore avec un `File exists` brut** quand le
+  `.torrent` d'un essai précédent restait dans le dossier de mise en
+  scène (retour utilisateur, 2026-09-06) — le correctif précédent ne
+  protégeait que le fichier média mis en scène : `torf` (génération du
+  `.torrent`) refuse nativement d'écraser un fichier existant
+  (`torf.WriteError`), jamais intercepté jusqu'ici. `build_torrent()`
+  gagne le même `overwrite` que `stage_file`, traduit désormais en
+  message clair — un titre déjà confirmé/envoyé voit aussi son `.torrent`
+  et son `.nfo` protégés (jamais retouchés), comme le fichier média.
 
 ### Modifié
 
