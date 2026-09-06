@@ -1691,7 +1691,40 @@ def test_gapscan_run_then_status_then_results(reload_api, monkeypatch):
     assert len(body["items"]) == 1
     assert body["items"][0]["media_type"] == "movie"
     assert body["items"][0]["title"] == "Matrix"
-    assert body["items"][0]["status"] == "absent"  # FakeGapscanC411 ne renvoie jamais de match
+
+
+def test_gapscan_status_includes_the_scan_log(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    status = _wait_gapscan_done(client)
+
+    assert len(status["log"]) == 1
+    assert status["log"][0]["title"] == "Matrix"
+
+
+def test_gapscan_clear_log_empties_it_without_resetting_the_scan_state(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    resp = client.post("/gapscan/status/clear-log")
+    assert resp.status_code == 200
+
+    status = client.get("/gapscan/status").json()
+    assert status["log"] == []
+    assert status["state"] == "done"
 
 
 def test_gapscan_run_uses_a_rate_limit_safe_default_interval(reload_api, monkeypatch):

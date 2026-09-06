@@ -869,6 +869,16 @@ def gapscan_status() -> dict[str, Any]:
     return gapscan_runner.status()
 
 
+@app.post("/gapscan/status/clear-log", dependencies=[Depends(require_token)])
+def gapscan_clear_log() -> dict[str, str]:
+    """Vide le journal en direct du scan (bouton "Vider les logs" cote
+    frontend, retour utilisateur 2026-09-06) -- ne touche a rien d'autre
+    (statut, resultats)."""
+    _require_gapscan_available()
+    gapscan_runner.clear_log()
+    return {"status": "cleared"}
+
+
 @app.get("/gapscan/results", dependencies=[Depends(require_token)])
 def gapscan_results(
     status: Optional[str] = Query(None),
