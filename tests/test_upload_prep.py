@@ -363,6 +363,49 @@ def test_commit_raises_a_clear_error_when_target_exists_and_already_processed(tm
     assert staged.read_bytes() == b"deja envoye, potentiellement en seed"
 
 
+def test_commit_regenerates_a_stale_torrent_left_by_a_previous_attempt(tmp_path, monkeypatch):
+    """Incident reel signale par l'utilisateur (2026-09-06) : refaire
+    'Confirmer' pour un titre pas encore traite, alors que son .torrent
+    existait deja (essai precedent), faisait planter la generation avec
+    un message brut ('File exists') -- torf refuse nativement d'ecraser
+    un .torrent existant (torf.WriteError), jamais intercepte jusqu'ici
+    (contrairement au fichier mis en scene, deja protege)."""
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    _configure_staging(monkeypatch, staging_dir)
+    (staging_dir / "Movie.2020.1080p.x264-TEAM.torrent").write_bytes(b"dechet d'un essai precedent")
+    source = _make_source(tmp_path, "source.mkv")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+
+    result = commit_upload("Movie.2020.1080p.x264-TEAM", files, media_type="movie", radarr_movie_id=42)
+
+    assert _Path(result.torrent_path).is_file()
+    assert _Path(result.torrent_path).read_bytes() != b"dechet d'un essai precedent"
+
+
+def test_commit_raises_a_clear_error_when_torrent_exists_and_already_processed(tmp_path, monkeypatch):
+    monkeypatch.setenv("NFOGEN_UPLOAD_HISTORY_FILE", str(tmp_path / "history.json"))
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    _configure_staging(monkeypatch, staging_dir)
+    # Le fichier mis en scene correspond deja (meme taille) -- seul le
+    # .torrent est un "dechet" existant ici, pour isoler ce chemin de code.
+    source = _make_source(tmp_path, "source.mkv", b"contenu de test")
+    (staging_dir / "Movie.2020.1080p.x264-TEAM.mkv").write_bytes(b"contenu de test")
+    (staging_dir / "Movie.2020.1080p.x264-TEAM.torrent").write_bytes(b"deja envoye, potentiellement en seed")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+    upload_history_store.record(
+        upload_history_store.processed_key("movie", 42, None),
+        kind="sent", release_name="Movie.2020.1080p.x264-TEAM",
+    )
+
+    with pytest.raises(FileExistsError, match="déjà été confirmé/envoyé"):
+        commit_upload("Movie.2020.1080p.x264-TEAM", files, media_type="movie", radarr_movie_id=42)
+
+    torrent_path = staging_dir / "Movie.2020.1080p.x264-TEAM.torrent"
+    assert torrent_path.read_bytes() == b"deja envoye, potentiellement en seed"
+
+
 def test_commit_without_identifiers_still_regenerates_a_stale_file(tmp_path, monkeypatch):
     """Sans identifiant Radarr/Sonarr (comportement historique, avant le
     sous-projet 8) : impossible de savoir si c'est deja traite -- traite

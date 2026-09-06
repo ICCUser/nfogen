@@ -320,45 +320,52 @@ def commit_upload(
             # avec un seul release_name / .torrent par groupe (confirme par
             # l'utilisateur, 2026-08-28).
             raw_text = extract.extract_video_dir_text(Path(staged_path))
+
+        if on_progress:
+            on_progress("generating_nfo", 0.0)
+        # Lu depuis le chemin MIS EN SCENE (pas l'original) : "Complete name"
+        # dans le .nfo reflete alors le nom de release final, pas le nom de
+        # telechargement d'origine.
+        nfo_filename: list[str] = []
+        nfo = engine.generate(
+            category="video", profile=profile,
+            data={"release_name": release_name, "raw_text": raw_text},
+            filename=nfo_filename,
+        )
+        nfo_path = str(Path(staging_dir) / (nfo_filename[0] if nfo_filename else f"{release_name}.nfo"))
+        # Un titre DEJA traite dont le .nfo existe encore n'est jamais
+        # retouche (meme prudence que le fichier mis en scene/le .torrent) --
+        # un titre pas encore traite (ou sans .nfo existant) est toujours
+        # (re)ecrit normalement.
+        if overwrite or not Path(nfo_path).exists():
+            Path(nfo_path).write_text(nfo, encoding="utf-8")
+        if on_progress:
+            on_progress("generating_nfo", 100.0)
+
+        torrent_path = str(Path(staging_dir) / f"{release_name}.torrent")
+        piece_sizes = tracker_profile.torrent_piece_sizes(profile)
+
+        def _torrent_progress(pieces_done: int, pieces_total: int) -> None:
+            if on_progress:
+                pct = (pieces_done / pieces_total * 100) if pieces_total else 100.0
+                on_progress("building_torrent", pct)
+
+        torrent_builder.build_torrent(
+            staged_path, announce_url, torrent_path, piece_sizes,
+            on_progress=_torrent_progress if on_progress else None, cancel_event=cancel_event,
+            overwrite=overwrite,
+        )
     except FileExistsError as exc:
         when = ""
         last_at = upload_history_store.last_processed_at(history_key) if history_key else None
         if last_at is not None:
             when = f" le {datetime.fromtimestamp(last_at).strftime('%Y-%m-%d %H:%M')}"
         raise FileExistsError(
-            f"Le fichier de mise en scène existe déjà pour « {release_name} » et ce titre a déjà été "
-            f"confirmé/envoyé{when} — vérifie qu'il n'est pas en cours de seed avant de le supprimer "
-            "manuellement, puis relance Confirmer."
+            f"Un fichier de mise en scène (média, .torrent ou .nfo) existe déjà pour « {release_name} » "
+            f"et ce titre a déjà été confirmé/envoyé{when} — vérifie qu'il n'est pas en cours de seed "
+            "avant de le supprimer manuellement, puis relance Confirmer."
         ) from exc
 
-    if on_progress:
-        on_progress("generating_nfo", 0.0)
-    # Lu depuis le chemin MIS EN SCENE (pas l'original) : "Complete name"
-    # dans le .nfo reflete alors le nom de release final, pas le nom de
-    # telechargement d'origine.
-    nfo_filename: list[str] = []
-    nfo = engine.generate(
-        category="video", profile=profile,
-        data={"release_name": release_name, "raw_text": raw_text},
-        filename=nfo_filename,
-    )
-    nfo_path = str(Path(staging_dir) / (nfo_filename[0] if nfo_filename else f"{release_name}.nfo"))
-    Path(nfo_path).write_text(nfo, encoding="utf-8")
-    if on_progress:
-        on_progress("generating_nfo", 100.0)
-
-    torrent_path = str(Path(staging_dir) / f"{release_name}.torrent")
-    piece_sizes = tracker_profile.torrent_piece_sizes(profile)
-
-    def _torrent_progress(pieces_done: int, pieces_total: int) -> None:
-        if on_progress:
-            pct = (pieces_done / pieces_total * 100) if pieces_total else 100.0
-            on_progress("building_torrent", pct)
-
-    torrent_builder.build_torrent(
-        staged_path, announce_url, torrent_path, piece_sizes,
-        on_progress=_torrent_progress if on_progress else None, cancel_event=cancel_event,
-    )
     return CommitResult(
         release_name=release_name, staged_path=staged_path, torrent_path=torrent_path, nfo_path=nfo_path
     )

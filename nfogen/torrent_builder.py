@@ -10,6 +10,7 @@ reimplementation du hachage necessaire.
 """
 from __future__ import annotations
 
+import errno
 import threading
 from pathlib import Path
 from typing import Callable, Optional
@@ -52,6 +53,7 @@ def build_torrent(
     on_progress: Optional[Callable[[int, int], None]] = None,
     cancel_event: Optional[threading.Event] = None,
     threads: Optional[int] = None,
+    overwrite: bool = False,
 ) -> None:
     """Construit un .torrent prive a partir de `staged_path` (fichier ou
     dossier -- un dossier pour un pack multi-fichiers -- deja mis en scene
@@ -65,7 +67,16 @@ def build_torrent(
     du callback (voir tests). `threads` (avance, `None` = defaut torf, un
     thread par coeur) : expose surtout pour forcer `threads=1` dans les
     tests d'annulation deterministes, sans effet sur le comportement de
-    production par defaut."""
+    production par defaut.
+
+    `overwrite` (AUTOMATION.md, sous-projet 8 -- incident reel, 2026-09-06 :
+    refaire "Confirmer" pour un titre deja mis en scene faisait planter la
+    generation du .torrent avec un message brut et incomprehensible) :
+    `False` par defaut, comme `file_staging.stage_file` -- torf refuse
+    nativement d'ecraser un `.torrent` deja present (`torf.WriteError`,
+    errno EEXIST) ; traduit ici en `FileExistsError` standard, pour que
+    l'appelant (upload_prep.commit_upload) le traite exactement comme la
+    meme situation cote fichier mis en scene."""
     total_bytes = _total_size(staged_path)
     torrent = torf.Torrent(
         path=staged_path,
@@ -87,4 +98,9 @@ def build_torrent(
     success = torrent.generate(threads=threads, callback=callback, interval=0)
     if not success:
         raise OperationCancelled(f"Génération du torrent annulée : {staged_path}")
-    torrent.write(output_path)
+    try:
+        torrent.write(output_path, overwrite=overwrite)
+    except torf.WriteError as exc:
+        if exc.errno == errno.EEXIST:
+            raise FileExistsError(errno.EEXIST, "Fichier déjà existant", output_path) from exc
+        raise

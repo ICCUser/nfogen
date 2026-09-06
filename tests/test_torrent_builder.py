@@ -56,6 +56,38 @@ def test_piece_size_for_raises_on_an_empty_table():
         piece_size_for(500 * _MO, [])
 
 
+def test_build_torrent_raises_file_exists_error_by_default_when_output_already_exists(tmp_path):
+    """Incident reel signale par l'utilisateur (2026-09-06) : refaire
+    'Confirmer' pour un titre deja mis en scene (dechet non traite, deja
+    regenerable cote fichier video -- voir file_staging.py) faisait
+    planter la generation du .torrent avec une erreur brute et
+    incomprehensible : torf.Torrent.write() leve nativement
+    FileExistsError si la destination existe deja (overwrite=False par
+    defaut), jamais intercepte par commit_upload() jusqu'ici."""
+    staged = tmp_path / "Release.Name.mkv"
+    staged.write_bytes(b"x" * 100)
+    output = tmp_path / "output.torrent"
+    output.write_bytes(b"dechet d'un essai precedent")
+
+    with pytest.raises(FileExistsError):
+        build_torrent(str(staged), "https://c411.org/announce/SECRET", str(output), _C411_PIECE_SIZES)
+
+
+def test_build_torrent_overwrite_replaces_an_existing_output(tmp_path):
+    staged = tmp_path / "Release.Name.mkv"
+    staged.write_bytes(b"x" * 100)
+    output = tmp_path / "output.torrent"
+    output.write_bytes(b"dechet d'un essai precedent")
+
+    build_torrent(
+        str(staged), "https://c411.org/announce/SECRET", str(output), _C411_PIECE_SIZES, overwrite=True
+    )
+
+    assert output.is_file()
+    reloaded = torf.Torrent.read(str(output))
+    assert reloaded.private is True
+
+
 def test_build_torrent_creates_a_valid_private_torrent(tmp_path):
     staged = tmp_path / "Release.Name.mkv"
     staged.write_bytes(b"x" * 100)
