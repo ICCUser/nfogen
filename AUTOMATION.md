@@ -1057,7 +1057,7 @@ Implémenté tel que conçu ci-dessus, plan détaillé :
 charge de l'utilisateur avant un premier envoi réel** (voir aussi la note
 "à vérifier" plus haut dans ce document) :
 1. ~~Le format exact attendu par `POST`/`PATCH /api/user/drafts` pour
-   `torrent`/`nfo`~~ — **résolu (2026-09-06)**, après trois mauvaises
+   `torrent`/`nfo`~~ — **résolu (2026-09-06)**, après quatre mauvaises
    hypothèses successives, chacune vérifiée en conditions réelles :
    - Corps JSON avec fichiers en base64 sous les clés `torrent`/`nfo`
      (hypothèse initiale) : brouillon créé avec titre/description
@@ -1071,10 +1071,18 @@ charge de l'utilisateur avant un premier envoi réel** (voir aussi la note
      à `null`) avec une simple chaîne base64 comme valeur : toujours
      ignoré (`PATCH` répondait "Aucune modification" même avec le vrai
      `.torrent`).
-   - **Format réel trouvé** en créant un brouillon via le site web
-     (donc garanti fonctionnel) puis en le relisant via l'API : chaque
-     champ est un **objet** `{"name": "<nom_de_fichier>", "data":
-     "<base64>"}`, pas une simple chaîne. Corrigé dans
+   - `torrentFile`/`nfoFile` en objet `{"name": ..., "data": ...}`
+     (déduit en comparant avec un brouillon web réel relu via l'API) :
+     toujours ignoré, aussi bien en `POST` (nouveau brouillon) qu'en
+     `PATCH`.
+   - **Format réel confirmé** : des champs **plats**
+     `torrentFileName`/`torrentFileData` et `nfoFileName`/`nfoFileData`
+     (chaîne de nom + chaîne base64 séparément, pas un objet imbriqué).
+     La réponse de lecture restructure ces champs plats en objets
+     imbriqués `torrentFile: {name, data}` — une asymétrie écriture
+     (plate) / lecture (imbriquée) jamais documentée, qui a rendu ce
+     format impossible à deviner sans créer un vrai brouillon avec
+     exactement cette forme et constater le résultat. Corrigé dans
      `c411_upload_client.py` (`create_draft`/`update_draft` gagnent
      `torrent_filename`/`nfo_filename`).
 2. `subcategory_id["movie:documentaire"]`/`["series:documentaire"]`

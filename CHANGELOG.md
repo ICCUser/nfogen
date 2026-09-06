@@ -248,17 +248,19 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   message clair — un titre déjà confirmé/envoyé voit aussi son `.torrent`
   et son `.nfo` protégés (jamais retouchés), comme le fichier média.
 - **"Envoyer à C411" n'attachait jamais `.torrent`/`.nfo` au brouillon**
-  (retour utilisateur, 2026-09-06, trois essais réels successifs, chacun
-  vérifié en conditions réelles) : le corps JSON de `POST`/`PATCH
+  (retour utilisateur, 2026-09-06, quatre essais réels successifs,
+  chacun vérifié en conditions réelles) : le corps JSON de `POST`/`PATCH
   /api/user/drafts` envoyait `.torrent`/`.nfo` sous les clés `torrent`/
   `nfo` (titre/description corrects, fichiers ignorés) ; un essai en
   `multipart/form-data` a tout cassé (titre compris — cet endpoint
   n'accepte pas le multipart, annulé) ; renommer les clés en
   `torrentFile`/`nfoFile` (déduites d'un brouillon vide relu via l'API)
-  avec une simple chaîne base64 ne suffisait toujours pas. Format réel
-  trouvé en comparant avec un brouillon créé par le site web lui-même
-  (garanti fonctionnel) : chaque champ est un **objet** `{"name":
-  "<fichier>", "data": "<base64>"}`, pas une chaîne — `create_draft()`/
+  ne suffisait toujours pas, ni en simple chaîne base64, ni en objet
+  `{"name": ..., "data": ...}` (déduit d'un brouillon web réel relu).
+  **Format réel confirmé** : des champs **plats**
+  `torrentFileName`/`torrentFileData` et `nfoFileName`/`nfoFileData` —
+  l'API restructure ces champs plats en objets imbriqués à la lecture
+  (asymétrie écriture/lecture jamais documentée). `create_draft()`/
   `update_draft()` gagnent `torrent_filename`/`nfo_filename`.
 
 ### Modifié

@@ -8,19 +8,19 @@ directeur", et decision 4 du sous-projet 5). Reste nomme et pense comme
 specifique jusqu'a preuve du contraire (un deuxieme tracker a integrer un
 jour).
 
-Format exact de `torrentFile`/`nfoFile` confirme en conditions reelles
-le 2026-09-06, en deux temps :
-1. Un brouillon cree par erreur avec les noms `torrent`/`nfo` (silencieusement
-   ignores) puis relu via `GET /api/user/drafts/{id}` a revele les vrais
-   noms de champs : `torrentFile`/`nfoFile` (`null` dans la reponse, a
-   cote de `title`/`categoryId`/`options` deja bien enregistres).
-2. Renommer les cles n'a PAS suffi (`{"torrentFile": "<base64>"}` -- PATCH
-   repondait meme "Aucune modification" avec le vrai fichier). Un brouillon
-   cree depuis le site web (donc garanti fonctionnel) puis relu a montre
-   la vraie forme attendue : chaque champ est un OBJET, pas une simple
-   chaine base64 -- `{"name": "<nom_de_fichier>", "data": "<base64>"}`.
-Hypothese `multipart/form-data` egalement rejetee le meme jour (tout
-ignore, y compris le titre -- voir AUTOMATION.md, sous-projet 5)."""
+Format exact du corps JSON de `POST`/`PATCH /api/user/drafts` confirme
+en conditions reelles le 2026-09-06, apres plusieurs hypotheses rejetees
+tour a tour (`torrent`/`nfo` en base64, `multipart/form-data`,
+`torrentFile`/`nfoFile` en simple chaine base64 -- voir AUTOMATION.md,
+sous-projet 5, pour l'historique complet) : le corps ENVOYE utilise des
+champs PLATS -- `torrentFileName`/`torrentFileData` et
+`nfoFileName`/`nfoFileData` (chaine de nom de fichier + chaine base64
+separement), confirme en creant un brouillon reel avec ce format exact
+et en constatant `torrentFile`/`nfoFile` bien remplis a la relecture.
+La reponse de l'API restructure ces champs plats en objets imbriques
+`torrentFile: {name, data}`/`nfoFile: {name, data}` -- une asymetrie
+lecture/ecriture, jamais documentee, qui a rendu ce format difficile a
+deviner sans comparer un brouillon reel cree depuis le site web."""
 from __future__ import annotations
 
 import base64
@@ -102,14 +102,10 @@ class C411UploadClient:
         tmdb_data: Optional[dict[str, Any]],
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
-            "torrentFile": {
-                "name": torrent_filename,
-                "data": base64.b64encode(torrent_bytes).decode("ascii"),
-            },
-            "nfoFile": {
-                "name": nfo_filename,
-                "data": base64.b64encode(nfo_bytes).decode("ascii"),
-            },
+            "torrentFileName": torrent_filename,
+            "torrentFileData": base64.b64encode(torrent_bytes).decode("ascii"),
+            "nfoFileName": nfo_filename,
+            "nfoFileData": base64.b64encode(nfo_bytes).decode("ascii"),
             "title": title,
             "description": description,
             "descriptionFormat": description_format,
@@ -162,11 +158,10 @@ class C411UploadClient:
     ) -> dict[str, Any]:
         """`POST /api/user/drafts` : cree un NOUVEAU brouillon -- n'entre
         JAMAIS en file de moderation tout seul (voir AUTOMATION.md,
-        decision 6). `torrent_bytes`/`nfo_bytes` encodes en base64,
-        chacun dans un objet `{"name": ..., "data": ...}` sous les cles
-        `torrentFile`/`nfoFile` (voir note en tete de module -- format
-        confirme en conditions reelles, deux hypotheses precedentes
-        rejetees)."""
+        decision 6). `torrent_bytes`/`nfo_bytes` envoyes en base64 sous
+        des champs plats `torrentFileName`/`torrentFileData` et
+        `nfoFileName`/`nfoFileData` (voir note en tete de module --
+        format confirme en conditions reelles)."""
         body = self._draft_body(
             torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes,
             torrent_filename=torrent_filename, nfo_filename=nfo_filename,
@@ -198,8 +193,8 @@ class C411UploadClient:
     ) -> dict[str, Any]:
         """`PATCH /api/user/drafts/{draft_id}` : met a jour un brouillon
         DEJA CREE (evite d'en accumuler des doublons vers la limite de 15
-        -- voir AUTOMATION.md, decision 6). Meme format `torrentFile`/
-        `nfoFile` que `create_draft` (voir note en tete de module)."""
+        -- voir AUTOMATION.md, decision 6). Meme format de champs plats
+        que `create_draft` (voir note en tete de module)."""
         body = self._draft_body(
             torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes,
             torrent_filename=torrent_filename, nfo_filename=nfo_filename,

@@ -74,15 +74,15 @@ def test_client_requires_api_key():
         C411UploadClient(api_key="")
 
 
-def test_create_draft_sends_files_as_name_data_objects_under_torrentfile_nfofile():
-    """Format confirme en conditions reelles (2026-09-06), en deux temps :
-    (1) `torrentFile`/`nfoFile` sont les vrais noms de champs (pas
-    `torrent`/`nfo`, decouvert via un brouillon errone relu par
-    `GET /api/user/drafts/{id}`) ; (2) chaque champ est un OBJET
-    `{"name": ..., "data": ...}`, pas une simple chaine base64 -- une
-    simple chaine faisait echouer silencieusement l'ecriture meme avec
-    de vrais octets de .torrent (decouvert en relisant un brouillon cree
-    par le site web lui-meme, garanti fonctionnel)."""
+def test_create_draft_sends_flat_filename_and_data_fields():
+    """Format confirme en conditions reelles (2026-09-06) : le corps
+    ENVOYE utilise des champs plats `torrentFileName`/`torrentFileData`
+    et `nfoFileName`/`nfoFileData` (chaine de nom + chaine base64
+    separement, pas un objet imbrique) -- verifie en creant un vrai
+    brouillon avec exactement ce format et en constatant `torrentFile`
+    bien rempli a la relecture (`GET /api/user/drafts/{id}`, qui
+    restructure ces champs plats en objet `{name, data}` -- asymetrie
+    lecture/ecriture jamais documentee)."""
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -111,12 +111,14 @@ def test_create_draft_sends_files_as_name_data_objects_under_torrentfile_nfofile
     assert body["subcategoryId"] == 6
     assert body["options"] == {"1": [4], "2": 10}
     assert body["descriptionFormat"] == "standard"
-    assert body["torrentFile"]["name"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.torrent"
-    assert base64.b64decode(body["torrentFile"]["data"]) == b"torrent-bytes"
-    assert body["nfoFile"]["name"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.nfo"
-    assert base64.b64decode(body["nfoFile"]["data"]) == b"nfo-bytes"
+    assert body["torrentFileName"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.torrent"
+    assert base64.b64decode(body["torrentFileData"]) == b"torrent-bytes"
+    assert body["nfoFileName"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.nfo"
+    assert base64.b64decode(body["nfoFileData"]) == b"nfo-bytes"
     assert "torrent" not in body
     assert "nfo" not in body
+    assert "torrentFile" not in body
+    assert "nfoFile" not in body
 
 
 def test_create_draft_includes_optional_fields_when_given():
