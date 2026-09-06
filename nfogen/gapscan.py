@@ -315,6 +315,7 @@ def run_gapscan(
     radarr: Optional[RadarrClient] = None,
     sonarr: Optional[SonarrClient] = None,
     on_progress: Optional[Callable[[int, int], None]] = None,
+    on_item: Optional[Callable[[GapResult], None]] = None,
     previous_results: Optional[list[GapResult]] = None,
     only: Optional[str] = None,
     max_age_seconds: Optional[float] = None,
@@ -326,6 +327,13 @@ def run_gapscan(
     deux). `on_progress(traites, total)`, appele apres chaque item -- utilise
     par `gapscan_runner.py` pour exposer une progression via
     `GET /gapscan/status` sans dupliquer cette boucle ailleurs.
+
+    `on_item(resultat)` (optionnel, AUTOMATION.md -- retour utilisateur
+    2026-09-06 : voir ce que le scan est en train de faire en direct) :
+    appele juste APRES chaque item REELLEMENT interroge sur le tracker,
+    avec son `GapResult` complet -- jamais appele pour un item repris tel
+    quel (`only`/`selection`, voir plus bas), qui n'a rien de nouveau a
+    montrer.
 
     `previous_results` (mode incremental, optionnel) : resultats du dernier
     scan termine -- un titre deja COVERED et inchange localement est repris
@@ -377,19 +385,18 @@ def run_gapscan(
     for index, (kind, item) in enumerate(items, start=1):
         key = _item_key(kind, item)
         if kind == "movie":
-            results.append(
-                scan_movie(
-                    item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
-                    path_mappings=radarr_path_mappings,
-                )
+            result = scan_movie(
+                item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
+                path_mappings=radarr_path_mappings,
             )  # type: ignore[arg-type]
         else:
-            results.append(
-                scan_series_season(
-                    item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
-                    path_mappings=sonarr_path_mappings,
-                )
+            result = scan_series_season(
+                item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
+                path_mappings=sonarr_path_mappings,
             )  # type: ignore[arg-type]
+        results.append(result)
+        if on_item is not None:
+            on_item(result)
         if on_progress is not None:
             on_progress(index, total)
     results.extend(carried_over)

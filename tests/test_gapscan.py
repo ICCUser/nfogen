@@ -555,6 +555,51 @@ def test_run_gapscan_reports_progress():
     assert calls == [(1, 2), (2, 2)]
 
 
+def test_run_gapscan_calls_on_item_with_each_scanned_result():
+    """`on_item` (optionnel, retour utilisateur 2026-09-06 : voir ce que le
+    scan est en train de faire en direct) -- appele APRES chaque item
+    reellement interroge sur le tracker, avec son GapResult complet."""
+    c411 = FakeC411(movie_results=[], tv_results=[])
+    seen: list[GapResult] = []
+
+    run_gapscan(
+        c411, radarr=_FakeRadarr(), sonarr=_FakeSonarr(),
+        on_item=lambda result: seen.append(result),
+    )
+
+    assert {r.media_type for r in seen} == {"movie", "series"}
+    assert len(seen) == 2
+
+
+def test_run_gapscan_on_item_not_called_for_items_preserved_via_selection():
+    """Un item HORS selection, repris tel quel depuis previous_results,
+    n'a pas ete reellement scanne -- on_item ne doit pas etre appele pour
+    lui (rien de nouveau a montrer, il n'a pas ete verifie cette passe)."""
+    movie_a = _movie(title="A", imdb_id="tt001", tmdb_id=1, year=2020)
+    movie_b = _movie(title="B", imdb_id="tt002", tmdb_id=2, year=2021)
+    c411 = FakeC411(movie_results=[])
+    previous_b = GapResult(
+        media_type="movie", title="B", year=2021, season_number=None,
+        imdb_id="tt002", tmdb_id="2", tvdb_id=None, status=GapStatus.COVERED,
+        local_quality=ReleaseQuality(raw=""),
+    )
+    seen: list[GapResult] = []
+
+    run_gapscan(
+        c411, radarr=_FakeRadarrNamedMovies([movie_a, movie_b]),
+        previous_results=[previous_b], selection={movie_key("tt001", "1", "A", 2020)},
+        on_item=lambda result: seen.append(result),
+    )
+
+    assert [r.title for r in seen] == ["A"]
+
+
+def test_run_gapscan_without_on_item_callback_still_works():
+    c411 = FakeC411(movie_results=[])
+    results = run_gapscan(c411, radarr=_FakeRadarr())
+    assert len(results) == 1
+
+
 def test_run_gapscan_without_progress_callback_still_works():
     c411 = FakeC411(movie_results=[])
     results = run_gapscan(c411, radarr=_FakeRadarr())
