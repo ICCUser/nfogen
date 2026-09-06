@@ -7,7 +7,17 @@ equivalent partage par d'autres trackers (voir AUTOMATION.md, "Principe
 directeur", et decision 4 du sous-projet 5). Reste nomme et pense comme
 specifique jusqu'a preuve du contraire (un deuxieme tracker a integrer un
 jour).
-"""
+
+`torrentFile`/`nfoFile` (pas `torrent`/`nfo`) : confirme en conditions
+reelles le 2026-09-06 via `GET /api/user/drafts/{id}` sur un brouillon
+deja cree par erreur avec les mauvais noms de champs -- la reponse
+listait `torrentFile: null`/`nfoFile: null` a cote de `title`/
+`categoryId`/`options` correctement enregistres, prouvant que le corps
+JSON attendu (base64, comme documente) utilise bien ces deux noms de
+champs precis. Deux hypotheses precedentes rejetees le meme jour :
+`torrent`/`nfo` (silencieusement ignores, meme constat) et
+`multipart/form-data` (tout ignore, y compris le titre -- voir
+AUTOMATION.md, sous-projet 5)."""
 from __future__ import annotations
 
 import base64
@@ -87,8 +97,8 @@ class C411UploadClient:
         tmdb_data: Optional[dict[str, Any]],
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
-            "torrent": base64.b64encode(torrent_bytes).decode("ascii"),
-            "nfo": base64.b64encode(nfo_bytes).decode("ascii"),
+            "torrentFile": base64.b64encode(torrent_bytes).decode("ascii"),
+            "nfoFile": base64.b64encode(nfo_bytes).decode("ascii"),
             "title": title,
             "description": description,
             "descriptionFormat": description_format,
@@ -140,7 +150,9 @@ class C411UploadClient:
         """`POST /api/user/drafts` : cree un NOUVEAU brouillon -- n'entre
         JAMAIS en file de moderation tout seul (voir AUTOMATION.md,
         decision 6). `torrent_bytes`/`nfo_bytes` encodes en base64 dans le
-        corps JSON (comportement documente par C411 pour cet endpoint)."""
+        corps JSON, champs `torrentFile`/`nfoFile` (voir note en tete de
+        module -- confirme en conditions reelles, pas juste `torrent`/
+        `nfo`)."""
         body = self._draft_body(
             torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=title, description=description,
             category_id=category_id, subcategory_id=subcategory_id, options=options,
@@ -168,7 +180,8 @@ class C411UploadClient:
     ) -> dict[str, Any]:
         """`PATCH /api/user/drafts/{draft_id}` : met a jour un brouillon
         DEJA CREE (evite d'en accumuler des doublons vers la limite de 15
-        -- voir AUTOMATION.md, decision 6)."""
+        -- voir AUTOMATION.md, decision 6). Memes champs `torrentFile`/
+        `nfoFile` que `create_draft` (voir note en tete de module)."""
         body = self._draft_body(
             torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=title, description=description,
             category_id=category_id, subcategory_id=subcategory_id, options=options,

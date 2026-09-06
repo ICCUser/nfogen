@@ -1053,25 +1053,24 @@ Implémenté tel que conçu ci-dessus, plan détaillé :
   chaîne `hdlight` apparaît (insensible à la casse) dans le
   `release_name`, `"{source}"` sinon.
 
-**Deux points non vérifiés en conditions réelles, à la charge de
-l'utilisateur avant un premier envoi réel** (voir aussi la note "à
-vérifier" plus haut dans ce document) :
-1. Le format exact attendu par `POST`/`PATCH /api/user/drafts` pour
-   `torrent`/`nfo` reste **non résolu** (2026-09-06, deux essais réels) :
-   - Corps JSON avec fichiers en base64 (hypothèse initiale, code actuel) :
-     brouillon créé avec titre/description corrects, mais `torrent`/`nfo`
-     silencieusement ignorés ("à fournir" côté C411).
-   - `multipart/form-data` avec fichiers réels (même format que
-     `POST /api/torrents`, essayé puis **annulé** — voir CHANGELOG,
-     commit revert du 2026-09-06) : pire résultat, brouillon créé
-     entièrement vide (titre compris) — `/api/user/drafts` n'accepte
-     donc PAS le multipart, contrairement à `/api/torrents`.
-   - Piste restante à tester : un format hybride (peut-être une clé JSON
-     dédiée par fichier, ex. `{"filename": ..., "content": <base64>}`
-     plutôt qu'une simple chaîne base64), ou contacter le support/la doc
-     C411 directement pour le format `/api/user/drafts` spécifiquement
-     (la doc obtenue ne documente en détail que `/api/torrents`).
-     **Ne pas retenter un format à l'aveugle sans nouvel élément.**
+**Un point résolu en conditions réelles, un restant à vérifier, à la
+charge de l'utilisateur avant un premier envoi réel** (voir aussi la note
+"à vérifier" plus haut dans ce document) :
+1. ~~Le format exact attendu par `POST`/`PATCH /api/user/drafts` pour
+   `torrent`/`nfo`~~ — **résolu (2026-09-06)**, après deux mauvaises
+   hypothèses :
+   - Corps JSON avec fichiers en base64 sous les clés `torrent`/`nfo`
+     (hypothèse initiale) : brouillon créé avec titre/description
+     corrects, mais fichiers silencieusement ignorés ("à fournir" côté
+     C411).
+   - `multipart/form-data` (même format que `POST /api/torrents`, essayé
+     puis **annulé**) : pire résultat, brouillon créé entièrement vide
+     (titre compris) — `/api/user/drafts` n'accepte pas le multipart.
+   - **Cause réelle trouvée** via `GET /api/user/drafts/{id}` sur le
+     brouillon déjà créé (vide) : la réponse listait les champs
+     `torrentFile`/`nfoFile` (`null`), pas `torrent`/`nfo` — un simple
+     mauvais nom de clé JSON, le format base64 lui-même était correct
+     depuis le début. Corrigé dans `c411_upload_client.py`.
 2. `subcategory_id["movie:documentaire"]`/`["series:documentaire"]`
    pointent tous les deux vers `4` (seule valeur "Documentaire" donnée,
    pas de distinction film/série dans la liste fournie) — à confirmer via

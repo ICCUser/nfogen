@@ -74,7 +74,12 @@ def test_client_requires_api_key():
         C411UploadClient(api_key="")
 
 
-def test_create_draft_sends_base64_files_and_returns_response():
+def test_create_draft_sends_base64_files_under_the_torrentfile_nfofile_keys():
+    """Noms de champs confirmes en conditions reelles (2026-09-06) via
+    `GET /api/user/drafts/{id}` sur un brouillon cree par erreur avec les
+    mauvais noms -- la reponse listait `torrentFile`/`nfoFile` (pas
+    `torrent`/`nfo`), a cote de `title`/`categoryId`/`options` deja bien
+    enregistres avec les noms actuels."""
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -101,8 +106,10 @@ def test_create_draft_sends_base64_files_and_returns_response():
     assert body["subcategoryId"] == 6
     assert body["options"] == {"1": [4], "2": 10}
     assert body["descriptionFormat"] == "standard"
-    assert base64.b64decode(body["torrent"]) == b"torrent-bytes"
-    assert base64.b64decode(body["nfo"]) == b"nfo-bytes"
+    assert base64.b64decode(body["torrentFile"]) == b"torrent-bytes"
+    assert base64.b64decode(body["nfoFile"]) == b"nfo-bytes"
+    assert "torrent" not in body
+    assert "nfo" not in body
 
 
 def test_create_draft_includes_optional_fields_when_given():
