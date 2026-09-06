@@ -12,6 +12,7 @@ import {
   gapscanRun,
   generateFromMetadata,
   generateUpload,
+  libraryResults,
   listAllProfiles,
   listCommitJobs,
   prepareUploadCommit,
@@ -273,6 +274,20 @@ describe("prepareUploadPreview / prepareUploadCommit", () => {
       profile: "c411",
     });
   });
+
+  it("commit inclut les identifiants dans le corps quand fournis (AUTOMATION.md, sous-projet 8)", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ job_id: "job-1" }));
+
+    await prepareUploadCommit("R", [], "c411", {
+      mediaType: "series", radarrMovieId: undefined, sonarrSeriesId: 7, seasonNumber: 2,
+    });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.media_type).toBe("series");
+    expect(body.sonarr_series_id).toBe(7);
+    expect(body.season_number).toBe(2);
+  });
 });
 
 describe("commitJobStatus / listCommitJobs / cancelCommitJob", () => {
@@ -468,5 +483,52 @@ describe("gapscanConfig / gapscanConfigWrite / gapscanRun", () => {
 
     const [url] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain("profile=ygg");
+  });
+
+  it("gapscanRun envoie un corps JSON avec selection quand fournie (AUTOMATION.md, sous-projet 8)", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ status: "started" }));
+
+    await gapscanRun(false, undefined, "c411", ['["movie","tt001",2020]']);
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.selection).toEqual(['["movie","tt001",2020]']);
+  });
+
+  it("gapscanRun n'envoie aucun corps quand selection est absente (non-regression)", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ status: "started" }));
+
+    await gapscanRun(false, undefined, "c411");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect((init as RequestInit).body).toBeUndefined();
+  });
+});
+
+describe("libraryResults", () => {
+  it("appelle GET /gapscan/library avec les filtres fournis", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ items: [], total: 0 }));
+
+    await libraryResults({
+      q: "matrix", mediaType: "movie", genre: "Action", processed: false, page: 2,
+    });
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/library?");
+    expect(url).toContain("q=matrix");
+    expect(url).toContain("media_type=movie");
+    expect(url).toContain("genre=Action");
+    expect(url).toContain("processed=false");
+    expect(url).toContain("page=2");
+  });
+
+  it("utilise page=1 et page_size=50 par defaut", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ items: [], total: 0 }));
+
+    await libraryResults();
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("page=1");
+    expect(url).toContain("page_size=50");
   });
 });

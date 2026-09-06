@@ -212,6 +212,35 @@ export interface GapscanConfigWrite {
 }
 
 // --------------------------------------------------------------------------- //
+// Bibliotheque locale (AUTOMATION.md, sous-projet 8) : inventaire brut
+// Radarr/Sonarr, zero appel tracker. Type miroir de nfogen/gapscan_library.py:LibraryItem.
+// --------------------------------------------------------------------------- //
+export interface LibraryItem {
+  media_type: "movie" | "series";
+  title: string;
+  year: number | null;
+  season_number: number | null;
+  imdb_id: string | null;
+  tvdb_id: number | null;
+  tmdb_id: string | null;
+  genres: string[];
+  added_at: number | null;
+  local_quality: ReleaseQuality;
+  radarr_movie_id: number | null;
+  sonarr_series_id: number | null;
+  already_processed: boolean;
+  last_processed_at: number | null;
+  /** Cle opaque (voir gapscan.movie_key/series_key) -- a renvoyer telle
+   * quelle dans `gapscanRun(..., selection)` pour cibler cet item. */
+  key: string;
+}
+
+export interface LibraryResultsPage {
+  items: LibraryItem[];
+  total: number;
+}
+
+// --------------------------------------------------------------------------- //
 // Preparation d'upload (AUTOMATION.md, sous-projet 4) : nommage -> mise en
 // scene + .torrent, a partir des chemins locaux deja resolus par GapScan.
 // --------------------------------------------------------------------------- //

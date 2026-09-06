@@ -6,6 +6,7 @@ import type {
   GapscanResultsPage,
   GapscanStatus,
   GenerateResult,
+  LibraryResultsPage,
   ManagedProfile,
   NameProposal,
   ProfilesByCategory,
@@ -310,18 +311,49 @@ export function gapscanConfigWrite(fields: GapscanConfigWrite, profile = "c411")
  * les films ou que les series, pour repartir la charge sur plusieurs
  * sessions (limite C411 confirmee : 15 requetes/min). `profile` : quel
  * tracker interroger (identifiants namespaces, voir AUTOMATION.md,
- * sous-projet 4b). */
+ * sous-projet 4b). `selection` (AUTOMATION.md, sous-projet 8, optionnel) :
+ * cles opaques (voir LibraryItem.key) -- restreint le scan a ces items
+ * precis, a priorite sur `only` cote serveur. */
 export function gapscanRun(
   incremental = false,
   only?: "movies" | "series",
   profile = "c411",
+  selection?: string[],
 ): Promise<{ status: string }> {
   const params = new URLSearchParams();
   if (incremental) params.set("incremental", "true");
   if (only) params.set("only", only);
   if (profile !== "c411") params.set("profile", profile);
   const qs = params.toString();
-  return request(`/gapscan/run${qs ? `?${qs}` : ""}`, { method: "POST" });
+  return request(`/gapscan/run${qs ? `?${qs}` : ""}`, {
+    method: "POST",
+    ...(selection ? { body: JSON.stringify({ selection }) } : {}),
+  });
+}
+
+/** GET /gapscan/library : inventaire local Radarr/Sonarr, ZERO appel
+ * tracker (AUTOMATION.md, sous-projet 8) -- rechargement quasi instantane,
+ * contrairement a gapscanRun(). */
+export function libraryResults(
+  opts: {
+    q?: string;
+    mediaType?: "movie" | "series";
+    genre?: string;
+    addedSinceDays?: number;
+    processed?: boolean;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<LibraryResultsPage> {
+  const params = new URLSearchParams();
+  if (opts.q) params.set("q", opts.q);
+  if (opts.mediaType) params.set("media_type", opts.mediaType);
+  if (opts.genre) params.set("genre", opts.genre);
+  if (opts.addedSinceDays !== undefined) params.set("added_since_days", String(opts.addedSinceDays));
+  if (opts.processed !== undefined) params.set("processed", String(opts.processed));
+  params.set("page", String(opts.page ?? 1));
+  params.set("page_size", String(opts.pageSize ?? 50));
+  return request<LibraryResultsPage>(`/gapscan/library?${params.toString()}`);
 }
 
 export function gapscanStatus(): Promise<GapscanStatus> {
@@ -387,15 +419,36 @@ export function prepareUploadPreview(
 
 /** Demarre la mise en scene + generation de .torrent EN TACHE DE FOND
  * (AUTOMATION.md, sous-projet 4c) -- renvoie un job_id immediatement,
- * suivi via commitJobStatus(). */
+ * suivi via commitJobStatus(). `identifiers` (AUTOMATION.md, sous-projet 8,
+ * optionnel) : memes champs que sendToTracker() -- permet a nfogen
+ * d'enregistrer ce Confirmer dans l'historique "deja traite". Omis :
+ * corps identique au comportement historique (non-regression). */
 export function prepareUploadCommit(
   releaseName: string,
   files: UploadPrepFile[],
   profile = "c411",
+  identifiers?: {
+    mediaType?: "movie" | "series";
+    radarrMovieId?: number;
+    sonarrSeriesId?: number;
+    seasonNumber?: number;
+  },
 ): Promise<{ job_id: string }> {
   return request<{ job_id: string }>("/gapscan/prepare-upload/commit", {
     method: "POST",
-    body: JSON.stringify({ release_name: releaseName, files, profile }),
+    body: JSON.stringify({
+      release_name: releaseName,
+      files,
+      profile,
+      ...(identifiers
+        ? {
+            media_type: identifiers.mediaType ?? "movie",
+            radarr_movie_id: identifiers.radarrMovieId,
+            sonarr_series_id: identifiers.sonarrSeriesId,
+            season_number: identifiers.seasonNumber,
+          }
+        : {}),
+    }),
   });
 }
 
