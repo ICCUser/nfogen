@@ -243,9 +243,16 @@ def scan_series_season(
         return replace(
             previous, local_paths=local_paths, path_resolved=path_resolved, path_error=path_error
         )
+    # Sonarr identifie une serie par TVDB, mais expose AUSSI un tmdbId
+    # (cross-reference qu'il maintient lui-meme) -- confirme en conditions
+    # reelles le 2026-09-06 (retour utilisateur), jamais lu jusqu'ici a
+    # tort : `tmdb_id=None` etait cable en dur, croyant a une limitation
+    # permanente de Sonarr qui n'existe pas. Meme conversion str() que
+    # scan_movie (GapResult.tmdb_id est une chaine, voir plus haut).
+    tmdb_id = str(season.tmdb_id) if season.tmdb_id else None
     base = dict(
         media_type="series", title=season.title, year=season.year,
-        season_number=season.season_number, imdb_id=season.imdb_id, tmdb_id=None,
+        season_number=season.season_number, imdb_id=season.imdb_id, tmdb_id=tmdb_id,
         tvdb_id=season.tvdb_id, sonarr_series_id=season.series_id, local_quality=local_quality,
         local_paths=local_paths, path_resolved=path_resolved, path_error=path_error,
     )

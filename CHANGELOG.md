@@ -262,6 +262,21 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   l'API restructure ces champs plats en objets imbriqués à la lecture
   (asymétrie écriture/lecture jamais documentée). `create_draft()`/
   `update_draft()` gagnent `torrent_filename`/`nfo_filename`.
+- **Brouillon toujours nommé "Brouillon sans titre" sur le site C411**
+  (retour utilisateur, 2026-09-06) — le champ `name` (libellé affiché
+  dans la liste des brouillons, distinct du `title`) n'était jamais
+  envoyé, rendant les brouillons impossibles à distinguer entre eux.
+  Aligné sur le titre de la release.
+- **Vérification anti-doublon C411 jamais effectuée pour les séries** :
+  l'avertissement "identifiant TMDB inconnu pour ce média" s'affichait
+  systématiquement pour toute série (retour utilisateur, 2026-09-06).
+  Supposé à tort être une limitation permanente de Sonarr (identification
+  par TVDB) — **infirmé en conditions réelles** : Sonarr expose bien un
+  `tmdbId` par cross-reference (confirmé sur une vraie instance,
+  `"tmdbId": 63174` pour Lucifer, à côté de son `tvdbId`), simplement
+  jamais lu par nfogen jusqu'ici. `sonarr_client.py`/`gapscan.py`/
+  `gapscan_library.py` le récupèrent désormais — la vérification
+  anti-doublon fonctionne pour une série comme pour un film.
 
 ### Modifié
 

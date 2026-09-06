@@ -470,6 +470,11 @@ def send_to_tracker(
             except C411UploadError as exc:
                 duplicate_warning = f"Vérification des doublons impossible : {exc}"
         else:
+            # tmdb_id manquant reste anormal pour un FILM (Radarr est
+            # TMDB-natif) comme pour une SERIE (Sonarr expose bien un
+            # tmdbId, confirme en conditions reelles le 2026-09-06 --
+            # gapscan.py le recupere desormais, voir scan_series_season) :
+            # signale dans les deux cas.
             duplicate_warning = (
                 "Vérification des doublons non effectuée : identifiant TMDB inconnu pour ce média."
             )

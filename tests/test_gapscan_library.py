@@ -77,6 +77,18 @@ def test_list_library_marks_series_season_not_processed_by_default():
     assert items[0].key == upload_history_store.key_str(series_key(99, None, "Show", 1))
 
 
+def test_list_library_exposes_tmdb_id_for_series():
+    """Sonarr expose un `tmdbId` par cross-reference (confirme en
+    conditions reelles, 2026-09-06) : `tmdb_id=None` etait cable en dur
+    ici a tort pour toute serie."""
+    season = SonarrSeasonFile(
+        series_id=7, title="Show", year=2019, tvdb_id=99, imdb_id=None,
+        season_number=1, episode_file_count=10, tmdb_id=63174,
+    )
+    items = gapscan_library.list_library(radarr=None, sonarr=_FakeSonarr([season]))
+    assert items[0].tmdb_id == "63174"
+
+
 def test_list_library_combines_movies_and_series():
     movie = RadarrMovieFile(movie_id=1, title="Movie", year=2020, imdb_id="tt001", tmdb_id=1)
     season = SonarrSeasonFile(

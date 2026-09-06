@@ -147,7 +147,8 @@ def list_library(
                 LibraryItem(
                     media_type="series", title=season.title, year=season.year,
                     season_number=season.season_number, imdb_id=season.imdb_id,
-                    tvdb_id=season.tvdb_id, tmdb_id=None,
+                    tvdb_id=season.tvdb_id,
+                    tmdb_id=str(season.tmdb_id) if season.tmdb_id else None,
                     genres=season.genres, added_at=season.added_at,
                     local_quality=build_quality(
                         season.scene_name or season.title,

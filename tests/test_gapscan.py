@@ -471,6 +471,22 @@ def test_scan_series_season_absent_when_no_match():
     assert result.season_number == 1
 
 
+def test_scan_series_season_result_includes_tmdb_id_from_sonarr():
+    """Sonarr expose un `tmdbId` par cross-reference (confirme en
+    conditions reelles, 2026-09-06 -- voir SonarrSeasonFile.tmdb_id) :
+    `tmdb_id=None` etait cable en dur ici a tort, croyant a une
+    limitation permanente de Sonarr qui n'existe pas."""
+    c411 = FakeC411(tv_results=[])
+    result = scan_series_season(_season(tmdb_id=63174), c411)
+    assert result.tmdb_id == "63174"
+
+
+def test_scan_series_season_tmdb_id_none_when_sonarr_has_none():
+    c411 = FakeC411(tv_results=[])
+    result = scan_series_season(_season(tmdb_id=None), c411)
+    assert result.tmdb_id is None
+
+
 def test_scan_series_season_covered():
     c411 = FakeC411(tv_results=[_release("Breaking.Bad.S01.MULTI.VFF.2160p.WEBRip.x265-SQUEEZE")])
     result = scan_series_season(_season(), c411)

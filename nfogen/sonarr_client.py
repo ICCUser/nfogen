@@ -35,6 +35,13 @@ class SonarrSeasonFile:
     imdb_id: Optional[str]
     season_number: int
     episode_file_count: int
+    # Sonarr identifie une serie par TVDB (voir `tvdb_id`), mais expose
+    # AUSSI un `tmdbId` (cross-reference qu'il maintient lui-meme) --
+    # confirme en conditions reelles le 2026-09-06 (retour utilisateur :
+    # "tmdb possede bien quelque chose... meme dans sonarr le lien est
+    # https://www.themoviedb.org/tv/63174"), jamais lu jusqu'ici. Permet
+    # la meme verification anti-doublon C411 (TMDB-only) que pour un film.
+    tmdb_id: Optional[int] = None
     best_resolution: Optional[int] = None
     quality_name: Optional[str] = None
     scene_name: Optional[str] = None
@@ -162,6 +169,7 @@ class SonarrClient:
                         title=series.get("title", ""),
                         year=series.get("year"),
                         tvdb_id=series.get("tvdbId"),
+                        tmdb_id=series.get("tmdbId"),
                         imdb_id=series.get("imdbId"),
                         season_number=season_number,
                         episode_file_count=len(season_files),

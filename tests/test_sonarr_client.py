@@ -60,6 +60,34 @@ def test_list_season_files_aggregates_by_season_and_keeps_best_resolution():
     assert season2.best_resolution == 1080
 
 
+def test_list_season_files_exposes_tmdb_id():
+    """Sonarr identifie une serie par TVDB, mais expose AUSSI un `tmdbId`
+    (cross-reference qu'il maintient lui-meme) -- confirme en conditions
+    reelles le 2026-09-06 (retour utilisateur : la fiche Lucifer de son
+    Sonarr contient bien `"tmdbId": 63174` a cote de `"tvdbId": 295685`).
+    Jamais lu jusqu'ici, a tort : permet la meme verification anti-doublon
+    C411 (TMDB-only) que pour un film, voir gapscan.py:scan_series_season."""
+    series_with_tmdb = [{**SERIES[0], "tmdbId": 63174}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=series_with_tmdb)
+        return httpx.Response(200, json=EPISODE_FILES)
+
+    seasons = _client(handler).list_season_files()
+    assert all(s.tmdb_id == 63174 for s in seasons)
+
+
+def test_list_season_files_tmdb_id_none_when_absent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=SERIES)  # SERIES n'a pas de tmdbId
+        return httpx.Response(200, json=EPISODE_FILES)
+
+    seasons = _client(handler).list_season_files()
+    assert all(s.tmdb_id is None for s in seasons)
+
+
 def test_season_zero_specials_are_excluded():
     """Incident reel (retour utilisateur) : 'Misfits S00' remontait dans les
     resultats GapScan. La saison 0 est la convention Sonarr pour les

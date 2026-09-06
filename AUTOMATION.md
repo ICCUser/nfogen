@@ -953,11 +953,17 @@ figées dans le profil, voir "Décisions") :
    `GET /api/torrents/by-tmdb` juste avant l'envoi réel (pas pendant
    GapScan, qui a déjà son propre mécanisme via Torznab — sous-projet
    4b/GAPSCAN.md). Pour un film, `tmdb_id` est déjà connu
-   (`RadarrMovieFile.tmdb_id`). **Pour une série, généralement absent**
-   (`GapResult.tmdb_id` est toujours `None` côté série, seul `tvdb_id`
-   est connu — voir `gapscan.py`) : la vérification est alors simplement
-   sautée avec un avertissement explicite ("doublon non vérifiable, tmdb_id
-   inconnu pour cette série"), jamais bloquant, jamais deviné.
+   (`RadarrMovieFile.tmdb_id`). **Pour une série, longtemps supposé
+   toujours absent** (`GapResult.tmdb_id` câblé en dur à `None` côté
+   série, seul `tvdb_id` était lu) — hypothèse **infirmée en conditions
+   réelles le 2026-09-06** (retour utilisateur : Sonarr expose bien un
+   `tmdbId` par cross-reference, à côté de son `tvdbId` — confirmé sur
+   une vraie instance, `GET /api/v3/series` renvoie `"tmdbId": 63174`
+   pour Lucifer). `sonarr_client.py`/`gapscan.py`/`gapscan_library.py`
+   lisent désormais ce champ ; la vérification anti-doublon fonctionne
+   pour une série exactement comme pour un film. L'avertissement "TMDB
+   inconnu" reste affiché dans les deux cas si Sonarr n'a exceptionnellement
+   pas trouvé de correspondance TMDB pour un titre précis.
 
 6. **"Envoyer à C411" crée un BROUILLON (`POST /api/user/drafts`), jamais
    une soumission réelle.** Revu le 2026-09-04 (retour utilisateur) :
@@ -976,7 +982,11 @@ figées dans le profil, voir "Décisions") :
      locale réussie : vérifie les doublons (décision 5), rend la
      description, puis `POST /api/user/drafts` avec `.torrent`/`.nfo`
      encodés en base64 dans le corps JSON (comportement documenté par
-     C411 pour cet endpoint) + titre/description/catégorie/options.
+     C411 pour cet endpoint) + titre/description/catégorie/options. Le
+     champ `name` du brouillon (libellé affiché dans la liste des
+     brouillons sur le site, distinct du `title`) est aligné sur le
+     titre de la release — retour utilisateur, 2026-09-06, sinon
+     "Brouillon sans titre" pour tous, impossibles à distinguer.
    - Réponse affichée à l'utilisateur : lien direct vers le brouillon créé
      sur `c411.org` — **c'est lui qui le finalise et le soumet en
      modération**, à son rythme, avec une dernière relecture sur le vrai

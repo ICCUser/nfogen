@@ -106,6 +106,12 @@ class C411UploadClient:
             "torrentFileData": base64.b64encode(torrent_bytes).decode("ascii"),
             "nfoFileName": nfo_filename,
             "nfoFileData": base64.b64encode(nfo_bytes).decode("ascii"),
+            # `name` (distinct du `title`) est le libelle affiche dans la
+            # liste des brouillons sur le site C411 -- reste "Brouillon
+            # sans titre" par defaut si omis, rendant les brouillons
+            # impossibles a distinguer entre eux (retour utilisateur,
+            # 2026-09-06). Aligne sur le titre de la release.
+            "name": title,
             "title": title,
             "description": description,
             "descriptionFormat": description_format,

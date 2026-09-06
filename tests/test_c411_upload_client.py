@@ -106,6 +106,7 @@ def test_create_draft_sends_flat_filename_and_data_fields():
 
     assert result == {"id": 555, "url": "https://c411.org/user/drafts/555"}
     body = captured["body"]
+    assert body["name"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM"
     assert body["title"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM"
     assert body["categoryId"] == 1
     assert body["subcategoryId"] == 6

@@ -770,6 +770,11 @@ def test_send_to_tracker_without_identifiers_does_not_record_history(tmp_path, m
 
 
 def test_send_to_tracker_series_without_tmdb_id_skips_duplicate_check_with_a_warning(tmp_path, monkeypatch):
+    """tmdb_id absent reste possible mais anormal cote serie aussi : Sonarr
+    expose bien un `tmdbId` (confirme en conditions reelles, 2026-09-06 --
+    voir gapscan.py:scan_series_season), donc ce n'est PAS une limitation
+    permanente. Seul un cas rare (Sonarr n'a pas trouve de correspondance
+    TMDB pour cette serie precise) laisserait tmdb_id absent ici."""
     staged = tmp_path / "Show.S01.MULTI.VFF.1080p.WEB.AC3.x264-TEAM"
     staged.mkdir()
     torrent = tmp_path / "Show.S01.MULTI.VFF.1080p.WEB.AC3.x264-TEAM.torrent"
@@ -815,12 +820,51 @@ def test_send_to_tracker_series_without_tmdb_id_skips_duplicate_check_with_a_war
         release_name="Show.S01.MULTI.VFF.1080p.WEB.AC3.x264-TEAM",
         staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
         profile="c411", media_type="series", sonarr_series_id=99, season_number=1,
-        # tmdb_id absent : cas normal cote series, voir AUTOMATION.md decision 5
+        # tmdb_id absent : cas desormais rare cote serie (voir docstring)
     )
 
     assert result.draft_id == 556
     assert result.duplicate_warning is not None
-    assert "doublon" in result.duplicate_warning.lower()
+    assert "TMDB" in result.duplicate_warning
+
+
+def test_send_to_tracker_movie_without_tmdb_id_warns(tmp_path, monkeypatch):
+    """Contrairement a une serie (voir le test precedent), un film sans
+    tmdb_id est anormal -- Radarr est TMDB-natif -- donc toujours signale."""
+    staged = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_draft(self, **kwargs):
+            return {"id": 557, "url": "https://c411.org/user/drafts/557"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.MULTI.VFF.1080p.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", radarr_movie_id=42,
+        # tmdb_id absent : anormal cote film, doit rester signale
+    )
+
+    assert result.draft_id == 557
+    assert result.duplicate_warning is not None
+    assert "TMDB" in result.duplicate_warning
 
 
 def test_send_to_tracker_updates_an_existing_draft_when_draft_id_given(tmp_path, monkeypatch):
