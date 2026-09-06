@@ -1057,8 +1057,8 @@ Implémenté tel que conçu ci-dessus, plan détaillé :
 charge de l'utilisateur avant un premier envoi réel** (voir aussi la note
 "à vérifier" plus haut dans ce document) :
 1. ~~Le format exact attendu par `POST`/`PATCH /api/user/drafts` pour
-   `torrent`/`nfo`~~ — **résolu (2026-09-06)**, après deux mauvaises
-   hypothèses :
+   `torrent`/`nfo`~~ — **résolu (2026-09-06)**, après trois mauvaises
+   hypothèses successives, chacune vérifiée en conditions réelles :
    - Corps JSON avec fichiers en base64 sous les clés `torrent`/`nfo`
      (hypothèse initiale) : brouillon créé avec titre/description
      corrects, mais fichiers silencieusement ignorés ("à fournir" côté
@@ -1066,11 +1066,17 @@ charge de l'utilisateur avant un premier envoi réel** (voir aussi la note
    - `multipart/form-data` (même format que `POST /api/torrents`, essayé
      puis **annulé**) : pire résultat, brouillon créé entièrement vide
      (titre compris) — `/api/user/drafts` n'accepte pas le multipart.
-   - **Cause réelle trouvée** via `GET /api/user/drafts/{id}` sur le
-     brouillon déjà créé (vide) : la réponse listait les champs
-     `torrentFile`/`nfoFile` (`null`), pas `torrent`/`nfo` — un simple
-     mauvais nom de clé JSON, le format base64 lui-même était correct
-     depuis le début. Corrigé dans `c411_upload_client.py`.
+   - Renommer les clés en `torrentFile`/`nfoFile` (déduit d'un `GET
+     /api/user/drafts/{id}` sur le brouillon vide, qui listait ces noms
+     à `null`) avec une simple chaîne base64 comme valeur : toujours
+     ignoré (`PATCH` répondait "Aucune modification" même avec le vrai
+     `.torrent`).
+   - **Format réel trouvé** en créant un brouillon via le site web
+     (donc garanti fonctionnel) puis en le relisant via l'API : chaque
+     champ est un **objet** `{"name": "<nom_de_fichier>", "data":
+     "<base64>"}`, pas une simple chaîne. Corrigé dans
+     `c411_upload_client.py` (`create_draft`/`update_draft` gagnent
+     `torrent_filename`/`nfo_filename`).
 2. `subcategory_id["movie:documentaire"]`/`["series:documentaire"]`
    pointent tous les deux vers `4` (seule valeur "Documentaire" donnée,
    pas de distinction film/série dans la liste fournie) — à confirmer via

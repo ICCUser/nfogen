@@ -247,16 +247,19 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   gagne le même `overwrite` que `stage_file`, traduit désormais en
   message clair — un titre déjà confirmé/envoyé voit aussi son `.torrent`
   et son `.nfo` protégés (jamais retouchés), comme le fichier média.
-- **"Envoyer à C411" créait un brouillon incomplet, puis totalement vide**
-  (retour utilisateur, 2026-09-06, deux essais réels successifs) : le
-  corps JSON de `POST`/`PATCH /api/user/drafts` envoyait `.torrent`/`.nfo`
-  sous les clés `torrent`/`nfo` (titre/description corrects, fichiers
-  ignorés), puis un essai en `multipart/form-data` a tout cassé (titre
-  compris — cet endpoint n'accepte pas le multipart, annulé). Cause
-  trouvée via `GET /api/user/drafts/{id}` sur un brouillon déjà créé : les
-  vrais noms de champs sont `torrentFile`/`nfoFile`, pas `torrent`/`nfo`
-  — le format base64 était correct depuis le début, seul le nom de clé
-  était faux.
+- **"Envoyer à C411" n'attachait jamais `.torrent`/`.nfo` au brouillon**
+  (retour utilisateur, 2026-09-06, trois essais réels successifs, chacun
+  vérifié en conditions réelles) : le corps JSON de `POST`/`PATCH
+  /api/user/drafts` envoyait `.torrent`/`.nfo` sous les clés `torrent`/
+  `nfo` (titre/description corrects, fichiers ignorés) ; un essai en
+  `multipart/form-data` a tout cassé (titre compris — cet endpoint
+  n'accepte pas le multipart, annulé) ; renommer les clés en
+  `torrentFile`/`nfoFile` (déduites d'un brouillon vide relu via l'API)
+  avec une simple chaîne base64 ne suffisait toujours pas. Format réel
+  trouvé en comparant avec un brouillon créé par le site web lui-même
+  (garanti fonctionnel) : chaque champ est un **objet** `{"name":
+  "<fichier>", "data": "<base64>"}`, pas une chaîne — `create_draft()`/
+  `update_draft()` gagnent `torrent_filename`/`nfo_filename`.
 
 ### Modifié
 

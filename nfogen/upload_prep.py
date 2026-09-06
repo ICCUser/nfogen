@@ -478,15 +478,17 @@ def send_to_tracker(
 
         if draft_id is not None:
             response = upload_client.update_draft(
-                draft_id, torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=release_name,
-                description=description, category_id=category_id, subcategory_id=subcategory_id,
-                options=options, tmdb_data=tmdb_data,
+                draft_id, torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes,
+                torrent_filename=f"{release_name}.torrent", nfo_filename=f"{release_name}.nfo",
+                title=release_name, description=description, category_id=category_id,
+                subcategory_id=subcategory_id, options=options, tmdb_data=tmdb_data,
             )
         else:
             response = upload_client.create_draft(
-                torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=release_name,
-                description=description, category_id=category_id, subcategory_id=subcategory_id,
-                options=options, tmdb_data=tmdb_data,
+                torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes,
+                torrent_filename=f"{release_name}.torrent", nfo_filename=f"{release_name}.nfo",
+                title=release_name, description=description, category_id=category_id,
+                subcategory_id=subcategory_id, options=options, tmdb_data=tmdb_data,
             )
     finally:
         upload_client.close()

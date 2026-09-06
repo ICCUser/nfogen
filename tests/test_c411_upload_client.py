@@ -74,12 +74,15 @@ def test_client_requires_api_key():
         C411UploadClient(api_key="")
 
 
-def test_create_draft_sends_base64_files_under_the_torrentfile_nfofile_keys():
-    """Noms de champs confirmes en conditions reelles (2026-09-06) via
-    `GET /api/user/drafts/{id}` sur un brouillon cree par erreur avec les
-    mauvais noms -- la reponse listait `torrentFile`/`nfoFile` (pas
-    `torrent`/`nfo`), a cote de `title`/`categoryId`/`options` deja bien
-    enregistres avec les noms actuels."""
+def test_create_draft_sends_files_as_name_data_objects_under_torrentfile_nfofile():
+    """Format confirme en conditions reelles (2026-09-06), en deux temps :
+    (1) `torrentFile`/`nfoFile` sont les vrais noms de champs (pas
+    `torrent`/`nfo`, decouvert via un brouillon errone relu par
+    `GET /api/user/drafts/{id}`) ; (2) chaque champ est un OBJET
+    `{"name": ..., "data": ...}`, pas une simple chaine base64 -- une
+    simple chaine faisait echouer silencieusement l'ecriture meme avec
+    de vrais octets de .torrent (decouvert en relisant un brouillon cree
+    par le site web lui-meme, garanti fonctionnel)."""
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -92,6 +95,8 @@ def test_create_draft_sends_base64_files_under_the_torrentfile_nfofile_keys():
     result = client.create_draft(
         torrent_bytes=b"torrent-bytes",
         nfo_bytes=b"nfo-bytes",
+        torrent_filename="Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.torrent",
+        nfo_filename="Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.nfo",
         title="Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM",
         description="[h2]Synopsis[/h2]...",
         category_id=1,
@@ -106,8 +111,10 @@ def test_create_draft_sends_base64_files_under_the_torrentfile_nfofile_keys():
     assert body["subcategoryId"] == 6
     assert body["options"] == {"1": [4], "2": 10}
     assert body["descriptionFormat"] == "standard"
-    assert base64.b64decode(body["torrentFile"]) == b"torrent-bytes"
-    assert base64.b64decode(body["nfoFile"]) == b"nfo-bytes"
+    assert body["torrentFile"]["name"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.torrent"
+    assert base64.b64decode(body["torrentFile"]["data"]) == b"torrent-bytes"
+    assert body["nfoFile"]["name"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.nfo"
+    assert base64.b64decode(body["nfoFile"]["data"]) == b"nfo-bytes"
     assert "torrent" not in body
     assert "nfo" not in body
 
@@ -121,8 +128,8 @@ def test_create_draft_includes_optional_fields_when_given():
 
     client = _client_with_handler(handler)
     client.create_draft(
-        torrent_bytes=b"t", nfo_bytes=b"n", title="X", description="X" * 20,
-        category_id=1, subcategory_id=6, options={},
+        torrent_bytes=b"t", nfo_bytes=b"n", torrent_filename="X.torrent", nfo_filename="X.nfo",
+        title="X", description="X" * 20, category_id=1, subcategory_id=6, options={},
         uploader_note="Note test", tmdb_data={"id": 27205, "type": "movie"},
     )
 
@@ -137,8 +144,8 @@ def test_create_draft_raises_a_clear_message_on_401():
     client = _client_with_handler(handler)
     with pytest.raises(C411UploadError, match="scope"):
         client.create_draft(
-            torrent_bytes=b"t", nfo_bytes=b"n", title="X", description="X" * 20,
-            category_id=1, subcategory_id=6, options={},
+            torrent_bytes=b"t", nfo_bytes=b"n", torrent_filename="X.torrent", nfo_filename="X.nfo",
+            title="X", description="X" * 20, category_id=1, subcategory_id=6, options={},
         )
 
 
@@ -153,8 +160,8 @@ def test_update_draft_patches_the_existing_draft():
 
     client = _client_with_handler(handler)
     result = client.update_draft(
-        555, torrent_bytes=b"t", nfo_bytes=b"n", title="X updated", description="X" * 20,
-        category_id=1, subcategory_id=6, options={},
+        555, torrent_bytes=b"t", nfo_bytes=b"n", torrent_filename="X.torrent", nfo_filename="X.nfo",
+        title="X updated", description="X" * 20, category_id=1, subcategory_id=6, options={},
     )
 
     assert result == {"id": 555, "url": "https://c411.org/user/drafts/555"}
