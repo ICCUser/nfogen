@@ -49,4 +49,13 @@ describe("App", () => {
     );
     expect(await screen.findByRole("link", { name: /Scan C411/ })).toBeInTheDocument();
   });
+
+  it("affiche un lien de navigation vers la bibliotheque (AUTOMATION.md, sous-projet 8)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/gapscan"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("link", { name: /Bibliothèque/i })).toBeInTheDocument();
+  });
 });

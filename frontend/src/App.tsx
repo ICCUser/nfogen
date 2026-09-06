@@ -2,6 +2,7 @@ import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
 import GapScanPage from "./pages/GapScanPage";
 import GeneratePage from "./pages/GeneratePage";
+import LibraryPage from "./pages/LibraryPage";
 import ProfilesListPage from "./pages/ProfilesListPage";
 import ProfileEditorPage from "./pages/ProfileEditorPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -54,6 +55,9 @@ function AppShell() {
             <NavLink to="/gapscan" className={navClass}>
               Scan {displayName}
             </NavLink>
+            <NavLink to="/library" className={navClass}>
+              Bibliothèque
+            </NavLink>
             <NavLink to="/settings" className={navClass}>
               Réglages
             </NavLink>
@@ -73,6 +77,7 @@ function AppShell() {
             <Route path="/profiles/:name" element={<ProfileEditorPage mode="edit" />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/gapscan" element={<GapScanPage />} />
+            <Route path="/library" element={<LibraryPage />} />
           </Routes>
         </ErrorBoundary>
       </main>
