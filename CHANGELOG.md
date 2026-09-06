@@ -115,6 +115,20 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   plusieurs tâches possibles en parallèle, annulable à tout moment.
   Nouvel encart "Transferts en cours" sur la page GapScan, indépendant du
   panneau d'upload — visible même après un rechargement de page.
+- **Bibliothèque locale et scan ciblé** (AUTOMATION.md, sous-projet 8) :
+  nouvelle vue "Bibliothèque" (`/library`), séparée de "Scan C411" —
+  inventaire Sonarr/Radarr brut via `GET /gapscan/library`, **zéro appel
+  tracker**, rechargement quasi instantané même sur une grosse
+  bibliothèque. Filtres (recherche texte, type, genre **Radarr/Sonarr**,
+  ajouté depuis N jours, déjà traité), sélection multiple, bouton
+  "Vérifier sur le tracker (N sélectionnés)" qui lance un scan **restreint**
+  à cette sélection (`POST /gapscan/run` gagne un champ `selection`, des
+  clés stables `movie_key`/`series_key` réutilisées entre les deux
+  fonctionnalités) — évite de rescanner toute la bibliothèque pour
+  vérifier un seul titre ajouté récemment. Historique persistant des
+  titres déjà confirmés/envoyés (`nfogen/upload_history_store.py`), jamais
+  basé sur le contenu du dossier staging. Le scan bulk existant ("Lancer
+  un scan") reste inchangé et coexiste avec le scan ciblé.
 
 ### Corrigé
 

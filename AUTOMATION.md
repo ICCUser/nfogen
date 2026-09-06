@@ -47,7 +47,7 @@ supposé résolu par analogie avec Prowlarr.
 
 ## Décomposition et ordre (2026-08-27)
 
-Projet trop large pour une seule conception : découpé en 8 sous-projets
+Projet trop large pour une seule conception : découpé en 9 sous-projets
 indépendants, chacun avec son propre cycle conception → implémentation.
 Ordre confirmé par l'utilisateur (le sous-projet 3 a été ajouté le
 2026-08-27, en cours de route, quand `name_proposal.py` s'est révélé
@@ -64,7 +64,8 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 | 5 | Upload vers C411 | Livré (2026-09-04), voir sa section ci-dessous |
 | 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
 | 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
-| 8 | Lidarr (musique) | Facultatif, en dernier |
+| 8 | Bibliothèque locale et scan ciblé (inventaire Sonarr/Radarr sans appel tracker, sélection, historique "déjà traité") | **Livré (2026-09-06)**, voir [le plan](docs/superpowers/plans/2026-09-06-library-targeted-scan.md) |
+| 9 | Lidarr (musique) | Facultatif, en dernier |
 
 ## Décisions déjà prises (2026-08-27)
 
@@ -1067,3 +1068,38 @@ vérifier" plus haut dans ce document) :
 3. Le scope de la clé API tracker existante couvre-t-il
    upload/brouillons (`https://c411.org/user/integrations`) ? Le code
    remonte une erreur 401/403 claire si non, plutôt que de supposer.
+
+## Sous-projet 8 : Bibliothèque locale et scan ciblé (conception et livraison 2026-09-06)
+
+Retour utilisateur (2026-09-06) : `POST /gapscan/run` interrogeait le
+tracker pour toute la bibliothèque à chaque scan (le mode incrémental
+réutilise les `COVERED` inchangés, mais scanne quand même tout le reste)
+— "pour eviter de scan comme un porc toute la bibliotech".
+
+**Nouvelle vue "Bibliothèque"** (`/library`), séparée de "Scan C411" :
+inventaire Sonarr/Radarr brut via `GET /gapscan/library`
+(`nfogen/gapscan_library.py`), **zéro appel tracker** — rechargement quasi
+instantané. Filtres (recherche texte, type, genre **Radarr/Sonarr** — pas
+la catégorie C411, indisponible tant que rien n'est vérifié —, "ajouté
+depuis N jours", "déjà traité"), sélection multiple, bouton "Vérifier sur
+le tracker (N sélectionnés)" qui lance un scan **restreint** à cette
+sélection (`POST /gapscan/run` gagne un champ `selection`, des clés
+stables `movie_key`/`series_key` — extraites de l'ancien `_result_key`
+interne de `gapscan.py`, désormais publiques et réutilisées par les deux
+modules).
+
+**Historique persistant "déjà traité"** (`nfogen/upload_history_store.py`,
+même patron que `gapscan_results.json`) : un titre est marqué traité dès
+qu'un "Confirmer" ou un "Envoyer à C411" réussit
+(`commit_job_runner.py`/`upload_prep.py:send_to_tracker`), via une clé
+`radarr_movie_id`/`sonarr_series_id` (distincte de `movie_key`/
+`series_key`, qui ont besoin d'imdb/tmdb/titre/année — non disponibles à
+ces deux points d'appel sans plomberie supplémentaire). Jamais basé sur
+le contenu du dossier staging (peut être nettoyé indépendamment, y
+compris une fois qBittorrent branché, sous-projet 6).
+
+Le scan bulk existant ("Lancer un scan", page "Scan C411") reste
+inchangé et coexiste avec le scan ciblé.
+
+Voir [docs/superpowers/specs/2026-09-06-library-targeted-scan-design.md](docs/superpowers/specs/2026-09-06-library-targeted-scan-design.md)
+et [docs/superpowers/plans/2026-09-06-library-targeted-scan.md](docs/superpowers/plans/2026-09-06-library-targeted-scan.md).
