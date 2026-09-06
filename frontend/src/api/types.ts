@@ -169,6 +169,18 @@ export interface GapscanResultsPage {
 
 export type GapscanState = "idle" | "running" | "done" | "error";
 
+/** Une ligne du journal en direct d'un scan (retour utilisateur,
+ * 2026-09-06 : voir ce qu'un scan est en train de faire, pas seulement
+ * un compteur) -- ne se vide pas seul a la fin du scan, voir
+ * clearGapscanLog(). */
+export interface GapscanLogEntry {
+  title: string;
+  year: number | null;
+  media_type: "movie" | "series";
+  season_number: number | null;
+  status: GapStatus;
+}
+
 export interface GapscanStatus {
   state: GapscanState;
   total: number;
@@ -176,6 +188,7 @@ export interface GapscanStatus {
   started_at: number | null;
   finished_at: number | null;
   error: string | null;
+  log: GapscanLogEntry[];
 }
 
 export interface GapscanConfig {

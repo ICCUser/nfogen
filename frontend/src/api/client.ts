@@ -389,6 +389,13 @@ export function gapscanStatus(): Promise<GapscanStatus> {
   return request<GapscanStatus>("/gapscan/status");
 }
 
+/** POST /gapscan/status/clear-log : vide le journal en direct du scan
+ * (bouton "Vider les logs") sans toucher au reste de l'etat -- retour
+ * utilisateur, 2026-09-06. */
+export function clearGapscanLog(): Promise<{ status: string }> {
+  return request<{ status: string }>("/gapscan/status/clear-log", { method: "POST" });
+}
+
 export function gapscanResults(
   opts: {
     status?: string;

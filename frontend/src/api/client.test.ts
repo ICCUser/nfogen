@@ -16,6 +16,7 @@ import {
   listAllProfiles,
   listCommitJobs,
   addToSeedQueue,
+  clearGapscanLog,
   prepareUploadCommit,
   prepareUploadPreview,
   previewGenerate,
@@ -573,5 +574,18 @@ describe("seedQueue / addToSeedQueue (AUTOMATION.md, sous-projet 6)", () => {
     const body = (init as RequestInit).body as FormData;
     expect(body.get("key")).toBe('["movie",42]');
     expect(body.get("torrent")).toBe(file);
+  });
+});
+
+describe("clearGapscanLog (retour utilisateur, 2026-09-06)", () => {
+  it("POST /gapscan/status/clear-log", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ status: "cleared" }));
+
+    const result = await clearGapscanLog();
+
+    expect(result).toEqual({ status: "cleared" });
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/status/clear-log");
+    expect((init as RequestInit).method).toBe("POST");
   });
 });
