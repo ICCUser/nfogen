@@ -201,6 +201,16 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   cours de seed — fait lever un message d'erreur clair au lieu d'un
   écrasement silencieux (l'intégration qBittorrent/Transmission, sous-projet
   6, n'existe pas encore pour vérifier réellement l'état de seed).
+- **Un fichier déjà mis en scène se faisait intégralement re-copier**
+  depuis le NAS à chaque nouvelle tentative de "Confirmer" — régression
+  du correctif ci-dessus : sur un montage réseau où le hardlink est
+  impossible (repli copie complète), régénérer un dossier de mise en
+  scène déjà présent rejouait la copie en entier, ressenti par
+  l'utilisateur comme un re-téléchargement ("il me re télécharge les
+  mkv", retour utilisateur, 2026-09-06). `stage_file`/`stage_files`
+  reconnaissent désormais un fichier déjà en place et de la même taille
+  que sa source : ni hardlink ni copie refaits dans ce cas, régénération
+  réservée au vrai déchet (taille différente).
 
 ### Modifié
 
