@@ -284,6 +284,43 @@ def _configure_staging(monkeypatch, staging_dir, extract_text="General\nFormat :
     monkeypatch.setattr("nfogen.upload_prep.extract.extract_video_text", lambda path: extract_text)
 
 
+def test_commit_reuses_an_already_staged_pack_without_recopying(tmp_path, monkeypatch):
+    """Incident reel (2026-09-06) : une saison deja entierement mise en
+    scene lors d'un essai precedent se faisait integralement re-copier
+    depuis le NAS (montage reseau, hardlink impossible) a chaque nouvelle
+    tentative de "Confirmer" -- retour utilisateur : "il me re telecharge
+    les mkv". Chaque fichier de taille identique a sa source doit rester
+    intact, meme sans savoir si le titre a deja ete traite."""
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    _configure_staging(
+        monkeypatch, staging_dir, extract_text="General\nFormat : Matroska (pack)\n",
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.extract.extract_video_dir_text",
+        lambda path: "General\nFormat : Matroska (pack)\n",
+    )
+    pack_dir = staging_dir / "Show.S01.1080p.WEB.x264-TEAM"
+    pack_dir.mkdir()
+    e01 = _make_source(tmp_path, "e01.mkv", b"a" * 100)
+    e02 = _make_source(tmp_path, "e02.mkv", b"b" * 200)
+    # Deja mis en scene lors d'un essai precedent, meme taille que la
+    # source -- contenu volontairement DIFFERENT (marqueur) pour prouver
+    # qu'il n'est jamais retouche.
+    (pack_dir / "Show.S01E01.1080p.WEB.x264-TEAM.mkv").write_bytes(b"X" * 100)
+    (pack_dir / "Show.S01E02.1080p.WEB.x264-TEAM.mkv").write_bytes(b"Y" * 200)
+    files = [
+        ProposedFile(source_path=e01, staged_name="Show.S01E01.1080p.WEB.x264-TEAM.mkv"),
+        ProposedFile(source_path=e02, staged_name="Show.S01E02.1080p.WEB.x264-TEAM.mkv"),
+    ]
+
+    result = commit_upload("Show.S01.1080p.WEB.x264-TEAM", files)
+
+    assert (pack_dir / "Show.S01E01.1080p.WEB.x264-TEAM.mkv").read_bytes() == b"X" * 100
+    assert (pack_dir / "Show.S01E02.1080p.WEB.x264-TEAM.mkv").read_bytes() == b"Y" * 200
+    assert result.staged_path == str(pack_dir)
+
+
 def test_commit_regenerates_a_stale_unprocessed_staged_file(tmp_path, monkeypatch):
     """Incident reel signale par l'utilisateur (2026-09-06) : un fichier
     laisse par un essai precedent (jamais confirme/envoye avec succes)

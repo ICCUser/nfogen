@@ -71,6 +71,54 @@ def test_stage_file_raises_file_exists_error_when_target_already_present(tmp_pat
     assert target.read_text() == "ancien contenu (dechet)"  # jamais touche sans overwrite
 
 
+def test_stage_file_skips_when_target_already_matches_source_size(tmp_path):
+    """Incident reel (2026-09-06) : un pack deja entierement mis en scene
+    lors d'un essai precedent se faisait integralement re-copier a chaque
+    nouvelle tentative de Confirmer -- vecu comme un re-telechargement par
+    l'utilisateur (source sur un montage reseau distinct du dossier de
+    mise en scene, hardlink impossible -> copie complete). Une cible deja
+    de la MEME TAILLE que la source est consideree deja en place : ni
+    hardlink ni copie refaits, meme sans `overwrite`."""
+    source = tmp_path / "source.mkv"
+    source.write_bytes(b"0123456789")  # 10 octets
+    target = tmp_path / "staged.mkv"
+    target.write_bytes(b"XXXXXXXXXX")  # 10 octets aussi, contenu different -- jamais touche
+
+    result = stage_file(str(source), str(target))
+
+    assert result == str(target)
+    assert target.read_bytes() == b"XXXXXXXXXX"  # inchange : jamais relie/recopie
+    assert target.stat().st_ino != source.stat().st_ino  # pas un hardlink (jamais tente)
+
+
+def test_stage_file_skip_reports_full_progress(tmp_path):
+    source = tmp_path / "source.mkv"
+    source.write_bytes(b"0123456789")
+    target = tmp_path / "staged.mkv"
+    target.write_bytes(b"XXXXXXXXXX")
+    calls: list[tuple[int, int]] = []
+
+    stage_file(str(source), str(target), on_progress=lambda done, total: calls.append((done, total)))
+
+    assert calls == [(10, 10)]
+
+
+def test_stage_files_skips_an_already_matching_file_in_a_pack(tmp_path):
+    src1 = tmp_path / "e01.mkv"
+    src1.write_bytes(b"a" * 10)
+    src2 = tmp_path / "e02.mkv"
+    src2.write_bytes(b"b" * 20)
+    target_dir = tmp_path / "staged" / "Release.Name"
+    target_dir.mkdir(parents=True)
+    (target_dir / "E01.mkv").write_bytes(b"z" * 10)  # deja en place, meme taille
+
+    results = stage_files([str(src1), str(src2)], str(target_dir), ["E01.mkv", "E02.mkv"])
+
+    assert (target_dir / "E01.mkv").read_bytes() == b"z" * 10  # jamais retouche
+    assert (target_dir / "E02.mkv").read_bytes() == b"b" * 20  # mis en scene normalement
+    assert results == [str(target_dir / "E01.mkv"), str(target_dir / "E02.mkv")]
+
+
 def test_stage_file_overwrite_replaces_an_existing_target(tmp_path):
     """`overwrite=True` (AUTOMATION.md, sous-projet 8 -- deja traite/pas
     encore traite) : supprime la cible existante puis refait le lien/la

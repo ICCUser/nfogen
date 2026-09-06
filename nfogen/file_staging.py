@@ -59,6 +59,21 @@ def _copy_with_progress(
         on_progress(0, 0)
 
 
+def _sizes_match(source_path: str, target_path: str) -> bool:
+    """Verification RAPIDE (taille seule, pas de hash) qu'une cible deja
+    presente correspond probablement deja a la source -- evite un
+    hardlink/une copie inutile d'un fichier deja entierement mis en scene
+    par un essai precedent. Incident reel (2026-09-06) : source et dossier
+    de mise en scene sur des montages differents (hardlink impossible,
+    repli copie complete) -- un pack de plusieurs Go deja correctement
+    copie se faisait integralement re-copier a chaque nouvelle tentative
+    de "Confirmer", vecu comme un re-telechargement par l'utilisateur."""
+    try:
+        return os.path.getsize(target_path) == os.path.getsize(source_path)
+    except OSError:
+        return False
+
+
 def stage_file(
     source_path: str,
     target_path: str,
@@ -71,18 +86,26 @@ def stage_file(
     differents). Cree les dossiers parents de `target_path` si besoin.
     Renvoie `target_path`.
 
-    Si `target_path` existe deja : `FileExistsError` par defaut (deja ce
-    que `os.link` leve nativement pour EEXIST -- incident reel, 2026-09-06,
-    "[Errno 17] File exists" sur un dechet d'un essai precedent).
-    `overwrite=True` (AUTOMATION.md, sous-projet 8 -- decide par l'appelant
-    selon l'historique "deja traite") : supprime la cible existante avant
-    de refaire le hardlink/la copie, TOUJOURS depuis `source_path` en
-    local -- jamais un nouveau telechargement, la source Radarr/Sonarr
-    n'est jamais touchee (voir docstring du module)."""
+    Si `target_path` existe DEJA et a la MEME TAILLE que `source_path` :
+    considere deja en place, RIEN N'EST REFAIT (ni hardlink ni copie) --
+    voir `_sizes_match`. Sinon (taille differente, dechet partiel/corrompu
+    d'un essai precedent) : `FileExistsError` par defaut (deja ce que
+    `os.link` leve nativement pour EEXIST -- incident reel, 2026-09-06,
+    "[Errno 17] File exists"). `overwrite=True` (AUTOMATION.md, sous-projet
+    8 -- decide par l'appelant selon l'historique "deja traite") : supprime
+    alors la cible avant de refaire le hardlink/la copie, TOUJOURS depuis
+    `source_path` en local -- jamais un nouveau telechargement, la source
+    Radarr/Sonarr n'est jamais touchee (voir docstring du module)."""
     target = Path(target_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    if overwrite and target.exists():
-        target.unlink()
+    if target.exists():
+        if _sizes_match(source_path, target_path):
+            size = target.stat().st_size
+            if on_progress:
+                on_progress(size, size)
+            return target_path
+        if overwrite:
+            target.unlink()
     try:
         os.link(source_path, target_path)
     except OSError as exc:
@@ -107,9 +130,11 @@ def stage_files(
     """Met en scene plusieurs fichiers d'un coup (ex. un pack de saison) --
     un nom de sortie par source, meme ordre. `on_progress`, si fourni,
     recoit une progression CUMULEE sur l'ensemble des fichiers (pas par
-    fichier individuel) -- une seule barre pour tout le groupe. `overwrite` :
-    voir stage_file(), applique a CHAQUE fichier du pack. Renvoie les
-    chemins finaux, dans le meme ordre."""
+    fichier individuel) -- une seule barre pour tout le groupe. `overwrite`
+    (voir stage_file(), applique a CHAQUE fichier du pack) ne concerne que
+    les fichiers de taille DIFFERENTE de leur source -- un fichier deja
+    present et de la bonne taille est toujours reutilise tel quel, avec ou
+    sans `overwrite`. Renvoie les chemins finaux, dans le meme ordre."""
     grand_total = sum(os.path.getsize(p) for p in source_paths)
     done_before = 0
     results: list[str] = []
