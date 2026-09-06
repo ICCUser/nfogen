@@ -71,6 +71,9 @@ def write(
     sonarr_path_mappings: Optional[dict[str, str]] = None,
     radarr_path_mappings: Optional[dict[str, str]] = None,
     staging_dir: Optional[str] = None,
+    qbittorrent_url: Optional[str] = None,
+    qbittorrent_username: Optional[str] = None,
+    qbittorrent_password: Optional[str] = None,
 ) -> None:
     """Met a jour uniquement les champs fournis (`None` = inchange) -- jamais
     une reecriture complete. `profile` : les identifiants de TRACKER
@@ -88,6 +91,9 @@ def write(
         "sonarr_path_mappings": sonarr_path_mappings,
         "radarr_path_mappings": radarr_path_mappings,
         "staging_dir": staging_dir,
+        "qbittorrent_url": qbittorrent_url,
+        "qbittorrent_username": qbittorrent_username,
+        "qbittorrent_password": qbittorrent_password,
     }
     for key, value in top_level_updates.items():
         if value is not None:
@@ -196,6 +202,16 @@ def effective_staging_dir() -> Optional[str]:
     return _load().get("staging_dir") or None
 
 
+def effective_qbittorrent() -> Optional[tuple[str, str, str]]:
+    """`(url, utilisateur, mot de passe)`, ou `None` si l'un des trois
+    manque. Configuration globale (pas namespacee par profil de tracker --
+    un seul client de seed, voir AUTOMATION.md, sous-projet 6)."""
+    url = _resolve("qbittorrent_url", "NFOGEN_QBITTORRENT_URL")
+    username = _resolve("qbittorrent_username", "NFOGEN_QBITTORRENT_USERNAME")
+    password = _resolve("qbittorrent_password", "NFOGEN_QBITTORRENT_PASSWORD")
+    return (url, username, password) if url and username and password else None
+
+
 def status(profile: str = "c411") -> dict[str, Any]:
     """Etat effectif pour CE profil (fichier prioritaire, sinon variables
     d'environnement pour `c411`) -- jamais les cles/secrets eux-memes.
@@ -204,6 +220,7 @@ def status(profile: str = "c411") -> dict[str, Any]:
     tracker = effective_tracker(profile)
     sonarr = effective_sonarr()
     radarr = effective_radarr()
+    qbittorrent = effective_qbittorrent()
     return {
         "profile": profile,
         "tracker_configured": tracker is not None,
@@ -216,4 +233,6 @@ def status(profile: str = "c411") -> dict[str, Any]:
         "radarr_path_mappings": effective_radarr_path_mappings(),
         "tracker_announce_url_configured": effective_tracker_announce_url(profile) is not None,
         "staging_dir": effective_staging_dir(),
+        "qbittorrent_configured": qbittorrent is not None,
+        "qbittorrent_url": qbittorrent[0] if qbittorrent else None,
     }

@@ -24,6 +24,7 @@ def _config_file(tmp_path, monkeypatch):
         "NFOGEN_C411_API_KEY", "NFOGEN_C411_BASE_URL",
         "NFOGEN_SONARR_URL", "NFOGEN_SONARR_API_KEY",
         "NFOGEN_RADARR_URL", "NFOGEN_RADARR_API_KEY",
+        "NFOGEN_QBITTORRENT_URL", "NFOGEN_QBITTORRENT_USERNAME", "NFOGEN_QBITTORRENT_PASSWORD",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -224,3 +225,43 @@ def test_write_sets_restrictive_permissions(tmp_path):
     store.write(profile="c411", tracker_api_key="secret")
     mode = stat.S_IMODE((tmp_path / "gapscan_config.json").stat().st_mode)
     assert mode == 0o600
+
+
+# --------------------------------------------------------------------------- #
+# qBittorrent (AUTOMATION.md, sous-projet 6) : configuration globale, comme
+# Sonarr/Radarr -- un seul client de seed, independant du tracker cible.
+# --------------------------------------------------------------------------- #
+def test_effective_qbittorrent_none_when_nothing_configured():
+    assert store.effective_qbittorrent() is None
+
+
+def test_write_then_read_qbittorrent():
+    store.write(
+        qbittorrent_url="http://qbittorrent.local:8080",
+        qbittorrent_username="admin", qbittorrent_password="secret",
+    )
+    assert store.effective_qbittorrent() == ("http://qbittorrent.local:8080", "admin", "secret")
+
+
+def test_effective_qbittorrent_none_if_any_field_missing():
+    store.write(qbittorrent_url="http://qbittorrent.local:8080", qbittorrent_username="admin")
+    assert store.effective_qbittorrent() is None
+
+
+def test_qbittorrent_falls_back_to_env_vars(monkeypatch):
+    monkeypatch.setenv("NFOGEN_QBITTORRENT_URL", "http://from-env:8080")
+    monkeypatch.setenv("NFOGEN_QBITTORRENT_USERNAME", "admin")
+    monkeypatch.setenv("NFOGEN_QBITTORRENT_PASSWORD", "secret")
+    assert store.effective_qbittorrent() == ("http://from-env:8080", "admin", "secret")
+
+
+def test_status_includes_qbittorrent_configured_and_url():
+    assert store.status()["qbittorrent_configured"] is False
+    assert store.status()["qbittorrent_url"] is None
+    store.write(
+        qbittorrent_url="http://qbittorrent.local:8080",
+        qbittorrent_username="admin", qbittorrent_password="secret",
+    )
+    status = store.status()
+    assert status["qbittorrent_configured"] is True
+    assert status["qbittorrent_url"] == "http://qbittorrent.local:8080"
