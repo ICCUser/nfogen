@@ -1056,11 +1056,22 @@ Implémenté tel que conçu ci-dessus, plan détaillé :
 **Deux points non vérifiés en conditions réelles, à la charge de
 l'utilisateur avant un premier envoi réel** (voir aussi la note "à
 vérifier" plus haut dans ce document) :
-1. Les noms exacts des champs du corps JSON de `POST`/`PATCH
-   /api/user/drafts` — le code suppose les mêmes noms que le formulaire
-   multipart documenté (`torrent`, `nfo`, `title`, `description`,
-   `categoryId`, `subcategoryId`, `options`…), fichiers encodés en
-   base64. À confirmer en créant un vrai brouillon.
+1. Le format exact attendu par `POST`/`PATCH /api/user/drafts` pour
+   `torrent`/`nfo` reste **non résolu** (2026-09-06, deux essais réels) :
+   - Corps JSON avec fichiers en base64 (hypothèse initiale, code actuel) :
+     brouillon créé avec titre/description corrects, mais `torrent`/`nfo`
+     silencieusement ignorés ("à fournir" côté C411).
+   - `multipart/form-data` avec fichiers réels (même format que
+     `POST /api/torrents`, essayé puis **annulé** — voir CHANGELOG,
+     commit revert du 2026-09-06) : pire résultat, brouillon créé
+     entièrement vide (titre compris) — `/api/user/drafts` n'accepte
+     donc PAS le multipart, contrairement à `/api/torrents`.
+   - Piste restante à tester : un format hybride (peut-être une clé JSON
+     dédiée par fichier, ex. `{"filename": ..., "content": <base64>}`
+     plutôt qu'une simple chaîne base64), ou contacter le support/la doc
+     C411 directement pour le format `/api/user/drafts` spécifiquement
+     (la doc obtenue ne documente en détail que `/api/torrents`).
+     **Ne pas retenter un format à l'aveugle sans nouvel élément.**
 2. `subcategory_id["movie:documentaire"]`/`["series:documentaire"]`
    pointent tous les deux vers `4` (seule valeur "Documentaire" donnée,
    pas de distinction film/série dans la liste fournie) — à confirmer via
