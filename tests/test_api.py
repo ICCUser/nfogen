@@ -2421,3 +2421,68 @@ def test_gapscan_seed_queue_add_400_on_qbittorrent_error(reload_api, monkeypatch
         files={"torrent": ("R.torrent", b"x", "application/x-bittorrent")},
     )
     assert resp.status_code == 400
+
+
+# --------------------------------------------------------------------------- #
+# GET /gapscan/seed-status (retour utilisateur, 2026-09-06) : lecture seule
+# de ce qui est actuellement en seed sur qBittorrent.
+# --------------------------------------------------------------------------- #
+class _FakeQBittorrentClientWithTorrents:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def list_torrents(self):
+        return [
+            {
+                "name": "Movie.2020.1080p.x264-TEAM", "size": 4294967296, "progress": 1.0,
+                "ratio": 1.42, "state": "uploading", "upspeed": 512000, "added_on": 1700000000,
+            },
+        ]
+
+    def close(self):
+        pass
+
+
+def test_gapscan_seed_status_400_without_qbittorrent_configured(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.get("/gapscan/seed-status")
+    assert resp.status_code == 400
+
+
+def test_gapscan_seed_status_returns_current_torrents(reload_api, monkeypatch, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
+    )
+    client = TestClient(mod.app)
+    _configure_qbittorrent(client)
+    monkeypatch.setattr(mod, "QBittorrentClient", _FakeQBittorrentClientWithTorrents)
+
+    resp = client.get("/gapscan/seed-status")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["name"] == "Movie.2020.1080p.x264-TEAM"
+
+
+def test_gapscan_seed_status_400_on_qbittorrent_error(reload_api, monkeypatch, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
+    )
+    client = TestClient(mod.app)
+    _configure_qbittorrent(client)
+
+    class _FailingQBittorrentClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def list_torrents(self):
+            raise mod.QBittorrentError("connexion refusée")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(mod, "QBittorrentClient", _FailingQBittorrentClient)
+
+    resp = client.get("/gapscan/seed-status")
+    assert resp.status_code == 400

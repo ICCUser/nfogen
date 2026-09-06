@@ -1026,6 +1026,25 @@ def gapscan_seed_queue() -> list[dict[str, Any]]:
     return upload_history_store.pending_seed_entries()
 
 
+@app.get("/gapscan/seed-status", dependencies=[Depends(require_token)])
+def gapscan_seed_status() -> list[dict[str, Any]]:
+    """Ce qui est ACTUELLEMENT en seed sur qBittorrent -- lecture seule,
+    aucune modification (retour utilisateur, 2026-09-06). Renvoie la
+    reponse brute de `GET /api/v2/torrents/info` (nom, taille,
+    progression, ratio, statut, vitesse d'upload...)."""
+    _require_gapscan_available()
+    qbittorrent_config = gapscan_config_store.effective_qbittorrent()
+    if qbittorrent_config is None:
+        raise HTTPException(status_code=400, detail="qBittorrent non configuré (PUT /gapscan/config).")
+    qb = QBittorrentClient(*qbittorrent_config)
+    try:
+        return qb.list_torrents()
+    except QBittorrentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        qb.close()
+
+
 @app.post("/gapscan/seed-queue/add", dependencies=[Depends(require_token)])
 async def gapscan_seed_queue_add(
     key: str = Form(...),
