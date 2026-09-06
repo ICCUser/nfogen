@@ -5,6 +5,7 @@ import type {
   GapscanConfigWrite,
   GapscanResultsPage,
   GapscanStatus,
+  GapStatus,
   GenerateResult,
   LibraryResultsPage,
   ManagedProfile,
@@ -333,26 +334,37 @@ export function gapscanRun(
 
 /** GET /gapscan/library : inventaire local Radarr/Sonarr, ZERO appel
  * tracker (AUTOMATION.md, sous-projet 8) -- rechargement quasi instantane,
- * contrairement a gapscanRun(). */
+ * contrairement a gapscanRun(). Reprend le statut du DERNIER scan connu
+ * (bulk ou cible) pour chaque item -- fusion Bibliotheque/Scan, retour
+ * utilisateur 2026-09-06 ("ca fait doublon"). `status`/`trackerGenre` :
+ * bases sur ce dernier scan connu, `"not_verified"` pour `status` cible
+ * les items jamais scannes. `genre` reste la classification Radarr/Sonarr
+ * (texte libre) -- distincte de `trackerGenre` (categorie C411). */
 export function libraryResults(
   opts: {
     q?: string;
     mediaType?: "movie" | "series";
     genre?: string;
+    trackerGenre?: "anime" | "documentaire";
+    status?: GapStatus | "not_verified";
     addedSinceDays?: number;
     processed?: boolean;
     page?: number;
     pageSize?: number;
+    profile?: string;
   } = {},
 ): Promise<LibraryResultsPage> {
   const params = new URLSearchParams();
   if (opts.q) params.set("q", opts.q);
   if (opts.mediaType) params.set("media_type", opts.mediaType);
   if (opts.genre) params.set("genre", opts.genre);
+  if (opts.trackerGenre) params.set("tracker_genre", opts.trackerGenre);
+  if (opts.status) params.set("status", opts.status);
   if (opts.addedSinceDays !== undefined) params.set("added_since_days", String(opts.addedSinceDays));
   if (opts.processed !== undefined) params.set("processed", String(opts.processed));
   params.set("page", String(opts.page ?? 1));
   params.set("page_size", String(opts.pageSize ?? 50));
+  if (opts.profile) params.set("profile", opts.profile);
   return request<LibraryResultsPage>(`/gapscan/library?${params.toString()}`);
 }
 

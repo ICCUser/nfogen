@@ -531,4 +531,15 @@ describe("libraryResults", () => {
     expect(url).toContain("page=1");
     expect(url).toContain("page_size=50");
   });
+
+  it("passe status/trackerGenre/profile (fusion Bibliotheque/Scan, sous-projet 8)", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ items: [], total: 0 }));
+
+    await libraryResults({ status: "not_verified", trackerGenre: "anime", profile: "ygg" });
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("status=not_verified");
+    expect(url).toContain("tracker_genre=anime");
+    expect(url).toContain("profile=ygg");
+  });
 });

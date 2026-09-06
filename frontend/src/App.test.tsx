@@ -7,10 +7,10 @@ vi.mock("./api/client", () => ({
   readManagedProfile: vi.fn(),
   gapscanConfig: vi.fn(),
   gapscanStatus: vi.fn(),
-  gapscanResults: vi.fn(),
+  libraryResults: vi.fn(),
 }));
 
-import { gapscanConfig, gapscanResults, gapscanStatus, listAllProfiles, readManagedProfile } from "./api/client";
+import { gapscanConfig, gapscanStatus, libraryResults, listAllProfiles, readManagedProfile } from "./api/client";
 import App from "./App";
 
 beforeEach(() => {
@@ -28,34 +28,35 @@ beforeEach(() => {
   vi.mocked(gapscanStatus).mockResolvedValue({
     state: "idle", total: 0, processed: 0, started_at: null, finished_at: null, error: null,
   });
-  vi.mocked(gapscanResults).mockResolvedValue({ items: [], total: 0 });
+  vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
 });
 
 describe("App", () => {
   it("renders one profile selector in the header, not per-page", async () => {
     render(
-      <MemoryRouter initialEntries={["/gapscan"]}>
+      <MemoryRouter initialEntries={["/library"]}>
         <App />
       </MemoryRouter>,
     );
     expect(await screen.findByRole("combobox", { name: /profil actif/i })).toBeInTheDocument();
   });
 
-  it("shows the active profile's display_name in the nav label instead of a hard-coded name", async () => {
-    render(
-      <MemoryRouter initialEntries={["/gapscan"]}>
-        <App />
-      </MemoryRouter>,
-    );
-    expect(await screen.findByRole("link", { name: /Scan C411/ })).toBeInTheDocument();
-  });
-
   it("affiche un lien de navigation vers la bibliotheque (AUTOMATION.md, sous-projet 8)", async () => {
     render(
-      <MemoryRouter initialEntries={["/gapscan"]}>
+      <MemoryRouter initialEntries={["/library"]}>
         <App />
       </MemoryRouter>,
     );
     expect(await screen.findByRole("link", { name: /Bibliothèque/i })).toBeInTheDocument();
+  });
+
+  it("n'a plus de lien de navigation 'Scan {tracker}' distinct (fusionne dans Bibliotheque)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/library"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("link", { name: /Bibliothèque/i });
+    expect(screen.queryByRole("link", { name: /^Scan /i })).not.toBeInTheDocument();
   });
 });

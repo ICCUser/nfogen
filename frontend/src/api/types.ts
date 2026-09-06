@@ -233,6 +233,22 @@ export interface LibraryItem {
   /** Cle opaque (voir gapscan.movie_key/series_key) -- a renvoyer telle
    * quelle dans `gapscanRun(..., selection)` pour cibler cet item. */
   key: string;
+  /** Statut du DERNIER scan connu (bulk ou cible) -- `null` si ce titre
+   * n'a jamais ete verifie sur le tracker (fusion Bibliotheque/Scan,
+   * AUTOMATION.md sous-projet 8, retour utilisateur 2026-09-06). Jamais
+   * rafraichi par un simple rechargement de la bibliotheque. */
+  status: GapStatus | null;
+  checked_at: number | null;
+  has_freeleech_alternative: boolean;
+  has_double_upload_window: boolean;
+  error: string | null;
+  local_paths: string[];
+  path_resolved: boolean;
+  path_error: string | null;
+  /** Categorie C411 du match trouve (voir gapscan.genre_of) -- DISTINCT de
+   * `genres` (Radarr/Sonarr) : les deux classifications restent
+   * volontairement independantes. */
+  tracker_genre: "anime" | "documentaire" | null;
 }
 
 export interface LibraryResultsPage {
