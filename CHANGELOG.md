@@ -161,6 +161,13 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   déjà scanné précédemment (`run_gapscan`) — `only` ne devait restreindre
   que ce qui est réinterrogé côté C411, jamais ce qui est conservé du
   dernier scan.
+- **`scripts/install.sh` n'installait jamais l'extra `automation`** (le
+  paquet `torf`, nécessaire pour générer le `.torrent`) — toute
+  installation faite via ce script (ou `update.sh`, qui l'appelle)
+  affichait "Génération de .torrent indisponible : pip install
+  nfogen[automation]" dès qu'on cliquait sur "Confirmer" dans "Préparer
+  l'upload", sans que rien ne le signale avant ce moment précis (retour
+  utilisateur, 2026-09-06).
 
 ### Modifié
 

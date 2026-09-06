@@ -140,12 +140,17 @@ rsync -a --delete \
     "${REPO_DIR}/" "${INSTALL_DIR}/"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
-echo "==> Environnement Python (venv dedie + nfogen[api,gapscan])"
+echo "==> Environnement Python (venv dedie + nfogen[api,gapscan,automation])"
 run_as_nfogen python3 -m venv "${INSTALL_DIR}/.venv"
 run_as_nfogen "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir --upgrade pip
 # gapscan (httpx) : leger, installe par defaut -- GapScan reste inactif
 # (501) tant que NFOGEN_C411_API_KEY n'est pas configuree (voir GAPSCAN.md).
-run_as_nfogen "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir "${INSTALL_DIR}[api,gapscan]"
+# automation (torf) : oublie ici jusqu'au 2026-09-06 (retour utilisateur) --
+# sans lui, "Preparer l'upload" -> Confirmer echouait systematiquement avec
+# "Generation de .torrent indisponible : pip install nfogen[automation]"
+# sur TOUTE installation faite via ce script, silencieusement jusqu'a ce
+# qu'on clique reellement sur Confirmer.
+run_as_nfogen "${INSTALL_DIR}/.venv/bin/pip" install --no-cache-dir "${INSTALL_DIR}[api,gapscan,automation]"
 
 echo "==> Build du frontend (npm ci && npm run build)"
 run_as_nfogen npm --prefix "${INSTALL_DIR}/frontend" ci
