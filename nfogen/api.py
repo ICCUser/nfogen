@@ -776,11 +776,18 @@ def _build_gapscan_clients(profile: str) -> tuple[Any, Any, Any, dict[str, str],
     )
 
 
+class GapscanRunRequest(BaseModel):
+    # Cles serialisees en JSON (voir gapscan.movie_key/series_key,
+    # upload_history_store.key_str) -- transport opaque, decodees ci-dessous.
+    selection: Optional[list[str]] = None
+
+
 @app.post("/gapscan/run", dependencies=[Depends(require_token)])
 def gapscan_run(
     incremental: bool = Query(False),
     only: Optional[str] = Query(None),
     profile: str = Query("c411"),
+    req: GapscanRunRequest = GapscanRunRequest(),
 ) -> dict[str, str]:
     """`incremental=true` : reutilise les resultats du dernier scan pour les
     titres deja couverts et inchanges localement (au-dela de
@@ -789,10 +796,22 @@ def gapscan_run(
     ne scanne qu'une des deux bibliotheques, pour repartir la charge sur
     plusieurs sessions (limite C411 confirmee : 15 requetes/min). `profile` :
     quel tracker interroger (identifiants/reglages namespaces, voir
-    gapscan_config_store.py/tracker_profile.py). Voir gapscan_runner.start()."""
+    gapscan_config_store.py/tracker_profile.py). `req.selection`
+    (AUTOMATION.md, sous-projet 8, optionnel) : cles serialisees en JSON
+    (voir gapscan.movie_key/series_key) -- decodees ici puis transmises
+    telles quelles a gapscan_runner.start(). A priorite sur `only` (gere par
+    run_gapscan lui-meme). Une cle mal formee (JSON invalide) -> 400 ; une
+    cle bien formee mais ne correspondant a aucun item reel est simplement
+    ignoree plus loin (jamais une erreur). Voir gapscan_runner.start()."""
     _require_gapscan_available()
     if only not in (None, "movies", "series"):
         raise HTTPException(status_code=400, detail="only doit valoir 'movies' ou 'series'.")
+    selection: Optional[set[tuple]] = None
+    if req.selection:
+        try:
+            selection = {tuple(json.loads(k)) for k in req.selection}
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=f"Clé de sélection invalide : {exc}") from exc
     try:
         tracker_client, sonarr, radarr, sonarr_path_mappings, radarr_path_mappings = (
             _build_gapscan_clients(profile)
@@ -827,6 +846,7 @@ def gapscan_run(
         tracker_client, radarr=radarr, sonarr=sonarr, incremental=incremental,
         only=only, max_age_seconds=max_age_seconds,
         sonarr_path_mappings=sonarr_path_mappings, radarr_path_mappings=radarr_path_mappings,
+        selection=selection,
     )
     if not started:
         tracker_client.close()

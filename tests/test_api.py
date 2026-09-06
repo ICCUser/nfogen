@@ -1694,7 +1694,7 @@ def test_gapscan_run_reads_the_incremental_max_age_env_var(reload_api, monkeypat
 
     def fake_start(
         c411, radarr=None, sonarr=None, incremental=False, only=None, max_age_seconds=None,
-        sonarr_path_mappings=None, radarr_path_mappings=None,
+        sonarr_path_mappings=None, radarr_path_mappings=None, selection=None,
     ):
         captured["max_age_seconds"] = max_age_seconds
         return True
@@ -1718,7 +1718,7 @@ def test_gapscan_run_passes_configured_path_mappings_to_the_runner(reload_api, m
 
     def fake_start(
         c411, radarr=None, sonarr=None, incremental=False, only=None, max_age_seconds=None,
-        sonarr_path_mappings=None, radarr_path_mappings=None,
+        sonarr_path_mappings=None, radarr_path_mappings=None, selection=None,
     ):
         captured["radarr_path_mappings"] = radarr_path_mappings
         captured["sonarr_path_mappings"] = sonarr_path_mappings
@@ -1739,6 +1739,59 @@ def test_gapscan_run_passes_configured_path_mappings_to_the_runner(reload_api, m
     assert resp.status_code == 200
     assert captured["radarr_path_mappings"] == {"/data/movies": "/mnt/nas/movies"}
     assert captured["sonarr_path_mappings"] == {}
+
+
+def test_gapscan_run_with_selection_decodes_and_relays(reload_api, monkeypatch):
+    """AUTOMATION.md, sous-projet 8 : POST /gapscan/run accepte un corps
+    JSON {"selection": [...]}, decode chaque cle et la relaie a
+    gapscan_runner.start()."""
+    captured: dict = {}
+
+    def fake_start(
+        c411, radarr=None, sonarr=None, incremental=False, only=None, max_age_seconds=None,
+        sonarr_path_mappings=None, radarr_path_mappings=None, selection=None,
+    ):
+        captured["selection"] = selection
+        return True
+
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    monkeypatch.setattr(mod.gapscan_runner, "start", fake_start)
+    client = TestClient(mod.app)
+
+    resp = client.post("/gapscan/run", json={"selection": ['["movie", "tt001", 2020]']})
+
+    assert resp.status_code == 200
+    assert captured["selection"] == {("movie", "tt001", 2020)}
+
+
+def test_gapscan_run_with_invalid_selection_key_returns_400(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    resp = client.post("/gapscan/run", json={"selection": ["not json"]})
+    assert resp.status_code == 400
+
+
+def test_gapscan_run_without_selection_still_works(reload_api, monkeypatch):
+    """Non-regression : le corps de requete est optionnel, l'appel existant
+    sans body (query params seuls) continue de fonctionner."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    resp = client.post("/gapscan/run")
+    assert resp.status_code == 200
 
 
 def test_gapscan_run_incremental_reuses_covered_results(reload_api, monkeypatch):
