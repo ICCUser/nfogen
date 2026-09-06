@@ -119,6 +119,7 @@ def _run(
     max_age_seconds: Optional[float],
     sonarr_path_mappings: Optional[dict[str, str]],
     radarr_path_mappings: Optional[dict[str, str]],
+    selection: Optional[set[tuple]],
 ) -> None:
     global _results
     try:
@@ -131,6 +132,7 @@ def _run(
             c411, radarr=radarr, sonarr=sonarr, on_progress=on_progress,
             previous_results=previous_results, only=only, max_age_seconds=max_age_seconds,
             sonarr_path_mappings=sonarr_path_mappings, radarr_path_mappings=radarr_path_mappings,
+            selection=selection,
         )
         sorted_results = sort_by_priority(collected)
         # Persiste AVANT de signaler "termine" : incident CI reel
@@ -164,6 +166,7 @@ def start(
     max_age_seconds: Optional[float] = None,
     sonarr_path_mappings: Optional[dict[str, str]] = None,
     radarr_path_mappings: Optional[dict[str, str]] = None,
+    selection: Optional[set[tuple]] = None,
 ) -> bool:
     """Lance un scan en tache de fond avec des clients deja construits.
     `False` si un scan est deja en cours (un seul a la fois) -- les clients
@@ -182,6 +185,11 @@ def start(
     `only` ("movies"/"series"/None) : ne scanne qu'une des deux
     bibliotheques -- pour repartir la charge sur plusieurs sessions.
 
+    `selection` (AUTOMATION.md, sous-projet 8) : relaye tel quel a
+    run_gapscan() -- restreint les items reellement interroges sur C411 a
+    ceux dont la cle (gapscan.movie_key/series_key) est dans cet ensemble.
+    A priorite sur `only` si les deux sont fournis.
+
     `sonarr_path_mappings`/`radarr_path_mappings` : voir AUTOMATION.md,
     sous-projet 1."""
     with _lock:
@@ -198,7 +206,7 @@ def start(
         target=_run,
         args=(
             c411, radarr, sonarr, previous_results, only, max_age_seconds,
-            sonarr_path_mappings, radarr_path_mappings,
+            sonarr_path_mappings, radarr_path_mappings, selection,
         ),
         daemon=True,
     )

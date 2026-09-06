@@ -87,6 +87,26 @@ class FakeSonarr:
         self.closed = True
 
 
+def test_start_relays_selection_to_run_gapscan(monkeypatch):
+    """AUTOMATION.md, sous-projet 8 : `selection` doit etre achemine jusqu'a
+    run_gapscan() -- sans ca, l'API pourrait decoder une selection sans
+    jamais qu'elle filtre reellement les items."""
+    captured: dict = {}
+
+    def fake_run_gapscan(*args, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(gapscan_runner, "run_gapscan", fake_run_gapscan)
+    selection = {("movie", "tt001", 2020)}
+
+    started = gapscan_runner.start(FakeC411(), radarr=FakeRadarr(movies=[_movie()]), selection=selection)
+    assert started is True
+    _wait_until_not_running()
+
+    assert captured["selection"] == selection
+
+
 def _wait_until_not_running(timeout: float = 5.0) -> None:
     deadline = time.monotonic() + timeout
     while gapscan_runner.status()["state"] == "running":
