@@ -24,6 +24,7 @@ beforeEach(() => {
     radarr_configured: false, radarr_url: null,
     sonarr_path_mappings: {}, radarr_path_mappings: {},
     tracker_announce_url_configured: false, staging_dir: null,
+    qbittorrent_configured: false, qbittorrent_url: null,
   });
   vi.mocked(gapscanStatus).mockResolvedValue({
     state: "idle", total: 0, processed: 0, started_at: null, finished_at: null, error: null,

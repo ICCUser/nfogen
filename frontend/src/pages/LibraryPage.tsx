@@ -125,6 +125,9 @@ export default function LibraryPage() {
   const [radarrPathMappings, setRadarrPathMappings] = useState<Record<string, string>>({});
   const [trackerAnnounceUrl, setTrackerAnnounceUrl] = useState("");
   const [stagingDir, setStagingDir] = useState("");
+  const [qbittorrentUrl, setQbittorrentUrl] = useState("");
+  const [qbittorrentUsername, setQbittorrentUsername] = useState("");
+  const [qbittorrentPassword, setQbittorrentPassword] = useState("");
 
   useEffect(() => {
     gapscanConfig(profile)
@@ -138,6 +141,7 @@ export default function LibraryPage() {
         setSonarrPathMappings(c.sonarr_path_mappings);
         setRadarrPathMappings(c.radarr_path_mappings);
         setStagingDir(c.staging_dir ?? "");
+        setQbittorrentUrl(c.qbittorrent_url ?? "");
         if (!c.tracker_configured || (!c.sonarr_configured && !c.radarr_configured)) {
           setShowConfigForm(true);
         }
@@ -279,6 +283,9 @@ export default function LibraryPage() {
       if (trackerBaseUrl.trim()) fields.tracker_base_url = trackerBaseUrl.trim();
       if (trackerAnnounceUrl.trim()) fields.tracker_announce_url = trackerAnnounceUrl.trim();
       if (stagingDir.trim()) fields.staging_dir = stagingDir.trim();
+      if (qbittorrentUrl.trim()) fields.qbittorrent_url = qbittorrentUrl.trim();
+      if (qbittorrentUsername.trim()) fields.qbittorrent_username = qbittorrentUsername.trim();
+      if (qbittorrentPassword.trim()) fields.qbittorrent_password = qbittorrentPassword.trim();
       // Contrairement aux cles/URLs ci-dessus, un dictionnaire vide est une
       // valeur explicite valide ("aucun mapping") : toujours envoye.
       fields.sonarr_path_mappings = sonarrPathMappings;
@@ -290,6 +297,7 @@ export default function LibraryPage() {
       setRadarrApiKey("");
       setTrackerApiKey("");
       setTrackerAnnounceUrl("");
+      setQbittorrentPassword("");
       setConfigSaved(true);
       setTimeout(() => setConfigSaved(false), 2000);
     } catch (e) {
@@ -481,6 +489,33 @@ export default function LibraryPage() {
                   placeholder="/data/staging"
                   value={stagingDir}
                   onChange={(e) => setStagingDir(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink-dim">
+                URL qBittorrent
+                <input
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
+                  placeholder="http://qbittorrent.local:8080"
+                  value={qbittorrentUrl}
+                  onChange={(e) => setQbittorrentUrl(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink-dim">
+                Utilisateur qBittorrent
+                <input
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
+                  value={qbittorrentUsername}
+                  onChange={(e) => setQbittorrentUsername(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink-dim">
+                Mot de passe qBittorrent
+                <input
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
+                  type="password"
+                  placeholder={config?.qbittorrent_configured ? "•••• (enregistré)" : ""}
+                  value={qbittorrentPassword}
+                  onChange={(e) => setQbittorrentPassword(e.target.value)}
                 />
               </label>
             </div>

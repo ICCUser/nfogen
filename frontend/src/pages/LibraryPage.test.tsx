@@ -57,6 +57,8 @@ const CONFIGURED: GapscanConfig = {
   radarr_path_mappings: {},
   tracker_announce_url_configured: false,
   staging_dir: null,
+  qbittorrent_configured: false,
+  qbittorrent_url: null,
 };
 
 const IDLE_STATUS: GapscanStatus = {
@@ -243,6 +245,7 @@ describe("LibraryPage", () => {
       sonarr_configured: false, sonarr_url: null, radarr_configured: false, radarr_url: null,
       sonarr_path_mappings: {}, radarr_path_mappings: {},
       tracker_announce_url_configured: false, staging_dir: null,
+      qbittorrent_configured: false, qbittorrent_url: null,
     });
     renderPage();
 
@@ -276,6 +279,30 @@ describe("LibraryPage", () => {
       "c411",
     );
     expect(await screen.findByText("Enregistré.")).toBeInTheDocument();
+  });
+
+  it("enregistre la configuration qBittorrent via le formulaire de configuration", async () => {
+    const user = userEvent.setup();
+    vi.mocked(gapscanConfigWrite).mockResolvedValue({
+      ...CONFIGURED, qbittorrent_configured: true, qbittorrent_url: "http://qbittorrent.local:8080",
+    });
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Configuration/ }));
+
+    await user.type(screen.getByLabelText("URL qBittorrent"), "http://qbittorrent.local:8080");
+    await user.type(screen.getByLabelText("Utilisateur qBittorrent"), "admin");
+    await user.type(screen.getByLabelText("Mot de passe qBittorrent"), "secret");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(gapscanConfigWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        qbittorrent_url: "http://qbittorrent.local:8080",
+        qbittorrent_username: "admin",
+        qbittorrent_password: "secret",
+      }),
+      "c411",
+    );
   });
 
   it("pas de scan precedent : pas de case 'Scan rapide', et le scan lance est complet", async () => {
