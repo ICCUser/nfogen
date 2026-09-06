@@ -711,6 +711,9 @@ class GapscanConfigWriteRequest(BaseModel):
     sonarr_path_mappings: Optional[dict[str, str]] = None
     radarr_path_mappings: Optional[dict[str, str]] = None
     staging_dir: Optional[str] = None
+    qbittorrent_url: Optional[str] = None
+    qbittorrent_username: Optional[str] = None
+    qbittorrent_password: Optional[str] = None
 
 
 @app.put("/gapscan/config", dependencies=[Depends(require_token)])

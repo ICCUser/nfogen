@@ -1177,6 +1177,8 @@ def test_gapscan_config_reports_which_services_are_configured(reload_api):
         "radarr_path_mappings": {},
         "tracker_announce_url_configured": False,
         "staging_dir": None,
+        "qbittorrent_configured": False,
+        "qbittorrent_url": None,
     }
     # jamais la cle elle-meme dans la reponse, meme par accident.
     assert "x" not in resp.text and "y" not in resp.text
@@ -1317,6 +1319,26 @@ def test_gapscan_config_write_then_read_back_announce_url_and_staging_dir(reload
     status = client.get("/gapscan/config").json()
     assert status["tracker_announce_url_configured"] is True
     assert status["staging_dir"] == "/data/staging"
+
+
+def test_gapscan_config_write_then_read_back_qbittorrent(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
+    )
+    client = TestClient(mod.app)
+
+    put = client.put(
+        "/gapscan/config",
+        json={
+            "qbittorrent_url": "http://qbittorrent.local:8080",
+            "qbittorrent_username": "admin", "qbittorrent_password": "secret",
+        },
+    )
+    assert put.status_code == 200
+
+    body = client.get("/gapscan/config").json()
+    assert body["qbittorrent_configured"] is True
+    assert body["qbittorrent_url"] == "http://qbittorrent.local:8080"
 
 
 # --------------------------------------------------------------------------- #
