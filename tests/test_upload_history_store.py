@@ -77,3 +77,53 @@ def test_record_never_raises_on_write_failure(monkeypatch, history_file):
 def test_load_tolerates_corrupt_file(history_file):
     history_file.write_text("not json", encoding="utf-8")
     assert not upload_history_store.is_processed(("movie", 1))
+
+
+# --------------------------------------------------------------------------- #
+# staged_path + pending_seed_entries (AUTOMATION.md, sous-projet 6) : mise en
+# seed apres upload -- retrouver le contenu deja en scene bien apres le
+# Confirmer d'origine (la moderation C411 n'est pas immediate).
+# --------------------------------------------------------------------------- #
+def test_pending_seed_entries_lists_sent_without_seeding():
+    key = ("movie", 42)
+    upload_history_store.record(key, kind="committed", release_name="R", staged_path="/staging/R.mkv")
+    upload_history_store.record(key, kind="sent", release_name="R")
+
+    entries = upload_history_store.pending_seed_entries()
+
+    assert len(entries) == 1
+    assert entries[0]["key"] == upload_history_store.key_str(key)
+    assert entries[0]["media_type"] == "movie"
+    assert entries[0]["release_name"] == "R"
+    assert entries[0]["staged_path"] == "/staging/R.mkv"
+    assert entries[0]["sent_at"] is not None
+
+
+def test_pending_seed_entries_excludes_titles_never_sent():
+    key = ("movie", 42)
+    upload_history_store.record(key, kind="committed", release_name="R", staged_path="/staging/R.mkv")
+    assert upload_history_store.pending_seed_entries() == []
+
+
+def test_pending_seed_entries_excludes_titles_already_seeding():
+    key = ("movie", 42)
+    upload_history_store.record(key, kind="committed", release_name="R", staged_path="/staging/R.mkv")
+    upload_history_store.record(key, kind="sent", release_name="R")
+    upload_history_store.record(key, kind="seeding", release_name="R")
+    assert upload_history_store.pending_seed_entries() == []
+
+
+def test_pending_seed_entries_series_media_type_and_staged_path_none_when_absent():
+    key = ("series", 7, 2)
+    # Jamais de "committed" enregistre avec staged_path pour cette cle.
+    upload_history_store.record(key, kind="sent", release_name="Show.S02")
+
+    entries = upload_history_store.pending_seed_entries()
+
+    assert entries[0]["media_type"] == "series"
+    assert entries[0]["staged_path"] is None
+
+
+def test_pending_seed_entries_empty_without_env_var(monkeypatch):
+    monkeypatch.delenv("NFOGEN_UPLOAD_HISTORY_FILE", raising=False)
+    assert upload_history_store.pending_seed_entries() == []

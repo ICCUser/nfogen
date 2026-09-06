@@ -75,17 +75,30 @@ def _save(data: dict[str, Any]) -> None:
         pass
 
 
-def record(key: tuple, *, kind: str, release_name: str, at: Optional[float] = None) -> None:
-    """Ajoute/met a jour une entree -- kind: "committed" (Confirmer reussi)
-    ou "sent" (Envoyer a C411 reussi). Idempotent par cle+kind : un nouvel
-    appel sur la meme cle+kind met a jour l'horodatage plutot que
+def record(
+    key: tuple, *, kind: str, release_name: str,
+    at: Optional[float] = None, staged_path: Optional[str] = None,
+) -> None:
+    """Ajoute/met a jour une entree -- kind: "committed" (Confirmer reussi),
+    "sent" (Envoyer a C411 reussi) ou "seeding" (ajoute a un client de
+    seed, voir AUTOMATION.md sous-projet 6). Idempotent par cle+kind : un
+    nouvel appel sur la meme cle+kind met a jour l'horodatage plutot que
     d'accumuler des doublons. N'ECHOUE JAMAIS (try/except large) : un
-    Confirmer/Envoi par ailleurs reussi ne doit jamais etre bloque par un
-    probleme d'ecriture de cet historique, purement informatif."""
+    Confirmer/Envoi/Ajout par ailleurs reussi ne doit jamais etre bloque
+    par un probleme d'ecriture de cet historique, purement informatif.
+
+    `staged_path` (optionnel, sous-projet 6) : chemin de mise en scene --
+    enregistre avec l'entree "committed", permet de retrouver le contenu
+    DEJA en scene bien apres le Confirmer d'origine (la moderation C411
+    n'est pas immediate), meme apres un redemarrage du serveur nfogen.
+    Voir pending_seed_entries()."""
     try:
         data = _load()
         entry = data.setdefault(key_str(key), {})
-        entry[kind] = {"release_name": release_name, "at": at if at is not None else time.time()}
+        value: dict[str, Any] = {"release_name": release_name, "at": at if at is not None else time.time()}
+        if staged_path is not None:
+            value["staged_path"] = staged_path
+        entry[kind] = value
         _save(data)
     except Exception:  # noqa: BLE001 -- jamais propager, voir docstring
         pass
@@ -101,3 +114,34 @@ def last_processed_at(key: tuple) -> Optional[float]:
         return None
     timestamps = [v["at"] for v in entry.values() if "at" in v]
     return max(timestamps) if timestamps else None
+
+
+def pending_seed_entries() -> list[dict[str, Any]]:
+    """Titres marques "sent" (Envoyer a C411 reussi) sans entree "seeding"
+    correspondante -- utilise par GET /gapscan/seed-queue (AUTOMATION.md,
+    sous-projet 6). Chaque entree : `key` (chaine opaque, a repasser telle
+    quelle a l'ajout), `media_type` ("movie"/"series", deduit directement
+    du premier element de la cle decodee), `release_name`, `staged_path`
+    (depuis l'entree "committed" -- `None` si absente, ex. enregistree
+    avant l'ajout de ce champ), `sent_at`."""
+    data = _load()
+    pending: list[dict[str, Any]] = []
+    for key_string, entry in data.items():
+        sent = entry.get("sent")
+        if sent is None or "seeding" in entry:
+            continue
+        try:
+            decoded = json.loads(key_string)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+        committed = entry.get("committed") or {}
+        pending.append(
+            {
+                "key": key_string,
+                "media_type": decoded[0] if decoded else None,
+                "release_name": sent.get("release_name"),
+                "staged_path": committed.get("staged_path"),
+                "sent_at": sent.get("at"),
+            }
+        )
+    return pending
