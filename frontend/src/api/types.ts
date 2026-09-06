@@ -192,6 +192,8 @@ export interface GapscanConfig {
    * jamais la valeur elle-meme (contient le passkey du compte). */
   tracker_announce_url_configured: boolean;
   staging_dir: string | null;
+  qbittorrent_configured: boolean;
+  qbittorrent_url: string | null;
 }
 
 /** PUT /gapscan/config : chaque champ omis reste inchange cote serveur.
@@ -209,6 +211,9 @@ export interface GapscanConfigWrite {
   sonarr_path_mappings?: Record<string, string>;
   radarr_path_mappings?: Record<string, string>;
   staging_dir?: string;
+  qbittorrent_url?: string;
+  qbittorrent_username?: string;
+  qbittorrent_password?: string;
 }
 
 // --------------------------------------------------------------------------- //
@@ -254,6 +259,20 @@ export interface LibraryItem {
 export interface LibraryResultsPage {
   items: LibraryItem[];
   total: number;
+}
+
+// --------------------------------------------------------------------------- //
+// File d'attente de mise en seed (AUTOMATION.md, sous-projet 6) : titres
+// envoyes a C411 mais pas encore ajoutes a un client de seed. Import
+// manuel du .torrent re-signe -- aucune API C411 ne permet de le
+// recuperer automatiquement (verifie en conditions reelles, 2026-09-06).
+// --------------------------------------------------------------------------- //
+export interface SeedQueueEntry {
+  key: string;
+  media_type: "movie" | "series";
+  release_name: string;
+  staged_path: string | null;
+  sent_at: number | null;
 }
 
 // --------------------------------------------------------------------------- //

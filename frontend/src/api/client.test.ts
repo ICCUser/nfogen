@@ -15,10 +15,12 @@ import {
   libraryResults,
   listAllProfiles,
   listCommitJobs,
+  addToSeedQueue,
   prepareUploadCommit,
   prepareUploadPreview,
   previewGenerate,
   proposeReleaseName,
+  seedQueue,
   sendToTracker,
   writeManagedProfile,
 } from "./client";
@@ -541,5 +543,35 @@ describe("libraryResults", () => {
     expect(url).toContain("status=not_verified");
     expect(url).toContain("tracker_genre=anime");
     expect(url).toContain("profile=ygg");
+  });
+});
+
+describe("seedQueue / addToSeedQueue (AUTOMATION.md, sous-projet 6)", () => {
+  it("seedQueue GET /gapscan/seed-queue", async () => {
+    const entries = [
+      { key: '["movie",42]', media_type: "movie", release_name: "R", staged_path: "/staging/R.mkv", sent_at: 1700000000 },
+    ];
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(entries));
+
+    const result = await seedQueue();
+
+    expect(result).toEqual(entries);
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/seed-queue");
+  });
+
+  it("addToSeedQueue POST en multipart avec key et torrent", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ status: "added" }));
+    const file = new File([new Uint8Array([1, 2, 3])], "R.torrent");
+
+    const result = await addToSeedQueue('["movie",42]', file);
+
+    expect(result).toEqual({ status: "added" });
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/seed-queue/add");
+    expect((init as RequestInit).body).toBeInstanceOf(FormData);
+    const body = (init as RequestInit).body as FormData;
+    expect(body.get("key")).toBe('["movie",42]');
+    expect(body.get("torrent")).toBe(file);
   });
 });

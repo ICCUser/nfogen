@@ -12,6 +12,7 @@ import type {
   NameProposal,
   ProfilesByCategory,
   RulesDocument,
+  SeedQueueEntry,
   SendToTrackerResult,
   TemplatesDocument,
   UploadGroupProposal,
@@ -366,6 +367,22 @@ export function libraryResults(
   params.set("page_size", String(opts.pageSize ?? 50));
   if (opts.profile) params.set("profile", opts.profile);
   return request<LibraryResultsPage>(`/gapscan/library?${params.toString()}`);
+}
+
+/** GET /gapscan/seed-queue : titres envoyes a C411 mais pas encore
+ * ajoutes a un client de seed (AUTOMATION.md, sous-projet 6). */
+export function seedQueue(): Promise<SeedQueueEntry[]> {
+  return request<SeedQueueEntry[]>("/gapscan/seed-queue");
+}
+
+/** POST /gapscan/seed-queue/add : ajoute le .torrent RE-SIGNE (deja
+ * telecharge manuellement par l'utilisateur) au client de seed, pointe
+ * sur le contenu deja en scene. */
+export function addToSeedQueue(key: string, file: File): Promise<{ status: string }> {
+  const formData = new FormData();
+  formData.set("key", key);
+  formData.set("torrent", file);
+  return request<{ status: string }>("/gapscan/seed-queue/add", { method: "POST", body: formData });
 }
 
 export function gapscanStatus(): Promise<GapscanStatus> {
