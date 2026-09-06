@@ -64,13 +64,25 @@ def stage_file(
     target_path: str,
     on_progress: Optional[Callable[[int, int], None]] = None,
     cancel_event: Optional[threading.Event] = None,
+    overwrite: bool = False,
 ) -> str:
     """Met `source_path` a disposition sous `target_path` : hardlink si
     possible, copie complete par blocs en repli (systemes de fichiers
     differents). Cree les dossiers parents de `target_path` si besoin.
-    Renvoie `target_path`."""
+    Renvoie `target_path`.
+
+    Si `target_path` existe deja : `FileExistsError` par defaut (deja ce
+    que `os.link` leve nativement pour EEXIST -- incident reel, 2026-09-06,
+    "[Errno 17] File exists" sur un dechet d'un essai precedent).
+    `overwrite=True` (AUTOMATION.md, sous-projet 8 -- decide par l'appelant
+    selon l'historique "deja traite") : supprime la cible existante avant
+    de refaire le hardlink/la copie, TOUJOURS depuis `source_path` en
+    local -- jamais un nouveau telechargement, la source Radarr/Sonarr
+    n'est jamais touchee (voir docstring du module)."""
     target = Path(target_path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    if overwrite and target.exists():
+        target.unlink()
     try:
         os.link(source_path, target_path)
     except OSError as exc:
@@ -90,12 +102,14 @@ def stage_files(
     names: list[str],
     on_progress: Optional[Callable[[int, int], None]] = None,
     cancel_event: Optional[threading.Event] = None,
+    overwrite: bool = False,
 ) -> list[str]:
     """Met en scene plusieurs fichiers d'un coup (ex. un pack de saison) --
     un nom de sortie par source, meme ordre. `on_progress`, si fourni,
     recoit une progression CUMULEE sur l'ensemble des fichiers (pas par
-    fichier individuel) -- une seule barre pour tout le groupe. Renvoie
-    les chemins finaux, dans le meme ordre."""
+    fichier individuel) -- une seule barre pour tout le groupe. `overwrite` :
+    voir stage_file(), applique a CHAQUE fichier du pack. Renvoie les
+    chemins finaux, dans le meme ordre."""
     grand_total = sum(os.path.getsize(p) for p in source_paths)
     done_before = 0
     results: list[str] = []
@@ -110,6 +124,7 @@ def stage_files(
             stage_file(
                 source, target_path,
                 on_progress=_relay if on_progress else None, cancel_event=cancel_event,
+                overwrite=overwrite,
             )
         )
         done_before += os.path.getsize(source)

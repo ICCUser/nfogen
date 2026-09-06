@@ -53,6 +53,70 @@ def test_stage_file_reraises_other_os_errors(tmp_path, monkeypatch):
         stage_file(str(source), str(target))
 
 
+def test_stage_file_raises_file_exists_error_when_target_already_present(tmp_path):
+    """Incident reel signale par l'utilisateur (2026-09-06) : un fichier
+    laisse par un essai precedent faisait planter la mise en scene avec un
+    OSError brut ('[Errno 17] File exists'). Toujours une erreur par
+    defaut (sans `overwrite`), mais un type precis (FileExistsError,
+    deja ce que Python leve nativement pour EEXIST) plutot qu'une
+    exploration au cas par cas par l'appelant."""
+    source = tmp_path / "source.mkv"
+    source.write_text("nouveau contenu")
+    target = tmp_path / "staged.mkv"
+    target.write_text("ancien contenu (dechet)")
+
+    with pytest.raises(FileExistsError):
+        stage_file(str(source), str(target))
+
+    assert target.read_text() == "ancien contenu (dechet)"  # jamais touche sans overwrite
+
+
+def test_stage_file_overwrite_replaces_an_existing_target(tmp_path):
+    """`overwrite=True` (AUTOMATION.md, sous-projet 8 -- deja traite/pas
+    encore traite) : supprime la cible existante puis refait le lien/la
+    copie DEPUIS LA SOURCE LOCALE -- jamais un nouveau telechargement,
+    la source Radarr/Sonarr n'est jamais touchee (voir docstring du
+    module)."""
+    source = tmp_path / "source.mkv"
+    source.write_text("nouveau contenu")
+    target = tmp_path / "staged.mkv"
+    target.write_text("ancien contenu (dechet)")
+
+    result = stage_file(str(source), str(target), overwrite=True)
+
+    assert result == str(target)
+    assert target.read_text() == "nouveau contenu"
+
+
+def test_stage_file_overwrite_is_a_noop_when_target_absent(tmp_path):
+    source = tmp_path / "source.mkv"
+    source.write_text("contenu")
+    target = tmp_path / "staged" / "Release.Name.mkv"
+
+    result = stage_file(str(source), str(target), overwrite=True)
+
+    assert result == str(target)
+    assert target.read_text() == "contenu"
+
+
+def test_stage_files_overwrite_replaces_an_existing_target_in_a_pack(tmp_path):
+    src1 = tmp_path / "e01.mkv"
+    src1.write_text("un (nouveau)")
+    src2 = tmp_path / "e02.mkv"
+    src2.write_text("deux")
+    target_dir = tmp_path / "staged" / "Release.Name"
+    target_dir.mkdir(parents=True)
+    (target_dir / "E01.mkv").write_text("un (dechet)")
+
+    results = stage_files(
+        [str(src1), str(src2)], str(target_dir), ["E01.mkv", "E02.mkv"], overwrite=True
+    )
+
+    assert results == [str(target_dir / "E01.mkv"), str(target_dir / "E02.mkv")]
+    assert (target_dir / "E01.mkv").read_text() == "un (nouveau)"
+    assert (target_dir / "E02.mkv").read_text() == "deux"
+
+
 def test_stage_files_stages_each_source_under_its_own_name(tmp_path):
     src1 = tmp_path / "e01.mkv"
     src1.write_text("un")
