@@ -151,6 +151,68 @@ def test_series_without_episode_files_produces_no_season():
     assert _client(handler).list_season_files() == []
 
 
+def test_list_season_files_extracts_genres_from_series():
+    """Le genre est un champ de la SERIE (pas du fichier episode) -- chaque
+    saison de cette serie doit le recevoir."""
+    series_with_genres = [{**SERIES[0], "genres": ["Drama"]}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=series_with_genres)
+        return httpx.Response(200, json=EPISODE_FILES)
+
+    seasons = _client(handler).list_season_files()
+    assert all(s.genres == ["Drama"] for s in seasons)
+
+
+def test_list_season_files_defaults_genres_to_empty_list_when_absent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=SERIES)  # pas de cle "genres"
+        return httpx.Response(200, json=EPISODE_FILES)
+
+    seasons = _client(handler).list_season_files()
+    assert seasons[0].genres == []
+
+
+def test_list_season_files_added_at_uses_max_episode_date_in_that_season():
+    """added_at d'une saison = la PLUS RECENTE dateAdded parmi SES fichiers
+    episode -- jamais la date d'ajout de la serie entiere, qui ne
+    distinguerait pas les saisons."""
+    import datetime
+
+    files_with_dates = [
+        {**EPISODE_FILES[0], "dateAdded": "2024-01-01T00:00:00Z"},  # saison 1
+        {**EPISODE_FILES[1], "dateAdded": "2024-06-01T00:00:00Z"},  # saison 1, plus recent
+        {**EPISODE_FILES[2], "dateAdded": "2024-03-01T00:00:00Z"},  # saison 2
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=SERIES)
+        return httpx.Response(200, json=files_with_dates)
+
+    seasons = _client(handler).list_season_files()
+
+    season1 = next(s for s in seasons if s.season_number == 1)
+    expected_season1 = datetime.datetime(2024, 6, 1, tzinfo=datetime.timezone.utc).timestamp()
+    assert season1.added_at == expected_season1
+
+    season2 = next(s for s in seasons if s.season_number == 2)
+    expected_season2 = datetime.datetime(2024, 3, 1, tzinfo=datetime.timezone.utc).timestamp()
+    assert season2.added_at == expected_season2
+
+
+def test_list_season_files_added_at_none_when_no_episode_has_a_date():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=SERIES)
+        return httpx.Response(200, json=EPISODE_FILES)  # pas de cle "dateAdded"
+
+    seasons = _client(handler).list_season_files()
+    assert all(s.added_at is None for s in seasons)
+
+
 def test_get_series_details_parses_overview_poster_genres():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/series/99"

@@ -7,6 +7,7 @@ bibliotheque Sonarr.
 """
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -46,6 +47,13 @@ class SonarrSeasonFile:
     # est intrinsequement multi-fichiers, contrairement a un film) -- voir
     # AUTOMATION.md, sous-projet 1.
     remote_paths: list[str] = field(default_factory=list)
+    # Genres Sonarr (au niveau serie -- Sonarr n'a pas de genre par saison)
+    # -- meme role que RadarrMovieFile.genres, voir la-bas.
+    genres: list[str] = field(default_factory=list)
+    # Horodatage (epoch secondes) le PLUS RECENT parmi les fichiers episode
+    # de CETTE saison -- pas la date d'ajout de la serie entiere, qui ne
+    # distinguerait pas les saisons (voir _parse_sonarr_date).
+    added_at: Optional[float] = None
 
 
 @dataclass
@@ -59,6 +67,18 @@ class SonarrSeriesDetails:
     genres: list[str] = field(default_factory=list)
     directors: list[str] = field(default_factory=list)
     cast: list[str] = field(default_factory=list)
+
+
+def _parse_sonarr_date(value: Optional[str]) -> Optional[float]:
+    """Meme role que radarr_client._parse_radarr_date, duplique ici plutot
+    que partage -- radarr_client.py et sonarr_client.py restent
+    volontairement independants (voir leurs docstrings de module)."""
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
 
 
 class SonarrClient:
@@ -133,6 +153,9 @@ class SonarrClient:
                     key=lambda f: (f.get("quality", {}).get("quality", {}).get("resolution") or 0),
                 )
                 quality = best.get("quality", {}).get("quality", {}) or {}
+                added_dates = [
+                    d for d in (_parse_sonarr_date(f.get("dateAdded")) for f in season_files) if d is not None
+                ]
                 seasons.append(
                     SonarrSeasonFile(
                         series_id=series["id"],
@@ -152,6 +175,8 @@ class SonarrClient:
                             if t.get("title")
                         ],
                         remote_paths=[f.get("path") for f in season_files if f.get("path")],
+                        genres=series.get("genres") or [],
+                        added_at=max(added_dates) if added_dates else None,
                     )
                 )
         return seasons
