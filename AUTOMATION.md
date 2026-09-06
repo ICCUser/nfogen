@@ -62,7 +62,7 @@ moins agnostique que supposé — voir sa section pour le contexte) :
 | 4b | Généralisation tracker-agnostique (retrofit des sous-projets 2/4 + GapScan) | **Livré (2026-08-29)**, voir [le plan](docs/superpowers/plans/2026-08-29-tracker-agnostic-generalization.md) |
 | 4c | Suivi d'avancement asynchrone de "Confirmer" (copie + hash torrent en tâche de fond, annulation) | **Livré (2026-09-04)**, voir [le plan](docs/superpowers/plans/2026-09-04-async-commit-progress.md) |
 | 5 | Upload vers C411 | Livré (2026-09-04), voir sa section ci-dessous |
-| 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | À concevoir |
+| 6 | Intégration qBittorrent (récupération du `.torrent` signé, mise en seed) | **Livré (2026-09-06)**, voir [le plan](docs/superpowers/plans/2026-09-06-qbittorrent-seed-integration.md) |
 | 7 | File d'attente un-par-un + email (succès/erreur) + règles de résolution automatique pilotées par le profil | À concevoir |
 | 8 | Bibliothèque locale et scan ciblé (inventaire Sonarr/Radarr sans appel tracker, sélection, historique "déjà traité") | **Livré (2026-09-06)**, voir [le plan](docs/superpowers/plans/2026-09-06-library-targeted-scan.md) |
 | 9 | Lidarr (musique) | Facultatif, en dernier |
@@ -1119,3 +1119,35 @@ tracker — les deux classifications restent indépendantes —, statut,
 ajouté depuis, déjà traité), configuration Sonarr/Radarr/tracker, scan
 complet (bulk) **et** scan ciblé (sélection) au même endroit — la
 vérification ciblée reste désormais sur place (plus de redirection).
+
+## Sous-projet 6 : Intégration qBittorrent (conception et livraison 2026-09-06)
+
+**Récupération du `.torrent` re-signé : manuelle, confirmé impossible à
+automatiser.** Test réel (2026-09-06) : `GET
+https://c411.org/api/torrents/{infoHash}/download` avec la clé API
+Bearer du compte renvoie `302` vers `/login?redirect=...` — cet endpoint
+exige une session navigateur authentifiée, pas la clé API. Aucune
+automatisation de la récupération n'est donc possible sans reproduire un
+login complet (hors de portée de ce projet).
+
+**Nouvelle file d'attente "À mettre en seed"** (`/seed-queue`) : liste
+les titres déjà envoyés à C411 (voir sous-projet 5) mais pas encore
+ajoutés à un client de seed (`GET /gapscan/seed-queue`, alimentée par
+`upload_history_store.pending_seed_entries()`). Pour chaque titre,
+l'utilisateur dépose le `.torrent` re-signé (téléchargé manuellement
+depuis le site une fois la modération terminée) — nfogen l'ajoute à
+qBittorrent (`nfogen/qbittorrent_client.py`, même patron httpx que
+`radarr_client.py`/`sonarr_client.py`) pointé sur le contenu **déjà mis
+en scène** (`upload_history_store` persiste désormais le `staged_path`
+de chaque titre confirmé, pour le retrouver même longtemps après le
+Confirmer d'origine — la modération C411 n'est pas immédiate). Jamais un
+nouveau transfert, jamais un nouveau téléchargement.
+
+Explicitement écarté : nettoyage automatique du dossier de mise en scène
+après ajout au seed (qBittorrent "possède" le contenu du point de vue de
+l'utilisateur une fois ajouté ; un nettoyage éventuel reste manuel, côté
+qBittorrent) ; support Transmission (uniquement qBittorrent pour ce
+sous-projet, même patron réutilisable plus tard si besoin).
+
+Voir [docs/superpowers/specs/2026-09-06-qbittorrent-seed-integration-design.md](docs/superpowers/specs/2026-09-06-qbittorrent-seed-integration-design.md)
+et [docs/superpowers/plans/2026-09-06-qbittorrent-seed-integration.md](docs/superpowers/plans/2026-09-06-qbittorrent-seed-integration.md).

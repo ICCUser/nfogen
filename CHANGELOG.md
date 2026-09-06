@@ -139,6 +139,14 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   configuration Sonarr/Radarr/tracker, le scan complet (bulk) et le scan
   ciblé (sélection) — qui reste désormais sur place au lieu de rediriger
   vers une autre page.
+- **Intégration qBittorrent — mise en seed après upload** (AUTOMATION.md,
+  sous-projet 6) : nouvelle file d'attente "À mettre en seed"
+  (`/seed-queue`) pour les titres déjà envoyés à C411 en attente du
+  `.torrent` re-signé (récupération confirmée impossible à automatiser —
+  l'endpoint C411 exige une session navigateur, pas la clé API — import
+  manuel donc). nfogen l'ajoute alors à qBittorrent, pointé sur le
+  contenu déjà mis en scène (jamais un nouveau transfert), même
+  longtemps après le Confirmer d'origine.
 
 ### Corrigé
 
