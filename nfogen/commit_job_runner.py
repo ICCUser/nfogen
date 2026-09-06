@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
-from . import upload_prep
+from . import upload_history_store, upload_prep
 from .cancellation import OperationCancelled
 
 
@@ -48,13 +48,25 @@ _cancel_events: dict[str, threading.Event] = {}
 
 
 def start(
-    release_name: str, files: list[upload_prep.ProposedFile], profile: str = "c411"
+    release_name: str,
+    files: list[upload_prep.ProposedFile],
+    profile: str = "c411",
+    media_type: str = "movie",
+    radarr_movie_id: Optional[int] = None,
+    sonarr_series_id: Optional[int] = None,
+    season_number: Optional[int] = None,
 ) -> str:
     """Verifie d'abord la configuration (rapide, voir
     upload_prep.resolve_staging_config -- leve ValueError/RuntimeError
     IMMEDIATEMENT si mal configure, avant meme de creer une tache), puis
     demarre la mise en scene + generation en tache de fond et renvoie le
-    `job_id` SANS ATTENDRE la fin."""
+    `job_id` SANS ATTENDRE la fin.
+
+    `media_type`/`radarr_movie_id`/`sonarr_series_id`/`season_number`
+    (AUTOMATION.md, sous-projet 8, tous optionnels) : identifient le titre
+    pour l'historique "deja traite" (voir upload_history_store.py) --
+    absents, aucune entree d'historique n'est enregistree pour cette
+    tache (degrade proprement, jamais bloquant)."""
     upload_prep.resolve_staging_config(profile)
 
     job_id = uuid.uuid4().hex
@@ -65,7 +77,12 @@ def start(
         _cancel_events[job_id] = cancel_event
 
     thread = threading.Thread(
-        target=_run, args=(job_id, release_name, files, profile, cancel_event), daemon=True
+        target=_run,
+        args=(
+            job_id, release_name, files, profile, cancel_event,
+            media_type, radarr_movie_id, sonarr_series_id, season_number,
+        ),
+        daemon=True,
     )
     thread.start()
     return job_id
@@ -77,6 +94,10 @@ def _run(
     files: list[upload_prep.ProposedFile],
     profile: str,
     cancel_event: threading.Event,
+    media_type: str,
+    radarr_movie_id: Optional[int],
+    sonarr_series_id: Optional[int],
+    season_number: Optional[int],
 ) -> None:
     def on_progress(step: str, percent: float) -> None:
         with _lock:
@@ -89,6 +110,15 @@ def _run(
         result = upload_prep.commit_upload(
             release_name, files, profile, on_progress=on_progress, cancel_event=cancel_event
         )
+        # Enregistre l'historique AVANT de faire passer la tache a DONE :
+        # un appelant qui observe DONE (via status(), voir _wait_until_terminal
+        # des tests) doit deja pouvoir retrouver cette entree -- jamais une
+        # course ou DONE est visible avant que record() ait ete appele.
+        key = upload_history_store.processed_key(
+            media_type, radarr_movie_id, sonarr_series_id, season_number
+        )
+        if key is not None:
+            upload_history_store.record(key, kind="committed", release_name=release_name)
         with _lock:
             job = _jobs[job_id]
             job.state = JobState.DONE
