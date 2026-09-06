@@ -1148,6 +1148,15 @@ de chaque titre confirmé, pour le retrouver même longtemps après le
 Confirmer d'origine — la modération C411 n'est pas immédiate). Jamais un
 nouveau transfert, jamais un nouveau téléchargement.
 
+**Visibilité sur ce qui est actuellement en seed** (retour utilisateur,
+2026-09-06 — "je voudrais s'avoir ce que je seed actuellement via mon
+qbit") : même page `/seed-queue`, deuxième section **"En cours de
+seed"**, strictement en lecture seule (aucune action possible depuis
+nfogen — pas de pause/reprise/suppression). `GET /gapscan/seed-status`
+relaie `QBittorrentClient.list_torrents()` (`GET /api/v2/torrents/info`)
+tel quel ; le frontend affiche nom, taille, progression, ratio, état et
+vitesse d'envoi de chaque torrent.
+
 Explicitement écarté : nettoyage automatique du dossier de mise en scène
 après ajout au seed (qBittorrent "possède" le contenu du point de vue de
 l'utilisateur une fois ajouté ; un nettoyage éventuel reste manuel, côté

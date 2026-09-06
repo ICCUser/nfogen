@@ -288,6 +288,23 @@ export interface SeedQueueEntry {
   sent_at: number | null;
 }
 
+/** GET /gapscan/seed-status : lecture seule de ce qui est actuellement
+ * en seed sur qBittorrent (retour utilisateur, 2026-09-06 -- "je voudrais
+ * s'avoir ce que je seed actuellement via mon qbit"). Reponse brute de
+ * `GET /api/v2/torrents/info` (voir nfogen/qbittorrent_client.py) : bien
+ * plus de champs existent cote qBittorrent, seuls ceux affiches ici sont
+ * types -- l'index signature laisse passer le reste sans le rejeter. */
+export interface SeedingTorrent {
+  name: string;
+  size: number;
+  progress: number;
+  ratio: number;
+  state: string;
+  upspeed: number;
+  added_on: number;
+  [extra: string]: unknown;
+}
+
 // --------------------------------------------------------------------------- //
 // Preparation d'upload (AUTOMATION.md, sous-projet 4) : nommage -> mise en
 // scene + .torrent, a partir des chemins locaux deja resolus par GapScan.

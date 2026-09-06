@@ -12,6 +12,7 @@ import type {
   NameProposal,
   ProfilesByCategory,
   RulesDocument,
+  SeedingTorrent,
   SeedQueueEntry,
   SendToTrackerResult,
   TemplatesDocument,
@@ -383,6 +384,13 @@ export function addToSeedQueue(key: string, file: File): Promise<{ status: strin
   formData.set("key", key);
   formData.set("torrent", file);
   return request<{ status: string }>("/gapscan/seed-queue/add", { method: "POST", body: formData });
+}
+
+/** GET /gapscan/seed-status : ce qui est actuellement en seed sur
+ * qBittorrent (lecture seule, aucune action possible depuis nfogen --
+ * retour utilisateur, 2026-09-06). */
+export function seedStatus(): Promise<SeedingTorrent[]> {
+  return request<SeedingTorrent[]>("/gapscan/seed-status");
 }
 
 export function gapscanStatus(): Promise<GapscanStatus> {

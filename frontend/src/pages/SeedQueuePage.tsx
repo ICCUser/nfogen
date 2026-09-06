@@ -1,7 +1,21 @@
 import { useEffect, useState } from "react";
-import { addToSeedQueue, seedQueue } from "../api/client";
+import { addToSeedQueue, seedQueue, seedStatus } from "../api/client";
 import { ApiError } from "../api/types";
-import type { SeedQueueEntry } from "../api/types";
+import type { SeedingTorrent, SeedQueueEntry } from "../api/types";
+
+/** Formate une taille en octets en unite lisible (Go/Mo/Ko) -- pas de
+ * dependance ajoutee pour un simple affichage. */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} Go`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} Mo`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+  return `${bytes} o`;
+}
+
+function formatSpeed(bytesPerSecond: number): string {
+  if (bytesPerSecond <= 0) return "—";
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
 
 /** Page "À mettre en seed" (AUTOMATION.md, sous-projet 6) : titres déjà
  * envoyés à C411 (voir "Envoyer à C411", sous-projet 5) en attente du
@@ -16,9 +30,12 @@ export default function SeedQueuePage() {
   const [adding, setAdding] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [torrents, setTorrents] = useState<SeedingTorrent[] | null>(null);
+  const [seedStatusError, setSeedStatusError] = useState<string | null>(null);
 
   useEffect(() => {
     load();
+    loadSeedStatus();
   }, []);
 
   async function load() {
@@ -28,6 +45,19 @@ export default function SeedQueuePage() {
     } catch (e) {
       setEntries(null);
       setLoadError(e instanceof ApiError ? e.message : "File d'attente indisponible.");
+    }
+  }
+
+  async function loadSeedStatus() {
+    try {
+      const list = await seedStatus();
+      setTorrents(list);
+      setSeedStatusError(null);
+    } catch (e) {
+      setTorrents(null);
+      setSeedStatusError(
+        e instanceof ApiError || e instanceof Error ? e.message : "État du client de seed indisponible.",
+      );
     }
   }
 
@@ -98,6 +128,52 @@ export default function SeedQueuePage() {
           ))}
         </ul>
       )}
+
+      <div className="space-y-2 pt-2">
+        <h2 className="font-display text-lg font-semibold text-ink">En cours de seed</h2>
+        <p className="text-sm text-ink-dim">
+          Lecture seule de ce qui tourne actuellement sur le client de seed — aucune action possible
+          depuis nfogen.
+        </p>
+
+        {seedStatusError && (
+          <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
+            {seedStatusError}
+          </div>
+        )}
+        {torrents === null && !seedStatusError && <p className="text-sm text-ink-faint">Chargement…</p>}
+        {torrents !== null && torrents.length === 0 && (
+          <p className="text-sm text-ink-faint">Aucun torrent en seed actuellement.</p>
+        )}
+        {torrents !== null && torrents.length > 0 && (
+          <div className="overflow-x-auto rounded-md border border-line">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-surface-2 text-xs uppercase text-ink-dim">
+                <tr>
+                  <th className="px-3 py-2">Nom</th>
+                  <th className="px-3 py-2">Taille</th>
+                  <th className="px-3 py-2">Progression</th>
+                  <th className="px-3 py-2">Ratio</th>
+                  <th className="px-3 py-2">État</th>
+                  <th className="px-3 py-2">Envoi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {torrents.map((torrent, index) => (
+                  <tr key={`${torrent.name}-${index}`} className="border-t border-line">
+                    <td className="px-3 py-2 font-mono text-ink">{torrent.name}</td>
+                    <td className="px-3 py-2 text-ink-dim">{formatBytes(torrent.size)}</td>
+                    <td className="px-3 py-2 text-ink-dim">{(torrent.progress * 100).toFixed(0)}%</td>
+                    <td className="px-3 py-2 text-ink-dim">{torrent.ratio.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-ink-dim">{torrent.state}</td>
+                    <td className="px-3 py-2 text-ink-dim">{formatSpeed(torrent.upspeed)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

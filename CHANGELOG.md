@@ -146,7 +146,11 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   l'endpoint C411 exige une session navigateur, pas la clé API — import
   manuel donc). nfogen l'ajoute alors à qBittorrent, pointé sur le
   contenu déjà mis en scène (jamais un nouveau transfert), même
-  longtemps après le Confirmer d'origine.
+  longtemps après le Confirmer d'origine. La même page gagne une section
+  **"En cours de seed"** (lecture seule, `GET /gapscan/seed-status`) :
+  nom, taille, progression, ratio, état et vitesse d'envoi de chaque
+  torrent actif sur qBittorrent (retour utilisateur, 2026-09-06 — "je
+  voudrais s'avoir ce que je seed actuellement via mon qbit").
 - **Journal en direct d'un scan** : sous la barre de progression,
   affichage des derniers titres traités (titre, statut) — ne se vide
   plus tout seul à la fin du scan (reste consultable après coup), seul

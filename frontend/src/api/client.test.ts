@@ -22,6 +22,7 @@ import {
   previewGenerate,
   proposeReleaseName,
   seedQueue,
+  seedStatus,
   sendToTracker,
   writeManagedProfile,
 } from "./client";
@@ -574,6 +575,24 @@ describe("seedQueue / addToSeedQueue (AUTOMATION.md, sous-projet 6)", () => {
     const body = (init as RequestInit).body as FormData;
     expect(body.get("key")).toBe('["movie",42]');
     expect(body.get("torrent")).toBe(file);
+  });
+});
+
+describe("seedStatus (retour utilisateur, 2026-09-06)", () => {
+  it("GET /gapscan/seed-status", async () => {
+    const torrents = [
+      {
+        name: "Movie.2020.1080p.x264-TEAM", size: 4294967296, progress: 1.0,
+        ratio: 1.42, state: "uploading", upspeed: 512000, added_on: 1700000000,
+      },
+    ];
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(torrents));
+
+    const result = await seedStatus();
+
+    expect(result).toEqual(torrents);
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain("/gapscan/seed-status");
   });
 });
 
