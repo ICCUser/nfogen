@@ -102,6 +102,55 @@ def test_list_movie_files_defaults_remote_path_to_none_when_absent():
     assert movies[0].remote_path is None
 
 
+def test_list_movie_files_extracts_genres():
+    movies_with_genres = [{**MOVIES[0], "genres": ["Action", "Thriller"]}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=movies_with_genres)
+
+    movies = _client(handler).list_movie_files()
+    assert movies[0].genres == ["Action", "Thriller"]
+
+
+def test_list_movie_files_defaults_genres_to_empty_list_when_absent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=MOVIES)  # pas de cle "genres"
+
+    movies = _client(handler).list_movie_files()
+    assert movies[0].genres == []
+
+
+def test_list_movie_files_extracts_added_at_from_iso_date():
+    import datetime
+
+    movies_with_date = [{**MOVIES[0], "added": "2024-03-15T10:30:00Z"}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=movies_with_date)
+
+    movies = _client(handler).list_movie_files()
+    expected = datetime.datetime(2024, 3, 15, 10, 30, 0, tzinfo=datetime.timezone.utc).timestamp()
+    assert movies[0].added_at == expected
+
+
+def test_list_movie_files_defaults_added_at_to_none_when_absent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=MOVIES)  # pas de cle "added"
+
+    movies = _client(handler).list_movie_files()
+    assert movies[0].added_at is None
+
+
+def test_list_movie_files_added_at_none_on_unparseable_date():
+    movies_with_bad_date = [{**MOVIES[0], "added": "not-a-date"}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=movies_with_bad_date)
+
+    movies = _client(handler).list_movie_files()
+    assert movies[0].added_at is None
+
+
 def test_get_movie_details_parses_overview_poster_genres_credits():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/movie/42"

@@ -6,6 +6,7 @@ Radarr.
 """
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -44,6 +45,14 @@ class RadarrMovieFile:
     # du chemin que nfogen doit reellement ouvrir si nfogen tourne ailleurs
     # que Radarr (voir AUTOMATION.md, sous-projet 1 : mapping de chemins).
     remote_path: Optional[str] = None
+    # Genres Radarr/Sonarr (PAS la categorie C411) -- utilise par la vue
+    # "Bibliotheque" (AUTOMATION.md, sous-projet 8), jamais pendant un scan
+    # GapScan classique (voir gapscan.genre_of, base sur la categorie du
+    # match C411 trouve -- deux classifications independantes).
+    genres: list[str] = field(default_factory=list)
+    # Horodatage (epoch secondes) d'ajout a Radarr -- `None` si absent ou
+    # illisible (jamais une exception, voir _parse_radarr_date).
+    added_at: Optional[float] = None
 
 
 @dataclass
@@ -61,6 +70,19 @@ class RadarrMovieDetails:
     genres: list[str] = field(default_factory=list)
     directors: list[str] = field(default_factory=list)
     cast: list[str] = field(default_factory=list)
+
+
+def _parse_radarr_date(value: Optional[str]) -> Optional[float]:
+    """`movie.get("added")` (ISO 8601, ex. "2024-03-15T10:30:00Z") -> epoch
+    secondes, ou `None` si absent/illisible -- jamais une exception (champ
+    jamais lu par ce projet avant le sous-projet 8, a verifier contre une
+    vraie reponse Radarr avant de considerer cette tache terminee)."""
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
 
 
 class RadarrClient:
@@ -130,6 +152,8 @@ class RadarrClient:
                         t.get("title", "") for t in movie.get("alternateTitles", []) if t.get("title")
                     ],
                     remote_path=movie_file.get("path"),
+                    genres=movie.get("genres") or [],
+                    added_at=_parse_radarr_date(movie.get("added")),
                 )
             )
         return movies
