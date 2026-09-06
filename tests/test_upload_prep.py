@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from nfogen import upload_history_store
 from nfogen.cancellation import OperationCancelled
 from nfogen.upload_prep import (
     CommitResult,
@@ -522,6 +523,100 @@ def test_send_to_tracker_movie_creates_a_draft(tmp_path, monkeypatch):
     assert kwargs["category_id"] == 1
     assert kwargs["subcategory_id"] == 6
     assert kwargs["options"] == {"1": [2], "2": 413}  # VFF (MULTI.VFF) + BluRay.HDLight
+
+
+def test_send_to_tracker_records_history_on_success(tmp_path, monkeypatch):
+    monkeypatch.setenv("NFOGEN_UPLOAD_HISTORY_FILE", str(tmp_path / "history.json"))
+    staged = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+
+    class FakeRadarrClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_movie_details(self, movie_id):
+            from nfogen.radarr_client import RadarrMovieDetails
+            return RadarrMovieDetails(overview="Synopsis test.", genres=["Action"])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.RadarrClient", FakeRadarrClient)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_radarr",
+        lambda: ("http://radarr.local", "radarr-key"),
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def create_draft(self, **kwargs):
+            return {"id": 555, "url": "https://c411.org/user/drafts/555"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    send_to_tracker(
+        release_name="Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", radarr_movie_id=42, tmdb_id=603,
+    )
+
+    key = upload_history_store.processed_key("movie", 42, None)
+    assert upload_history_store.is_processed(key)
+
+
+def test_send_to_tracker_without_identifiers_does_not_record_history(tmp_path, monkeypatch):
+    monkeypatch.setenv("NFOGEN_UPLOAD_HISTORY_FILE", str(tmp_path / "history.json"))
+    staged = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def create_draft(self, **kwargs):
+            return {"id": 555, "url": "https://c411.org/user/drafts/555"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    send_to_tracker(
+        release_name="Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411",  # aucun identifiant Radarr/Sonarr fourni
+    )
+
+    assert not upload_history_store.is_processed(("movie", 42))
 
 
 def test_send_to_tracker_series_without_tmdb_id_skips_duplicate_check_with_a_warning(tmp_path, monkeypatch):

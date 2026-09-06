@@ -14,7 +14,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from . import c411_upload_options, engine, extract, file_staging, gapscan_config_store, tracker_profile
+from . import (
+    c411_upload_options,
+    engine,
+    extract,
+    file_staging,
+    gapscan_config_store,
+    tracker_profile,
+    upload_history_store,
+)
 from .c411_upload_client import C411UploadClient, C411UploadError
 from .engine import propose_release_name
 from .models import RenderContext
@@ -439,7 +447,11 @@ def send_to_tracker(
     finally:
         upload_client.close()
 
-    return SendResult(
+    result = SendResult(
         draft_id=response.get("id"), draft_url=response.get("url", ""),
         duplicate_warning=duplicate_warning,
     )
+    key = upload_history_store.processed_key(media_type, radarr_movie_id, sonarr_series_id, season_number)
+    if key is not None:
+        upload_history_store.record(key, kind="sent", release_name=release_name)
+    return result
