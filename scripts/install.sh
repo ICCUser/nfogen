@@ -190,6 +190,34 @@ fi
 if [[ -f "${ENV_FILE}" ]] && ! grep -q "^NFOGEN_GAPSCAN_RESULTS_FILE=" "${ENV_FILE}"; then
     echo "NFOGEN_GAPSCAN_RESULTS_FILE=${DATA_DIR}/gapscan_results.json" >> "${ENV_FILE}"
 fi
+
+echo "==> Dossier de mise en scene (${DATA_DIR}/staging) pour la generation de .torrent"
+STAGING_DIR="${DATA_DIR}/staging"
+mkdir -p "${STAGING_DIR}"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${STAGING_DIR}"
+# staging_dir pre-rempli dans gapscan_config.json UNIQUEMENT si absent
+# (jamais si l'admin a deja choisi un autre chemin, meme different) --
+# garantit un chemin ECRIVABLE par defaut sans configuration manuelle : le
+# NAS source (accede en LECTURE SEULE, voir AUTOMATION.md sous-projet 1)
+# ne doit jamais servir de dossier de mise en scene -- confusion reelle
+# signalee par l'utilisateur (2026-09-06, "[Errno 30] Read-only file
+# system" en pointant staging_dir vers le NAS monte en lecture seule).
+GAPSCAN_CONFIG_FILE="${DATA_DIR}/gapscan_config.json"
+run_as_nfogen python3 -c "
+import json
+path = '${GAPSCAN_CONFIG_FILE}'
+try:
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    data = {}
+if not data.get('staging_dir'):
+    data['staging_dir'] = '${STAGING_DIR}'
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+"
+chmod 600 "${GAPSCAN_CONFIG_FILE}" 2>/dev/null || true
+
 _set_env_var NFOGEN_DOMAIN "${NFOGEN_DOMAIN}" "${ENV_FILE}"
 _set_env_var NFOGEN_LOCAL_TLS "${NFOGEN_LOCAL_TLS}" "${ENV_FILE}"
 if [[ -n "${NFOGEN_DOMAIN}" || -n "${NFOGEN_LOCAL_TLS}" ]]; then
@@ -289,6 +317,7 @@ echo "    Logs    : journalctl -u ${SERVICE_NAME} -f"
 echo "    URL     : ${URL}"
 echo "    Config  : ${ENV_FILE} (token API...)"
 echo "    Profils : ${PROFILES_DIR} (persistant, jamais touche par une mise a jour)"
+echo "    Staging : ${STAGING_DIR} (pre-rempli si aucun deja choisi via l'interface)"
 echo "    Pour appliquer un changement de ${ENV_FILE} : systemctl restart ${SERVICE_NAME}"
 echo "    Pour mettre a jour plus tard : sudo ./scripts/update.sh (depuis ${REPO_DIR})"
 if [[ -z "${NFOGEN_DOMAIN}" && -z "${NFOGEN_LOCAL_TLS}" ]]; then

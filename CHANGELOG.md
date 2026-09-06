@@ -168,6 +168,15 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   nfogen[automation]" dès qu'on cliquait sur "Confirmer" dans "Préparer
   l'upload", sans que rien ne le signale avant ce moment précis (retour
   utilisateur, 2026-09-06).
+- **Aucun dossier de mise en scène écrivable par défaut** : sans
+  configuration manuelle de `staging_dir`, rien n'empêchait de pointer par
+  erreur vers le NAS source (accédé en LECTURE SEULE, voir AUTOMATION.md
+  sous-projet 1) — `[Errno 30] Read-only file system` au moment de
+  "Confirmer" (retour utilisateur, 2026-09-06). `scripts/install.sh` crée
+  désormais `/var/lib/nfogen/staging` (même traitement que les profils :
+  jamais touché par une mise à jour) et le pré-remplit dans
+  `gapscan_config.json` UNIQUEMENT si aucun `staging_dir` n'est déjà
+  choisi.
 
 ### Modifié
 
