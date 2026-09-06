@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api/client", () => ({
+  clearGapscanLog: vi.fn(),
   downloadBlob: vi.fn(),
   gapscanConfig: vi.fn(),
   gapscanConfigWrite: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("../components/ActiveTransfersTray", () => ({
 }));
 
 import {
+  clearGapscanLog,
   gapscanConfig,
   gapscanConfigWrite,
   gapscanRun,
@@ -62,7 +64,7 @@ const CONFIGURED: GapscanConfig = {
 };
 
 const IDLE_STATUS: GapscanStatus = {
-  state: "idle", total: 0, processed: 0, started_at: null, finished_at: null, error: null,
+  state: "idle", total: 0, processed: 0, started_at: null, finished_at: null, error: null, log: [],
 };
 
 /** Titre deja verifie sur le tracker (statut connu). */
@@ -106,6 +108,7 @@ beforeEach(() => {
   vi.mocked(readManagedProfile).mockResolvedValue({
     name: "c411", rules: { tracker: { display_name: "C411" } }, templates: {},
   });
+  vi.mocked(clearGapscanLog).mockResolvedValue({ status: "cleared" });
 });
 
 afterEach(() => vi.resetAllMocks());
@@ -237,6 +240,44 @@ describe("LibraryPage", () => {
     });
     renderPage();
     expect(await screen.findByText(/C411 injoignable \(timeout\)/)).toBeInTheDocument();
+  });
+
+  it("affiche le journal du scan, meme apres qu'il soit termine (ne se vide pas seul)", async () => {
+    vi.mocked(gapscanStatus).mockResolvedValue({
+      ...IDLE_STATUS, state: "done", finished_at: 1700000000,
+      log: [
+        { title: "Matrix", year: 1999, media_type: "movie", season_number: null, status: "absent" },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText(/Matrix/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Vider les logs/i })).toBeInTheDocument();
+  });
+
+  it("le bouton Vider les logs appelle clearGapscanLog et retire les lignes affichees", async () => {
+    vi.mocked(gapscanStatus).mockResolvedValue({
+      ...IDLE_STATUS, state: "done", finished_at: 1700000000,
+      log: [
+        { title: "Matrix", year: 1999, media_type: "movie", season_number: null, status: "absent" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText(/Matrix/);
+    await user.click(screen.getByRole("button", { name: /Vider les logs/i }));
+
+    expect(clearGapscanLog).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.queryByText(/Matrix/)).not.toBeInTheDocument();
+    });
+  });
+
+  it("n'affiche pas le journal ni le bouton Vider quand il est vide", async () => {
+    vi.mocked(gapscanStatus).mockResolvedValue({ ...IDLE_STATUS, log: [] });
+    renderPage();
+    await screen.findByRole("button", { name: "Lancer un scan complet" });
+    expect(screen.queryByRole("button", { name: /Vider les logs/i })).not.toBeInTheDocument();
   });
 
   it("service non configure : bouton desactive avec message explicite", async () => {

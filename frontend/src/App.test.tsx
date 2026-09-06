@@ -27,7 +27,7 @@ beforeEach(() => {
     qbittorrent_configured: false, qbittorrent_url: null,
   });
   vi.mocked(gapscanStatus).mockResolvedValue({
-    state: "idle", total: 0, processed: 0, started_at: null, finished_at: null, error: null,
+    state: "idle", total: 0, processed: 0, started_at: null, finished_at: null, error: null, log: [],
   });
   vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
 });

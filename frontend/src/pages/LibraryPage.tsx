@@ -4,6 +4,7 @@ import ActiveTransfersTray from "../components/ActiveTransfersTray";
 import { KeyValueEditor } from "../components/ListEditor";
 import UploadPrepPanel from "../components/UploadPrepPanel";
 import {
+  clearGapscanLog,
   downloadBlob,
   gapscanConfig,
   gapscanConfigWrite,
@@ -321,6 +322,15 @@ export default function LibraryPage() {
     }
   }
 
+  async function handleClearLog() {
+    try {
+      await clearGapscanLog();
+      setStatus((prev) => (prev ? { ...prev, log: [] } : prev));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Impossible de vider les logs.");
+    }
+  }
+
   const running = status?.state === "running";
   const notConfigured = config !== null && !config.tracker_configured;
   const noLibrary = config !== null && config.tracker_configured && !config.sonarr_configured && !config.radarr_configured;
@@ -586,6 +596,36 @@ export default function LibraryPage() {
                 width: status && status.total > 0 ? `${(100 * status.processed) / status.total}%` : "10%",
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {status && status.log.length > 0 && (
+        <div className="space-y-2 rounded-md border border-line bg-surface p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-ink-dim">Journal du scan</p>
+            <button
+              type="button"
+              onClick={handleClearLog}
+              className="text-xs text-ink-faint underline hover:text-ink"
+            >
+              Vider les logs
+            </button>
+          </div>
+          <div className="max-h-40 space-y-0.5 overflow-y-auto font-mono text-xs text-ink-faint">
+            {[...status.log].reverse().map((entry, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span
+                  className={`whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] ${STATUS_BADGE_CLASS[entry.status]}`}
+                >
+                  {statusLabel(entry.status, trackerDisplayName)}
+                </span>
+                <span>
+                  {entry.title} {entry.year ? `(${entry.year})` : ""}
+                  {entry.season_number ? ` S${String(entry.season_number).padStart(2, "0")}` : ""}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}
