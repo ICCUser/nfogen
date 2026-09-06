@@ -79,7 +79,9 @@ def list_library(
             )
     if sonarr is not None:
         for season in sonarr.list_season_files():
-            proc_key = upload_history_store.processed_key("series", None, season.series_id, season.season_number)
+            proc_key = upload_history_store.processed_key(
+                "series", None, season.series_id, season.season_number
+            )
             items.append(
                 LibraryItem(
                     media_type="series", title=season.title, year=season.year,

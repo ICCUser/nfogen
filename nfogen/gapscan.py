@@ -282,7 +282,9 @@ def movie_key(imdb_id: Optional[str], tmdb_id: Optional[str], title: str, year: 
     return ("movie", imdb_id or tmdb_id or title, year)
 
 
-def series_key(tvdb_id: Optional[int], imdb_id: Optional[str], title: str, season_number: Optional[int]) -> tuple:
+def series_key(
+    tvdb_id: Optional[int], imdb_id: Optional[str], title: str, season_number: Optional[int]
+) -> tuple:
     """Meme role que movie_key, cote serie/saison."""
     return ("series", tvdb_id or imdb_id or title, season_number)
 
