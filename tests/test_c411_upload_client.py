@@ -1,11 +1,17 @@
 """Tests de nfogen.c411_upload_client (AUTOMATION.md, sous-projet 5).
 Client DELIBEREMENT specifique a C411 (pas de standard partage comme
 Torznab, voir decision 4) -- verification anti-doublon dans cette tache,
-creation/mise a jour de brouillon dans la Tache 10."""
+creation/mise a jour de brouillon dans la Tache 10.
+
+`torrent`/`nfo` envoyes en multipart/form-data (voir note en tete de
+c411_upload_client.py) -- `_parse_multipart` decode le corps de requete
+capture par MockTransport avec le module standard `email`, plutot qu'une
+dependance de test supplementaire."""
 from __future__ import annotations
 
-import base64
+import email
 import json
+from email.message import Message
 
 import httpx
 import pytest
@@ -17,6 +23,15 @@ def _client_with_handler(handler) -> C411UploadClient:
     return C411UploadClient(
         api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
     )
+
+
+def _parse_multipart(request: httpx.Request) -> dict[str, Message]:
+    """Decode un corps multipart/form-data en {nom_du_champ: Message}
+    (`.get_payload(decode=True)` donne les octets bruts du champ, fichier
+    ou non)."""
+    header_bytes = f"Content-Type: {request.headers['content-type']}\r\n\r\n".encode("ascii")
+    parsed = email.message_from_bytes(header_bytes + request.read())
+    return {part.get_param("name", header="content-disposition"): part for part in parsed.get_payload()}
 
 
 def test_check_duplicates_returns_existing_releases():
@@ -74,13 +89,14 @@ def test_client_requires_api_key():
         C411UploadClient(api_key="")
 
 
-def test_create_draft_sends_base64_files_and_returns_response():
+def test_create_draft_sends_real_files_in_multipart_and_returns_response():
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/user/drafts"
         assert request.method == "POST"
-        captured["body"] = json.loads(request.content)
+        assert request.headers["content-type"].startswith("multipart/form-data")
+        captured["parts"] = _parse_multipart(request)
         return httpx.Response(201, json={"id": 555, "url": "https://c411.org/user/drafts/555"})
 
     client = _client_with_handler(handler)
@@ -95,21 +111,24 @@ def test_create_draft_sends_base64_files_and_returns_response():
     )
 
     assert result == {"id": 555, "url": "https://c411.org/user/drafts/555"}
-    body = captured["body"]
-    assert body["title"] == "Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM"
-    assert body["categoryId"] == 1
-    assert body["subcategoryId"] == 6
-    assert body["options"] == {"1": [4], "2": 10}
-    assert body["descriptionFormat"] == "standard"
-    assert base64.b64decode(body["torrent"]) == b"torrent-bytes"
-    assert base64.b64decode(body["nfo"]) == b"nfo-bytes"
+    parts = captured["parts"]
+    assert parts["title"].get_payload(decode=True) == b"Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM"
+    assert parts["categoryId"].get_payload(decode=True) == b"1"
+    assert parts["subcategoryId"].get_payload(decode=True) == b"6"
+    assert json.loads(parts["options"].get_payload(decode=True)) == {"1": [4], "2": 10}
+    assert parts["descriptionFormat"].get_payload(decode=True) == b"standard"
+    # Fichiers reels (filename + Content-Type), pas des champs texte base64.
+    assert parts["torrent"].get_filename() is not None
+    assert parts["torrent"].get_payload(decode=True) == b"torrent-bytes"
+    assert parts["nfo"].get_filename() is not None
+    assert parts["nfo"].get_payload(decode=True) == b"nfo-bytes"
 
 
 def test_create_draft_includes_optional_fields_when_given():
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        captured["body"] = json.loads(request.content)
+        captured["parts"] = _parse_multipart(request)
         return httpx.Response(201, json={"id": 555, "url": "https://c411.org/user/drafts/555"})
 
     client = _client_with_handler(handler)
@@ -119,8 +138,9 @@ def test_create_draft_includes_optional_fields_when_given():
         uploader_note="Note test", tmdb_data={"id": 27205, "type": "movie"},
     )
 
-    assert captured["body"]["uploaderNote"] == "Note test"
-    assert captured["body"]["tmdbData"] == {"id": 27205, "type": "movie"}
+    parts = captured["parts"]
+    assert parts["uploaderNote"].get_payload(decode=True) == b"Note test"
+    assert json.loads(parts["tmdbData"].get_payload(decode=True)) == {"id": 27205, "type": "movie"}
 
 
 def test_create_draft_raises_a_clear_message_on_401():
@@ -141,7 +161,8 @@ def test_update_draft_patches_the_existing_draft():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/user/drafts/555"
         assert request.method == "PATCH"
-        captured["body"] = json.loads(request.content)
+        assert request.headers["content-type"].startswith("multipart/form-data")
+        captured["parts"] = _parse_multipart(request)
         return httpx.Response(200, json={"id": 555, "url": "https://c411.org/user/drafts/555"})
 
     client = _client_with_handler(handler)
@@ -151,4 +172,4 @@ def test_update_draft_patches_the_existing_draft():
     )
 
     assert result == {"id": 555, "url": "https://c411.org/user/drafts/555"}
-    assert captured["body"]["title"] == "X updated"
+    assert captured["parts"]["title"].get_payload(decode=True) == b"X updated"

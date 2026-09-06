@@ -7,10 +7,24 @@ equivalent partage par d'autres trackers (voir AUTOMATION.md, "Principe
 directeur", et decision 4 du sous-projet 5). Reste nomme et pense comme
 specifique jusqu'a preuve du contraire (un deuxieme tracker a integrer un
 jour).
-"""
+
+`torrent`/`nfo` envoyes en `multipart/form-data` (vrais fichiers), pas en
+base64 dans un corps JSON -- incident reel, 2026-09-06 : un premier
+brouillon cree en conditions reelles a confirme que C411 accepte
+silencieusement la requete (titre/description bien enregistres) mais
+ignore les champs `torrent`/`nfo` en base64 (Resume du brouillon :
+"Fichier torrent : a fournir"). L'hypothese initiale (voir AUTOMATION.md,
+"Deux points non verifies en conditions reelles") supposait a tort le
+meme format que le corps JSON documente pour `POST /api/torrents` --
+cette derniere est elle-meme documentee en `multipart/form-data`
+(AUTOMATION.md, "Endpoint : POST .../api/torrents ... multipart/form-data").
+`/api/user/drafts` s'aligne donc sur ce format : memes noms de champs
+(`torrent`, `nfo`, `title`, `description`, `categoryId`, `subcategoryId`,
+`options`...), mais fichiers reels au lieu de base64, et `options`/
+`tmdbData` serialises en JSON (un champ multipart ne porte qu'une chaine)."""
 from __future__ import annotations
 
-import base64
+import json
 from typing import Any, Optional
 
 import httpx
@@ -72,7 +86,7 @@ class C411UploadClient:
             raise C411UploadError(f"Vérification des doublons échouée : {self._redact(exc)}") from exc
         return response.json().get("releases", [])
 
-    def _draft_body(
+    def _draft_files_and_data(
         self,
         *,
         torrent_bytes: bytes,
@@ -85,22 +99,24 @@ class C411UploadClient:
         description_format: str,
         uploader_note: Optional[str],
         tmdb_data: Optional[dict[str, Any]],
-    ) -> dict[str, Any]:
-        body: dict[str, Any] = {
-            "torrent": base64.b64encode(torrent_bytes).decode("ascii"),
-            "nfo": base64.b64encode(nfo_bytes).decode("ascii"),
+    ) -> tuple[dict[str, tuple[str, bytes, str]], dict[str, Any]]:
+        files = {
+            "torrent": ("release.torrent", torrent_bytes, "application/x-bittorrent"),
+            "nfo": ("release.nfo", nfo_bytes, "text/plain"),
+        }
+        data: dict[str, Any] = {
             "title": title,
             "description": description,
             "descriptionFormat": description_format,
             "categoryId": category_id,
             "subcategoryId": subcategory_id,
-            "options": options,
+            "options": json.dumps(options),
         }
         if uploader_note:
-            body["uploaderNote"] = uploader_note
+            data["uploaderNote"] = uploader_note
         if tmdb_data:
-            body["tmdbData"] = tmdb_data
-        return body
+            data["tmdbData"] = json.dumps(tmdb_data)
+        return files, data
 
     def _handle_draft_response(self, request_desc: str, send) -> dict[str, Any]:
         try:
@@ -139,16 +155,20 @@ class C411UploadClient:
     ) -> dict[str, Any]:
         """`POST /api/user/drafts` : cree un NOUVEAU brouillon -- n'entre
         JAMAIS en file de moderation tout seul (voir AUTOMATION.md,
-        decision 6). `torrent_bytes`/`nfo_bytes` encodes en base64 dans le
-        corps JSON (comportement documente par C411 pour cet endpoint)."""
-        body = self._draft_body(
+        decision 6). `torrent_bytes`/`nfo_bytes` envoyes en
+        `multipart/form-data` (vrais fichiers, voir note en tete de
+        module -- pas en base64 dans un corps JSON, hypothese initiale
+        infirmee en conditions reelles)."""
+        files, data = self._draft_files_and_data(
             torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=title, description=description,
             category_id=category_id, subcategory_id=subcategory_id, options=options,
             description_format=description_format, uploader_note=uploader_note, tmdb_data=tmdb_data,
         )
         return self._handle_draft_response(
             "Création du brouillon",
-            lambda: self._client.post(f"{self._base_url}/user/drafts", json=body, headers=self._headers()),
+            lambda: self._client.post(
+                f"{self._base_url}/user/drafts", files=files, data=data, headers=self._headers()
+            ),
         )
 
     def update_draft(
@@ -168,8 +188,9 @@ class C411UploadClient:
     ) -> dict[str, Any]:
         """`PATCH /api/user/drafts/{draft_id}` : met a jour un brouillon
         DEJA CREE (evite d'en accumuler des doublons vers la limite de 15
-        -- voir AUTOMATION.md, decision 6)."""
-        body = self._draft_body(
+        -- voir AUTOMATION.md, decision 6). Meme format `multipart/
+        form-data` que `create_draft` (voir note en tete de module)."""
+        files, data = self._draft_files_and_data(
             torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes, title=title, description=description,
             category_id=category_id, subcategory_id=subcategory_id, options=options,
             description_format=description_format, uploader_note=uploader_note, tmdb_data=tmdb_data,
@@ -177,6 +198,6 @@ class C411UploadClient:
         return self._handle_draft_response(
             "Mise à jour du brouillon",
             lambda: self._client.patch(
-                f"{self._base_url}/user/drafts/{draft_id}", json=body, headers=self._headers()
+                f"{self._base_url}/user/drafts/{draft_id}", files=files, data=data, headers=self._headers()
             ),
         )

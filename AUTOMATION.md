@@ -974,9 +974,10 @@ figées dans le profil, voir "Décisions") :
      `.torrent`, aucun appel réseau externe).
    - Nouveau bouton **"Envoyer à C411"**, visible après une confirmation
      locale réussie : vérifie les doublons (décision 5), rend la
-     description, puis `POST /api/user/drafts` avec `.torrent`/`.nfo`
-     encodés en base64 dans le corps JSON (comportement documenté par
-     C411 pour cet endpoint) + titre/description/catégorie/options.
+     description, puis `POST /api/user/drafts` en `multipart/form-data`
+     avec `.torrent`/`.nfo` en fichiers réels (voir "Un point vérifié en
+     conditions réelles" plus bas — l'hypothèse initiale du base64 en
+     JSON était fausse) + titre/description/catégorie/options.
    - Réponse affichée à l'utilisateur : lien direct vers le brouillon créé
      sur `c411.org` — **c'est lui qui le finalise et le soumet en
      modération**, à son rythme, avec une dernière relecture sur le vrai
@@ -1053,14 +1054,18 @@ Implémenté tel que conçu ci-dessus, plan détaillé :
   chaîne `hdlight` apparaît (insensible à la casse) dans le
   `release_name`, `"{source}"` sinon.
 
-**Deux points non vérifiés en conditions réelles, à la charge de
-l'utilisateur avant un premier envoi réel** (voir aussi la note "à
-vérifier" plus haut dans ce document) :
-1. Les noms exacts des champs du corps JSON de `POST`/`PATCH
-   /api/user/drafts` — le code suppose les mêmes noms que le formulaire
-   multipart documenté (`torrent`, `nfo`, `title`, `description`,
-   `categoryId`, `subcategoryId`, `options`…), fichiers encodés en
-   base64. À confirmer en créant un vrai brouillon.
+**Un point vérifié en conditions réelles (2026-09-06), un restant à
+vérifier, à la charge de l'utilisateur avant un premier envoi réel** (voir
+aussi la note "à vérifier" plus haut dans ce document) :
+1. ~~Les noms exacts des champs du corps JSON de `POST`/`PATCH
+   /api/user/drafts`~~ — **infirmé par un premier brouillon réel** :
+   l'hypothèse initiale (mêmes noms que le formulaire multipart documenté,
+   mais fichiers encodés en base64 dans un corps JSON) faisait accepter la
+   requête (titre/description bien enregistrés) sans jamais attacher
+   `torrent`/`nfo` au brouillon ("à fournir" côté C411). Corrigé :
+   `/api/user/drafts` s'aligne en réalité sur le même `multipart/
+   form-data` que `POST /api/torrents` — mêmes noms de champs, vrais
+   fichiers (voir `c411_upload_client.py`).
 2. `subcategory_id["movie:documentaire"]`/`["series:documentaire"]`
    pointent tous les deux vers `4` (seule valeur "Documentaire" donnée,
    pas de distinction film/série dans la liste fournie) — à confirmer via

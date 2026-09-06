@@ -243,6 +243,15 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   gagne le même `overwrite` que `stage_file`, traduit désormais en
   message clair — un titre déjà confirmé/envoyé voit aussi son `.torrent`
   et son `.nfo` protégés (jamais retouchés), comme le fichier média.
+- **"Envoyer à C411" créait un brouillon incomplet** : le titre était bien
+  enregistré mais `.torrent`/`.nfo` restaient "à fournir" côté C411
+  (retour utilisateur, 2026-09-06, sur un premier envoi réel) — l'API
+  `POST`/`PATCH /api/user/drafts` acceptait silencieusement les fichiers
+  encodés en base64 dans le corps JSON (hypothèse initiale, jamais
+  vérifiée en conditions réelles, voir AUTOMATION.md) sans les attacher
+  au brouillon. `c411_upload_client.py` envoie désormais `torrent`/`nfo`
+  en `multipart/form-data` (vrais fichiers), le même format que celui
+  documenté pour `POST /api/torrents`.
 
 ### Modifié
 
