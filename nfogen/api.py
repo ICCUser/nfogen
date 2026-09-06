@@ -932,17 +932,27 @@ def gapscan_library_endpoint(
     q: Optional[str] = Query(None),
     media_type: Optional[str] = Query(None),
     genre: Optional[str] = Query(None),
+    tracker_genre: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
     added_since_days: Optional[float] = Query(None),
     processed: Optional[bool] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
+    profile: str = Query("c411"),
 ) -> dict[str, Any]:
     """Inventaire local Radarr/Sonarr, ZERO appel tracker (AUTOMATION.md,
     sous-projet 8) -- rechargement quasi instantane, contrairement a
     POST /gapscan/run. `q` : recherche texte sur le titre (insensible a la
-    casse, sous-chaine). `added_since_days` : ne garde que les items
-    ajoutes il y a moins de N jours (ignore les items sans added_at
-    connu). `processed` : filtre sur already_processed."""
+    casse, sous-chaine). `genre` : genres Radarr/Sonarr (LibraryItem.genres).
+    `tracker_genre` : categorie C411 du dernier scan connu ("anime"/
+    "documentaire", voir gapscan.genre_of) -- DISTINCT de `genre`, les deux
+    classifications restent independantes. `status` : statut du dernier
+    scan connu (une valeur de GapStatus, ou "not_verified" pour les items
+    jamais scannes). `added_since_days` : ne garde que les items ajoutes
+    il y a moins de N jours (ignore les items sans added_at connu).
+    `processed` : filtre sur already_processed. `profile` : quel profil de
+    tracker pour classer `tracker_genre` (fusion Bibliotheque/Scan, retour
+    utilisateur 2026-09-06 : les deux pages faisaient doublon)."""
     _require_gapscan_available()
     sonarr_config = gapscan_config_store.effective_sonarr()
     sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
@@ -955,7 +965,9 @@ def gapscan_library_endpoint(
             "(NFOGEN_SONARR_URL/_API_KEY et/ou NFOGEN_RADARR_URL/_API_KEY, ou PUT /gapscan/config).",
         )
     try:
-        items = gapscan_library.list_library(radarr=radarr, sonarr=sonarr)
+        items = gapscan_library.list_library(
+            radarr=radarr, sonarr=sonarr, previous_results=gapscan_runner.results(), profile=profile
+        )
     except (RadarrError, SonarrError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
@@ -971,6 +983,13 @@ def gapscan_library_endpoint(
         items = [i for i in items if i.media_type == media_type]
     if genre is not None:
         items = [i for i in items if genre in i.genres]
+    if tracker_genre is not None:
+        items = [i for i in items if i.tracker_genre == tracker_genre]
+    if status is not None:
+        if status == "not_verified":
+            items = [i for i in items if i.status is None]
+        else:
+            items = [i for i in items if i.status == status]
     if added_since_days is not None:
         cutoff = time.time() - added_since_days * 86400
         items = [i for i in items if i.added_at is not None and i.added_at >= cutoff]

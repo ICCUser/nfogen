@@ -1947,6 +1947,85 @@ def test_gapscan_library_paginates(reload_api, monkeypatch):
     assert len(body["items"]) == 2
 
 
+# --------------------------------------------------------------------------- #
+# Fusion Bibliotheque/Scan (retour utilisateur, 2026-09-06 : "ca fait doublon")
+# -- GET /gapscan/library reprend le statut tracker du dernier scan connu.
+# --------------------------------------------------------------------------- #
+def test_gapscan_library_status_is_not_verified_before_any_scan(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    # gapscan_runner est un singleton de module, pas reinitialise par
+    # reload_api (meme convention que commit_job_runner) -- rechargement
+    # explicite pour partir d'un etat "jamais scanne", independamment de
+    # l'ordre des tests.
+    importlib.reload(mod.gapscan_runner)
+    monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
+    client = TestClient(mod.app)
+
+    body = client.get("/gapscan/library").json()
+    assert body["items"][0]["status"] is None
+
+
+def test_gapscan_library_includes_known_tracker_status_after_a_scan(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    body = client.get("/gapscan/library").json()
+    assert body["items"][0]["status"] == "absent"  # _FakeGapscanC411 ne renvoie jamais de match
+
+
+def test_gapscan_library_filters_by_status_not_verified(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    importlib.reload(mod.gapscan_runner)
+    monkeypatch.setattr(mod, "RadarrClient", _FakeGapscanRadarr)
+    client = TestClient(mod.app)
+
+    assert client.get("/gapscan/library", params={"status": "not_verified"}).json()["total"] == 1
+    assert client.get("/gapscan/library", params={"status": "absent"}).json()["total"] == 0
+
+
+def test_gapscan_library_filters_by_status_after_a_scan(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    assert client.get("/gapscan/library", params={"status": "absent"}).json()["total"] == 1
+    assert client.get("/gapscan/library", params={"status": "not_verified"}).json()["total"] == 0
+
+
+def test_gapscan_library_filters_by_tracker_genre(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(monkeypatch, mod)
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    # _FakeGapscanC411 ne renvoie jamais de match -> jamais de genre tracker connu.
+    assert client.get("/gapscan/library", params={"tracker_genre": "anime"}).json()["total"] == 0
+
+
 class _FakeGapscanRadarrThreeMovies(_FakeGapscanRadarr):
     def list_movie_files(self):
         return [
