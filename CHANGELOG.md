@@ -191,6 +191,16 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   jamais touché par une mise à jour) et le pré-remplit dans
   `gapscan_config.json` UNIQUEMENT si aucun `staging_dir` n'est déjà
   choisi.
+- **"Confirmer" plantait avec `[Errno 17] File exists`** quand un fichier
+  restait dans le dossier de mise en scène après un essai précédent
+  (retour utilisateur, 2026-09-06). `commit_upload()` s'appuie désormais
+  sur l'historique "déjà traité" (sous-projet 8) pour décider : un titre
+  jamais confirmé/envoyé avec succès est régénéré sans risque (toujours
+  depuis la source locale déjà sur le NAS, **jamais un nouveau
+  téléchargement**) ; un titre déjà confirmé/envoyé — potentiellement en
+  cours de seed — fait lever un message d'erreur clair au lieu d'un
+  écrasement silencieux (l'intégration qBittorrent/Transmission, sous-projet
+  6, n'existe pas encore pour vérifier réellement l'état de seed).
 
 ### Modifié
 
