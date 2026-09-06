@@ -137,6 +137,7 @@ it("Confirmer demarre une tache, affiche le resultat une fois terminee (done)", 
     "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
     ONE_GROUP[0].files,
     "c411",
+    { mediaType: "movie", radarrMovieId: undefined, sonarrSeriesId: undefined, seasonNumber: undefined },
   );
   expect(commitJobStatus).toHaveBeenCalledWith("job-1");
 });

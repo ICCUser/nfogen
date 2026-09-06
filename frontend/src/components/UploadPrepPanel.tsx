@@ -129,7 +129,12 @@ export default function UploadPrepPanel({
     if (!group.release_name) return;
     setCommitErrors((prev) => ({ ...prev, [index]: "" }));
     try {
-      const { job_id } = await prepareUploadCommit(group.release_name, group.files, profile);
+      const { job_id } = await prepareUploadCommit(group.release_name, group.files, profile, {
+        mediaType,
+        radarrMovieId: radarrMovieId ?? undefined,
+        sonarrSeriesId: sonarrSeriesId ?? undefined,
+        seasonNumber: seasonNumber ?? undefined,
+      });
       // L'intervalle est enregistre AVANT le premier appel : si ce premier
       // appel atteint deja un etat terminal (job termine tres vite), son
       // propre stopPolling() doit pouvoir le retrouver et l'annuler.
