@@ -61,8 +61,10 @@ try:
         gapscan_library,
         gapscan_runner,
         tracker_profile,
+        upload_history_store,
         upload_prep,
     )
+    from .qbittorrent_client import QBittorrentClient, QBittorrentError
     from .radarr_client import RadarrClient, RadarrError
     from .sonarr_client import SonarrClient, SonarrError
     from .torznab_client import TorznabClient, TorznabError
@@ -1003,6 +1005,57 @@ def gapscan_library_endpoint(
     start = (page - 1) * page_size
     page_items = items[start : start + page_size]
     return {"items": [asdict(i) for i in page_items], "total": total}
+
+
+@app.get("/gapscan/seed-queue", dependencies=[Depends(require_token)])
+def gapscan_seed_queue() -> list[dict[str, Any]]:
+    """Titres envoyes a C411 (voir POST /gapscan/prepare-upload/send) mais
+    pas encore ajoutes a un client de seed -- AUTOMATION.md, sous-projet
+    6. Aucun appel reseau : lecture seule de l'historique local."""
+    _require_gapscan_available()
+    return upload_history_store.pending_seed_entries()
+
+
+@app.post("/gapscan/seed-queue/add", dependencies=[Depends(require_token)])
+async def gapscan_seed_queue_add(
+    key: str = Form(...),
+    torrent: UploadFile = File(...),
+) -> dict[str, str]:
+    """Ajoute le .torrent RE-SIGNE (deja telecharge manuellement par
+    l'utilisateur -- voir AUTOMATION.md, sous-projet 6, aucune
+    recuperation automatique possible) au client de seed configure,
+    pointe sur le contenu DEJA en scene (jamais retelecharge)."""
+    _require_gapscan_available()
+    qbittorrent_config = gapscan_config_store.effective_qbittorrent()
+    if qbittorrent_config is None:
+        raise HTTPException(status_code=400, detail="qBittorrent non configuré (PUT /gapscan/config).")
+
+    entries = {e["key"]: e for e in upload_history_store.pending_seed_entries()}
+    entry = entries.get(key)
+    if entry is None:
+        raise HTTPException(
+            status_code=404, detail="Titre inconnu ou déjà ajouté à un client de seed."
+        )
+    staged_path = entry.get("staged_path")
+    if not staged_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Chemin de mise en scène inconnu pour ce titre (confirmé avant l'ajout de ce champ ?).",
+        )
+
+    save_path = str(Path(staged_path).parent)
+    torrent_bytes = await torrent.read()
+    qb = QBittorrentClient(*qbittorrent_config)
+    try:
+        qb.add_torrent(torrent_bytes, save_path, filename=torrent.filename or "release.torrent")
+    except QBittorrentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        qb.close()
+
+    decoded_key = tuple(json.loads(key))
+    upload_history_store.record(decoded_key, kind="seeding", release_name=entry["release_name"])
+    return {"status": "added"}
 
 
 # --------------------------------------------------------------------------- #

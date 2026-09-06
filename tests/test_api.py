@@ -2224,3 +2224,167 @@ def test_gapscan_run_defaults_to_c411_profile_when_none_given(reload_api, monkey
     resp = client.post("/gapscan/run")
     assert resp.status_code == 200
     _wait_gapscan_done(client)
+
+
+# --------------------------------------------------------------------------- #
+# GET/POST /gapscan/seed-queue (AUTOMATION.md, sous-projet 6) : mise en seed
+# apres upload -- import manuel du .torrent re-signe (aucune API C411 ne
+# permet de le recuperer automatiquement, verifie en conditions reelles).
+# --------------------------------------------------------------------------- #
+class _FakeQBittorrentClient:
+    instances: list["_FakeQBittorrentClient"] = []
+
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.added: list[tuple] = []
+        _FakeQBittorrentClient.instances.append(self)
+
+    def add_torrent(self, torrent_bytes, save_path, filename="release.torrent"):
+        self.added.append((torrent_bytes, save_path, filename))
+
+    def close(self):
+        pass
+
+
+def test_gapscan_seed_queue_lists_pending_entries(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_UPLOAD_HISTORY_FILE=str(tmp_path / "history.json"),
+    )
+    mod.upload_history_store.record(
+        ("movie", 42), kind="committed", release_name="R", staged_path=str(tmp_path / "staging" / "R.mkv")
+    )
+    mod.upload_history_store.record(("movie", 42), kind="sent", release_name="R")
+    client = TestClient(mod.app)
+
+    resp = client.get("/gapscan/seed-queue")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["release_name"] == "R"
+
+
+def test_gapscan_seed_queue_add_400_without_qbittorrent_configured(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_UPLOAD_HISTORY_FILE=str(tmp_path / "history.json"),
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+    resp = client.post(
+        "/gapscan/seed-queue/add",
+        data={"key": '["movie",42]'},
+        files={"torrent": ("R.torrent", b"data", "application/x-bittorrent")},
+    )
+    assert resp.status_code == 400
+
+
+def _configure_qbittorrent(client: TestClient) -> None:
+    put = client.put(
+        "/gapscan/config",
+        json={
+            "qbittorrent_url": "http://qbittorrent.local:8080",
+            "qbittorrent_username": "admin", "qbittorrent_password": "secret",
+        },
+    )
+    assert put.status_code == 200
+
+
+def test_gapscan_seed_queue_add_success(reload_api, monkeypatch, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_UPLOAD_HISTORY_FILE=str(tmp_path / "history.json"),
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+    _configure_qbittorrent(client)
+
+    staged_path = str(tmp_path / "staging" / "R.mkv")
+    mod.upload_history_store.record(
+        ("movie", 42), kind="committed", release_name="R", staged_path=staged_path
+    )
+    mod.upload_history_store.record(("movie", 42), kind="sent", release_name="R")
+
+    _FakeQBittorrentClient.instances.clear()
+    monkeypatch.setattr(mod, "QBittorrentClient", _FakeQBittorrentClient)
+
+    key = mod.upload_history_store.key_str(("movie", 42))
+    resp = client.post(
+        "/gapscan/seed-queue/add",
+        data={"key": key},
+        files={"torrent": ("R.torrent", b"torrent-bytes", "application/x-bittorrent")},
+    )
+
+    assert resp.status_code == 200
+    assert _FakeQBittorrentClient.instances[0].added == [
+        (b"torrent-bytes", str(tmp_path / "staging"), "R.torrent")
+    ]
+    # Marque "seeding" : disparait de la file d'attente.
+    assert client.get("/gapscan/seed-queue").json() == []
+
+
+def test_gapscan_seed_queue_add_404_unknown_key(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_UPLOAD_HISTORY_FILE=str(tmp_path / "history.json"),
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+    _configure_qbittorrent(client)
+
+    resp = client.post(
+        "/gapscan/seed-queue/add",
+        data={"key": '["movie",999]'},
+        files={"torrent": ("R.torrent", b"x", "application/x-bittorrent")},
+    )
+    assert resp.status_code == 404
+
+
+def test_gapscan_seed_queue_add_400_missing_staged_path(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_UPLOAD_HISTORY_FILE=str(tmp_path / "history.json"),
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+    _configure_qbittorrent(client)
+    # "sent" sans "committed" prealable -- staged_path introuvable.
+    mod.upload_history_store.record(("movie", 42), kind="sent", release_name="R")
+    key = mod.upload_history_store.key_str(("movie", 42))
+
+    resp = client.post(
+        "/gapscan/seed-queue/add",
+        data={"key": key},
+        files={"torrent": ("R.torrent", b"x", "application/x-bittorrent")},
+    )
+    assert resp.status_code == 400
+
+
+def test_gapscan_seed_queue_add_400_on_qbittorrent_error(reload_api, monkeypatch, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_UPLOAD_HISTORY_FILE=str(tmp_path / "history.json"),
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+    _configure_qbittorrent(client)
+
+    staged_path = str(tmp_path / "staging" / "R.mkv")
+    mod.upload_history_store.record(
+        ("movie", 42), kind="committed", release_name="R", staged_path=staged_path
+    )
+    mod.upload_history_store.record(("movie", 42), kind="sent", release_name="R")
+
+    class _FailingQBittorrentClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def add_torrent(self, *args, **kwargs):
+            raise mod.QBittorrentError("connexion refusée")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(mod, "QBittorrentClient", _FailingQBittorrentClient)
+    key = mod.upload_history_store.key_str(("movie", 42))
+
+    resp = client.post(
+        "/gapscan/seed-queue/add",
+        data={"key": key},
+        files={"torrent": ("R.torrent", b"x", "application/x-bittorrent")},
+    )
+    assert resp.status_code == 400
