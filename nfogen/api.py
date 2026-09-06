@@ -1024,6 +1024,10 @@ class PrepareUploadCommitRequest(BaseModel):
     release_name: str
     files: list[PrepareUploadFile]
     profile: str = "c411"
+    media_type: str = "movie"
+    radarr_movie_id: Optional[int] = None
+    sonarr_series_id: Optional[int] = None
+    season_number: Optional[int] = None
 
 
 @app.post("/gapscan/prepare-upload/commit", dependencies=[Depends(require_token)])
@@ -1033,12 +1037,20 @@ def gapscan_prepare_upload_commit(req: PrepareUploadCommitRequest) -> dict[str, 
     suivi via GET /gapscan/commit-jobs/{job_id}. Erreurs de configuration
     (staging_dir/announce_url manquants) restent surfacees immediatement
     (voir upload_prep.resolve_staging_config, verifie AVANT de demarrer la
-    tache, dans commit_job_runner.start())."""
+    tache, dans commit_job_runner.start()).
+
+    `media_type`/`radarr_movie_id`/`sonarr_series_id`/`season_number`
+    (AUTOMATION.md, sous-projet 8, tous optionnels) : identifient le titre
+    pour l'historique "deja traite" -- voir commit_job_runner.start()."""
     _require_gapscan_available()
     files = [
         upload_prep.ProposedFile(source_path=f.source_path, staged_name=f.staged_name) for f in req.files
     ]
-    job_id = _run_upload_prep(commit_job_runner.start, req.release_name, files, profile=req.profile)
+    job_id = _run_upload_prep(
+        commit_job_runner.start, req.release_name, files, profile=req.profile,
+        media_type=req.media_type, radarr_movie_id=req.radarr_movie_id,
+        sonarr_series_id=req.sonarr_series_id, season_number=req.season_number,
+    )
     return {"job_id": job_id}
 
 

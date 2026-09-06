@@ -1453,6 +1453,48 @@ def test_prepare_upload_commit_real_flow(reload_api, tmp_path):
     assert (staging_dir / "Movie.2020.1080p.x264-TEAM.nfo").is_file()
 
 
+def test_prepare_upload_commit_relays_identifiers(reload_api, monkeypatch):
+    captured: dict = {}
+
+    def fake_start(release_name, files, profile="c411", **kwargs):
+        captured.update(kwargs)
+        return "job-1"
+
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod.commit_job_runner, "start", fake_start)
+    client = TestClient(mod.app)
+
+    resp = client.post(
+        "/gapscan/prepare-upload/commit",
+        json={
+            "release_name": "R", "files": [],
+            "media_type": "movie", "radarr_movie_id": 42,
+        },
+    )
+    assert resp.status_code == 200
+    assert captured["media_type"] == "movie"
+    assert captured["radarr_movie_id"] == 42
+
+
+def test_prepare_upload_commit_identifiers_default_to_none(reload_api, monkeypatch):
+    captured: dict = {}
+
+    def fake_start(release_name, files, profile="c411", **kwargs):
+        captured.update(kwargs)
+        return "job-1"
+
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod.commit_job_runner, "start", fake_start)
+    client = TestClient(mod.app)
+
+    resp = client.post(
+        "/gapscan/prepare-upload/commit", json={"release_name": "R", "files": []},
+    )
+    assert resp.status_code == 200
+    assert captured["radarr_movie_id"] is None
+    assert captured["sonarr_series_id"] is None
+
+
 def test_commit_job_status_404_for_unknown_job(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN=None)
     client = TestClient(mod.app)
