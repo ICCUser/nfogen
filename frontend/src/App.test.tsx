@@ -60,4 +60,13 @@ describe("App", () => {
     await screen.findByRole("link", { name: /Bibliothèque/i });
     expect(screen.queryByRole("link", { name: /^Scan /i })).not.toBeInTheDocument();
   });
+
+  it("affiche un lien de navigation vers la file de seed (AUTOMATION.md, sous-projet 6)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/library"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("link", { name: /À mettre en seed/i })).toBeInTheDocument();
+  });
 });

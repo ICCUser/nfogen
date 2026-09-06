@@ -4,6 +4,7 @@ import GeneratePage from "./pages/GeneratePage";
 import LibraryPage from "./pages/LibraryPage";
 import ProfilesListPage from "./pages/ProfilesListPage";
 import ProfileEditorPage from "./pages/ProfileEditorPage";
+import SeedQueuePage from "./pages/SeedQueuePage";
 import SettingsPage from "./pages/SettingsPage";
 import { ProfileProvider, useProfile } from "./ProfileContext";
 
@@ -53,6 +54,9 @@ function AppShell() {
             <NavLink to="/library" className={navClass}>
               Bibliothèque
             </NavLink>
+            <NavLink to="/seed-queue" className={navClass}>
+              À mettre en seed
+            </NavLink>
             <NavLink to="/settings" className={navClass}>
               Réglages
             </NavLink>
@@ -72,6 +76,7 @@ function AppShell() {
             <Route path="/profiles/:name" element={<ProfileEditorPage mode="edit" />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/library" element={<LibraryPage />} />
+            <Route path="/seed-queue" element={<SeedQueuePage />} />
           </Routes>
         </ErrorBoundary>
       </main>
