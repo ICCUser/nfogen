@@ -5,10 +5,13 @@ une session navigateur, pas la cle API, verifie en conditions reelles
 2026-09-06 : aucune automatisation possible cote recuperation) et le
 pointer sur le contenu DEJA en scene par nfogen -- jamais retelecharge
 par ce module, seulement verifie/seede par qBittorrent lui-meme.
-"""
+
+`list_torrents()` (retour utilisateur, 2026-09-06 : voir ce qui est
+actuellement en seed) est lecture seule -- aucune ecriture, aucune
+modification de la file qBittorrent."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -78,3 +81,17 @@ class QBittorrentClient:
             raise QBittorrentError(f"Ajout du torrent à qBittorrent échoué : {exc}") from exc
         if response.text.strip() != "Ok.":
             raise QBittorrentError(f"qBittorrent a refusé le torrent : {response.text.strip()}")
+
+    def list_torrents(self) -> list[dict[str, Any]]:
+        """`GET /api/v2/torrents/info` brut -- lecture seule, pour afficher
+        ce qui est actuellement en seed (nom, taille, progression, ratio,
+        statut, vitesse d'upload...). Leve `QBittorrentError` en cas
+        d'echec (connexion ou authentification)."""
+        if not self._logged_in:
+            self._login()
+        try:
+            response = self._client.get(f"{self._base_url}/api/v2/torrents/info")
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise QBittorrentError(f"Lecture des torrents qBittorrent échouée : {exc}") from exc
+        return response.json()

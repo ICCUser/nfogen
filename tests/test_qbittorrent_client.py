@@ -90,3 +90,52 @@ def test_requires_base_url_username_and_password():
         QBittorrentClient(base_url="http://x", username="", password="b")
     with pytest.raises(QBittorrentError):
         QBittorrentClient(base_url="http://x", username="a", password="")
+
+
+# --------------------------------------------------------------------------- #
+# list_torrents (retour utilisateur, 2026-09-06 : voir ce qui est
+# actuellement en seed via qBittorrent).
+# --------------------------------------------------------------------------- #
+TORRENTS_INFO = [
+    {
+        "name": "Movie.2020.1080p.x264-TEAM", "size": 4294967296, "progress": 1.0,
+        "ratio": 1.42, "state": "uploading", "upspeed": 512000, "added_on": 1700000000,
+    },
+]
+
+
+def test_list_torrents_logs_in_then_lists():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path == "/api/v2/auth/login":
+            return httpx.Response(200, text="Ok.")
+        assert request.url.path == "/api/v2/torrents/info"
+        return httpx.Response(200, json=TORRENTS_INFO)
+
+    client = _client(handler)
+    torrents = client.list_torrents()
+
+    assert calls == ["/api/v2/auth/login", "/api/v2/torrents/info"]
+    assert torrents == TORRENTS_INFO
+
+
+def test_list_torrents_login_failure_raises_qbittorrent_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="Fails.")
+
+    client = _client(handler)
+    with pytest.raises(QBittorrentError, match="[Aa]uthentification"):
+        client.list_torrents()
+
+
+def test_list_torrents_wraps_http_errors():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v2/auth/login":
+            return httpx.Response(200, text="Ok.")
+        return httpx.Response(503, text="down")
+
+    client = _client(handler)
+    with pytest.raises(QBittorrentError, match="[ée]chou"):
+        client.list_torrents()
