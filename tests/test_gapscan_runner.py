@@ -145,6 +145,68 @@ def test_start_runs_scan_and_reports_done_with_results():
     assert results[0].media_type == "movie"
 
 
+def test_start_populates_the_log_with_each_scanned_title():
+    """Retour utilisateur (2026-09-06) : voir en direct ce que le scan est
+    en train de faire, pas seulement un compteur."""
+    c411 = FakeC411(movie_results=[])
+    radarr = FakeRadarr(movies=[_movie()])
+
+    gapscan_runner.start(c411, radarr=radarr)
+    _wait_until_not_running()
+
+    log = gapscan_runner.status()["log"]
+    assert len(log) == 1
+    assert log[0]["title"] == "Matrix"
+    assert log[0]["media_type"] == "movie"
+    assert log[0]["status"] == "absent"  # FakeC411 ne renvoie jamais de match
+
+
+def test_log_persists_after_the_scan_completes():
+    """Le journal ne doit PAS se vider tout seul a la fin du scan -- seul
+    un nouveau scan (start()) ou un vidage explicite (clear_log()) le
+    reinitialise (retour utilisateur, 2026-09-06 : "je souhaite pouvoir
+    lire les logs, que ca se reset pas a la fin")."""
+    c411 = FakeC411(movie_results=[])
+    radarr = FakeRadarr(movies=[_movie()])
+
+    gapscan_runner.start(c411, radarr=radarr)
+    _wait_until_not_running()
+
+    assert gapscan_runner.status()["state"] == "done"
+    assert len(gapscan_runner.status()["log"]) == 1
+
+
+def test_start_resets_the_log_from_the_previous_scan():
+    c411_1 = FakeC411(movie_results=[])
+    radarr_1 = FakeRadarr(movies=[_movie(title="Matrix")])
+    gapscan_runner.start(c411_1, radarr=radarr_1)
+    _wait_until_not_running()
+    assert len(gapscan_runner.status()["log"]) == 1
+
+    c411_2 = FakeC411(movie_results=[])
+    radarr_2 = FakeRadarr(movies=[_movie(title="Inception"), _movie(title="Interstellar")])
+    gapscan_runner.start(c411_2, radarr=radarr_2)
+    _wait_until_not_running()
+
+    log = gapscan_runner.status()["log"]
+    assert len(log) == 2
+    assert {entry["title"] for entry in log} == {"Inception", "Interstellar"}
+
+
+def test_clear_log_empties_the_log_without_touching_other_state():
+    c411 = FakeC411(movie_results=[])
+    radarr = FakeRadarr(movies=[_movie()])
+    gapscan_runner.start(c411, radarr=radarr)
+    _wait_until_not_running()
+
+    gapscan_runner.clear_log()
+
+    status = gapscan_runner.status()
+    assert status["log"] == []
+    assert status["state"] == "done"
+    assert status["total"] == 1
+
+
 def test_start_closes_clients_after_completion():
     c411 = FakeC411()
     radarr = FakeRadarr(movies=[_movie()])

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
@@ -45,7 +45,16 @@ class _Progress:
     started_at: Optional[float] = None
     finished_at: Optional[float] = None
     error: Optional[str] = None
+    # Journal en direct des derniers titres reellement interroges sur le
+    # tracker (retour utilisateur, 2026-09-06 : voir ce que le scan est en
+    # train de faire, pas seulement un compteur) -- NE SE VIDE PAS a la
+    # fin du scan (seul un nouveau scan ou clear_log() le reinitialise),
+    # borne a _MAX_LOG_ENTRIES pour rester en memoire raisonnable sur une
+    # tres grosse bibliotheque.
+    log: list[dict[str, Any]] = field(default_factory=list)
 
+
+_MAX_LOG_ENTRIES = 200
 
 _lock = threading.Lock()
 _progress = _Progress()
@@ -84,7 +93,16 @@ def status() -> dict[str, Any]:
             "started_at": p.started_at,
             "finished_at": p.finished_at,
             "error": p.error,
+            "log": list(p.log),
         }
+
+
+def clear_log() -> None:
+    """Vide le journal en direct SANS toucher au reste de l'etat (statut,
+    resultats...) -- bouton "Vider les logs" cote frontend (retour
+    utilisateur, 2026-09-06)."""
+    with _lock:
+        _progress.log = []
 
 
 def results(
@@ -128,8 +146,19 @@ def _run(
                 _progress.processed = done
                 _progress.total = total
 
+        def on_item(result: GapResult) -> None:
+            with _lock:
+                _progress.log.append(
+                    {
+                        "title": result.title, "year": result.year, "media_type": result.media_type,
+                        "season_number": result.season_number, "status": result.status.value,
+                    }
+                )
+                if len(_progress.log) > _MAX_LOG_ENTRIES:
+                    _progress.log = _progress.log[-_MAX_LOG_ENTRIES:]
+
         collected = run_gapscan(
-            c411, radarr=radarr, sonarr=sonarr, on_progress=on_progress,
+            c411, radarr=radarr, sonarr=sonarr, on_progress=on_progress, on_item=on_item,
             previous_results=previous_results, only=only, max_age_seconds=max_age_seconds,
             sonarr_path_mappings=sonarr_path_mappings, radarr_path_mappings=radarr_path_mappings,
             selection=selection,
@@ -202,6 +231,7 @@ def start(
         _progress.error = None
         _progress.total = 0
         _progress.processed = 0
+        _progress.log = []
     thread = threading.Thread(
         target=_run,
         args=(
