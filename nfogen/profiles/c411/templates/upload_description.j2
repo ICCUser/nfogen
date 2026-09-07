@@ -2,28 +2,38 @@
 
 {% if poster_url %}[center][img]{{ poster_url }}[/img][/center]
 
-{% endif %}[h2]🎬 Informations[/h2]
+{% endif %}[img]{{ banner_informations }}[/img]
 {% if genres %}[b]Genres :[/b] {{ genres|join(", ") }}
+{% endif %}{% if country %}[b]Pays :[/b] {{ country }}
 {% endif %}{% if release_date %}[b]Date de sortie :[/b] {{ release_date }}
 {% endif %}{% if runtime_display %}[b]Durée :[/b] {{ runtime_display }}
 {% endif %}{% if certification %}[b]Classification :[/b] {{ certification }}
 {% endif %}{% if distributor %}[b]Studio/Chaîne :[/b] {{ distributor }}
+{% endif %}{% if creators %}[b]Créateur(s) :[/b] {{ creators|join(", ") }}
 {% endif %}{% if directors %}[b]Réalisateur(s) :[/b] {{ directors|join(", ") }}
+{% endif %}{% if tmdb_rating %}[b]Note TMDB :[/b] {{ tmdb_rating }}/10
+{% endif %}{% if imdb_url %}[b]IMDB :[/b] [url={{ imdb_url }}]Fiche[/url]
 {% endif %}{% if cast %}[b]Acteurs :[/b] {{ cast|join(", ") }}
 {% endif %}
-[h2]📖 Synopsis[/h2]
+[img]{{ banner_synopsis }}[/img]
 {% if overview %}{{ overview }}{% else %}(synopsis non disponible){% endif %}
 
-[h2]⚙️ Détails techniques[/h2]
+[img]{{ banner_details_techniques }}[/img]
 [list]
 [*]Vidéo : {{ video_codec }} {{ resolution }}p ({{ source }})
 {% if video_bit_rate_kbps %}[*]Débit vidéo : {{ video_bit_rate_kbps }} kb/s
-{% endif %}{% if audio_languages %}[*]Audio : {{ audio_languages|join(", ") }}
-{% endif %}{% if subtitle_languages %}[*]Sous-titres : {{ subtitle_languages|join(", ") }}
 {% endif %}[/list]
-
-[h2]📥 Téléchargement[/h2]
+{% if audio_rows %}[table][tr][th]#[/th][th]Langue[/th][th]Canaux[/th][th]Codec[/th][th]Débit[/th][th]Sample Rate[/th][/tr]
+{% for a in audio_rows %}[tr][td]{{ loop.index }}[/td][td]{% if a.flag %}[img=20x15]{{ a.flag }}[/img] {% endif %}{{ a.language }}[/td][td]{{ a.channels }}[/td][td]{{ a.codec }}[/td][td]{{ a.bit_rate_kbps }} kb/s[/td][td]{{ a.sampling_khz }} kHz[/td][/tr]
+{% endfor %}[/table]
+{% endif %}{% if subtitle_rows %}[table][tr][th]#[/th][th]Langue[/th][th]Type[/th][/tr]
+{% for s in subtitle_rows %}[tr][td]{{ loop.index }}[/td][td]{% if s.flag %}[img=20x15]{{ s.flag }}[/img] {% endif %}{{ s.language }}[/td][td]{{ "FORCÉ" if s.forced else "COMPLET" }}[/td][/tr]
+{% endfor %}[/table]
+{% endif %}
+[img]{{ banner_telechargement }}[/img]
 [b]Release :[/b] {{ release_name }}
 {% if team %}[b]Team :[/b] {{ team }}
 {% endif %}[b]Nombre de fichier(s) :[/b] {{ file_count }}
 [b]Taille totale :[/b] {{ total_size_bytes|human_bin }}
+
+[i]Généré par nfogen.nfo[/i]

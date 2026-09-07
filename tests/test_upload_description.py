@@ -6,6 +6,13 @@ from __future__ import annotations
 
 from nfogen.upload_description import render_upload_description
 
+_BANNERS = {
+    "banner_informations": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/informations.png",
+    "banner_synopsis": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/synopsis.png",
+    "banner_details_techniques": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/details-techniques.png",
+    "banner_telechargement": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/telechargement.png",
+}
+
 FULL_CONTEXT = {
     "title": "Inception",
     "overview": "Dom Cobb est un voleur experimente...",
@@ -13,11 +20,20 @@ FULL_CONTEXT = {
     "genres": ["Science-Fiction", "Action"],
     "directors": ["Christopher Nolan"],
     "cast": ["Leonardo DiCaprio", "Joseph Gordon-Levitt"],
+    "country": "United States of America",
+    "creators": [],
+    "tmdb_rating": 8.4,
+    "imdb_url": "https://www.imdb.com/title/tt1375666/",
     "resolution": "2160",
     "source": "BluRay",
     "video_codec": "hevc",
-    "audio_languages": ["French", "English"],
-    "subtitle_languages": ["French"],
+    "audio_rows": [
+        {"flag": "https://flagcdn.com/20x15/fr.png", "language": "Français",
+         "channels": "5.1", "codec": "AC-3", "bit_rate_kbps": 448, "sampling_khz": 48.0},
+    ],
+    "subtitle_rows": [
+        {"flag": "https://flagcdn.com/20x15/fr.png", "language": "Français", "forced": True},
+    ],
     "video_bit_rate_kbps": 12000,
     "release_date": "2010-07-15",
     "runtime_display": "2h28min",
@@ -27,6 +43,7 @@ FULL_CONTEXT = {
     "team": "TEAM",
     "file_count": 1,
     "total_size_bytes": 21474836480,
+    **_BANNERS,
 }
 
 # Champs TOUJOURS presents en conditions reelles (calcules par
@@ -35,6 +52,7 @@ FULL_CONTEXT = {
 # tout context de test doit les inclure, meme minimal.
 _ALWAYS_PRESENT = {
     "release_name": "X.2020.1080p.BluRay-TEAM", "file_count": 1, "total_size_bytes": 1_000_000_000,
+    **_BANNERS,
 }
 
 
@@ -51,6 +69,29 @@ def test_renders_genres_directors_cast():
     assert "Leonardo DiCaprio" in out
 
 
+def test_renders_banners():
+    out = render_upload_description("c411", FULL_CONTEXT)
+    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/informations.png" in out
+    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/synopsis.png" in out
+    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/details-techniques.png" in out
+    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/telechargement.png" in out
+
+
+def test_renders_country_creators_rating_imdb():
+    out = render_upload_description("c411", FULL_CONTEXT)
+    assert "United States of America" in out
+    assert "8.4/10" in out
+    assert "https://www.imdb.com/title/tt1375666/" in out
+
+
+def test_renders_audio_and_subtitle_tables_with_flags():
+    out = render_upload_description("c411", FULL_CONTEXT)
+    assert "[table]" in out
+    assert "flagcdn.com/20x15/fr.png" in out
+    assert "5.1" in out and "AC-3" in out and "448 kb/s" in out and "48.0 kHz" in out
+    assert "FORCÉ" in out
+
+
 def test_renders_release_date_runtime_certification_distributor():
     """Champs confirmes disponibles en conditions reelles le 2026-09-06
     (retour utilisateur, GET /api/v3/movie et /api/v3/series reels)."""
@@ -59,16 +100,6 @@ def test_renders_release_date_runtime_certification_distributor():
     assert "2h28min" in out
     assert "PG-13" in out
     assert "Warner Bros." in out
-
-
-def test_renders_audio_and_subtitle_languages_and_bitrate():
-    """`audio_languages` restait cable en dur a [] jusqu'ici (retour
-    utilisateur, 2026-09-06) -- verifie que le rendu utilise bien la
-    liste fournie, plus le debit video et les sous-titres."""
-    out = render_upload_description("c411", FULL_CONTEXT)
-    assert "French, English" in out
-    assert "12000 kb/s" in out
-    assert "French" in out  # sous-titres
 
 
 def test_renders_release_name_team_file_count_and_size():
@@ -81,21 +112,24 @@ def test_renders_release_name_team_file_count_and_size():
 
 def test_renders_without_optional_fields():
     """Overview/poster/genres/directors/cast/date/duree/etc. peuvent tous
-    manquer (ex. Radarr/Sonarr n'ont rien trouve) -- le gabarit ne doit
-    jamais planter, juste omettre les sections vides. `release_name`/
-    `file_count`/`total_size_bytes` restent toujours fournis (voir
-    _ALWAYS_PRESENT), ce ne sont jamais des absences legitimes."""
+    manquer (ex. Radarr/Sonarr n'ont rien trouve, ou cle TMDB non
+    configuree) -- le gabarit ne doit jamais planter, juste omettre les
+    sections vides. `release_name`/`file_count`/`total_size_bytes`/les 4
+    bannieres restent toujours fournis (voir _ALWAYS_PRESENT), ce ne sont
+    jamais des absences legitimes."""
     minimal = {
         **_ALWAYS_PRESENT,
         "title": "Inception", "overview": "", "poster_url": None,
-        "genres": [], "directors": [], "cast": [],
+        "genres": [], "directors": [], "cast": [], "country": None,
+        "creators": [], "tmdb_rating": None, "imdb_url": None,
         "resolution": "2160", "source": "BluRay", "video_codec": "hevc",
-        "audio_languages": [], "subtitle_languages": [], "video_bit_rate_kbps": None,
+        "audio_rows": [], "subtitle_rows": [], "video_bit_rate_kbps": None,
         "release_date": None, "runtime_display": None,
         "distributor": None, "certification": None, "team": None,
     }
     out = render_upload_description("c411", minimal)
     assert "Inception" in out
+    assert "[table]" not in out
     assert len(out) >= 20  # respecte le minimum de 20 caracteres exige par l'API C411
 
 
@@ -106,9 +140,10 @@ def test_output_meets_c411_minimum_length():
     minimal = {
         **_ALWAYS_PRESENT,
         "title": "X", "overview": "", "poster_url": None,
-        "genres": [], "directors": [], "cast": [],
+        "genres": [], "directors": [], "cast": [], "country": None,
+        "creators": [], "tmdb_rating": None, "imdb_url": None,
         "resolution": "1080", "source": "WEB", "video_codec": "x264",
-        "audio_languages": [], "subtitle_languages": [], "video_bit_rate_kbps": None,
+        "audio_rows": [], "subtitle_rows": [], "video_bit_rate_kbps": None,
         "release_date": None, "runtime_display": None,
         "distributor": None, "certification": None, "team": None,
     }

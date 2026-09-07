@@ -26,6 +26,7 @@ from . import (
 )
 from .c411_upload_client import C411UploadClient, C411UploadError
 from .engine import propose_release_name
+from .languages import flagcdn_url, resolve_language
 from .models import RenderContext
 from .name_proposal import extract_team_tag, strip_ext
 from .profile_store import read_profile
@@ -33,7 +34,18 @@ from .radarr_client import RadarrClient
 from .registry import get_validator
 from .rules import captures as rules_captures
 from .sonarr_client import SonarrClient
+from .tmdb_client import TMDBClient, TMDBError
 from .upload_description import render_upload_description
+
+# Bannieres de section du template d'upload (assets statiques, voir
+# scripts/generate_upload_banners.py + docs/superpowers/specs/
+# 2026-09-07-template-charte-tmdb-design.md) -- pas une config
+# utilisateur, ce sont des assets nfogen commites dans le repo.
+_BANNER_BASE_URL = "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners"
+_BANNER_INFORMATIONS = f"{_BANNER_BASE_URL}/informations.png"
+_BANNER_SYNOPSIS = f"{_BANNER_BASE_URL}/synopsis.png"
+_BANNER_DETAILS_TECHNIQUES = f"{_BANNER_BASE_URL}/details-techniques.png"
+_BANNER_TELECHARGEMENT = f"{_BANNER_BASE_URL}/telechargement.png"
 
 try:
     from . import torrent_builder
@@ -409,6 +421,7 @@ def send_to_tracker(
     # production", absent des deux API, jamais devine.
     overview, poster_url, genres, directors, cast = "", None, [], [], []
     release_date, runtime_minutes, distributor, certification = None, None, None, None
+    imdb_id: Optional[str] = None
     if media_type == "movie" and radarr_movie_id is not None:
         radarr_config = gapscan_config_store.effective_radarr()
         if radarr_config:
@@ -419,6 +432,7 @@ def send_to_tracker(
                 genres, directors, cast = details.genres, details.directors, details.cast
                 release_date, runtime_minutes = details.release_date, details.runtime_minutes
                 distributor, certification = details.studio, details.certification
+                imdb_id = details.imdb_id
             finally:
                 radarr.close()
     elif media_type == "series" and sonarr_series_id is not None:
@@ -431,8 +445,32 @@ def send_to_tracker(
                 genres, directors, cast = details.genres, details.directors, details.cast
                 release_date, runtime_minutes = details.release_date, details.runtime_minutes
                 distributor, certification = details.network, details.certification
+                imdb_id = details.imdb_id
             finally:
                 sonarr.close()
+
+    # Enrichissement TMDB best-effort (Pays/Createur(s)/Note) -- absent des
+    # deux API Radarr/Sonarr, confirme par des dumps reels (voir
+    # docs/superpowers/specs/2026-09-07-template-charte-tmdb-design.md).
+    # Silencieux sur toute erreur : ne bloque jamais l'envoi (decision
+    # utilisateur, 2026-09-07).
+    country, tmdb_rating, creators = None, None, []
+    tmdb_api_key = gapscan_config_store.effective_tmdb_api_key()
+    if tmdb_api_key and tmdb_id:
+        try:
+            tmdb_client = TMDBClient(tmdb_api_key)
+            try:
+                extra = (
+                    tmdb_client.get_movie_extra(int(tmdb_id)) if media_type == "movie"
+                    else tmdb_client.get_series_extra(int(tmdb_id))
+                )
+            finally:
+                tmdb_client.close()
+            country, tmdb_rating, creators = extra.country, extra.vote_average, extra.creators
+        except TMDBError:
+            pass
+
+    imdb_url = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else None
 
     # Infos qualite (source/langue/codec/resolution) : extraites du
     # release_name DEJA CONFIRME via les memes tokens que la validation
@@ -469,21 +507,49 @@ def send_to_tracker(
     )
     video_bit_rate_kbps = round(video_bit_rate / 1000) if video_bit_rate else None
 
+    # Tableau BBCode par piste (retour utilisateur, 2026-09-07 : drapeaux +
+    # canaux/codec/debit/sample rate, inspire de la description
+    # auto-generee de C411 elle-meme) -- construit ici (noms affiches +
+    # drapeaux deja resolus), le template reste simple.
+    audio_rows = []
+    for t in first_metadata.get("audio_tracks", []):
+        name, flag_code = resolve_language(t.get("language"))
+        audio_rows.append({
+            "flag": flagcdn_url(flag_code) if flag_code else None,
+            "language": name, "channels": t.get("channels"),
+            "codec": t.get("codec"), "bit_rate_kbps": t.get("bit_rate_kbps"),
+            "sampling_khz": t.get("sampling_khz"),
+        })
+    subtitle_rows = []
+    for t in first_metadata.get("subtitle_tracks", []):
+        name, flag_code = resolve_language(t.get("language"))
+        subtitle_rows.append({
+            "flag": flagcdn_url(flag_code) if flag_code else None,
+            "language": name, "forced": t.get("forced", False),
+        })
+
     description = render_upload_description(
         profile,
         {
             "title": release_name, "overview": overview, "poster_url": poster_url,
             "genres": genres, "directors": directors, "cast": cast,
+            "country": country, "creators": creators, "tmdb_rating": tmdb_rating,
+            "imdb_url": imdb_url,
             "resolution": capture_values.get("resolution", ""),
             "source": capture_values.get("source", ""),
             "video_codec": capture_values.get("video_codec", ""),
             "audio_languages": audio_languages,
             "subtitle_languages": subtitle_languages,
+            "audio_rows": audio_rows, "subtitle_rows": subtitle_rows,
             "video_bit_rate_kbps": video_bit_rate_kbps,
             "release_date": release_date, "runtime_display": runtime_display,
             "distributor": distributor, "certification": certification,
             "release_name": release_name, "team": team,
             "file_count": file_count, "total_size_bytes": total_size_bytes,
+            "banner_informations": _BANNER_INFORMATIONS,
+            "banner_synopsis": _BANNER_SYNOPSIS,
+            "banner_details_techniques": _BANNER_DETAILS_TECHNIQUES,
+            "banner_telechargement": _BANNER_TELECHARGEMENT,
         },
     )
 

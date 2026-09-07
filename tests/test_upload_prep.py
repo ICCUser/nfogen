@@ -10,6 +10,7 @@ import pytest
 
 from nfogen import upload_history_store
 from nfogen.cancellation import OperationCancelled
+from nfogen.tmdb_client import TMDBError, TMDBExtraDetails
 from nfogen.upload_prep import (
     CommitResult,
     ProposedFile,
@@ -991,6 +992,127 @@ def test_send_to_tracker_updates_an_existing_draft_when_draft_id_given(tmp_path,
 
     assert captured["draft_id"] == 555
     assert result.draft_id == 555
+
+
+def _basic_send_to_tracker_mocks(monkeypatch) -> None:
+    """Setup minimal partage par les tests TMDB ci-dessous : tracker
+    configure, brouillon accepte, aucun Radarr/Sonarr (non pertinent pour
+    ces tests -- seul l'appel TMDB nous interesse)."""
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def create_draft(self, **kwargs):
+            return {"id": 900, "url": "https://c411.org/user/drafts/900"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+
+def test_send_to_tracker_calls_tmdb_when_key_configured_and_tmdb_id_present(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    _basic_send_to_tracker_mocks(monkeypatch)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: "tmdb-secret"
+    )
+    calls: list[str] = []
+
+    class FakeTMDBClient:
+        def __init__(self, api_key, **kwargs):
+            calls.append(api_key)
+
+        def get_movie_extra(self, tmdb_id):
+            return TMDBExtraDetails(country="France", vote_average=7.8, creators=[])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.TMDBClient", FakeTMDBClient)
+
+    send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603,
+    )
+
+    assert calls == ["tmdb-secret"]
+
+
+def test_send_to_tracker_skips_tmdb_when_key_not_configured(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    _basic_send_to_tracker_mocks(monkeypatch)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: None
+    )
+    instantiated: list[bool] = []
+    monkeypatch.setattr(
+        "nfogen.upload_prep.TMDBClient",
+        lambda *a, **k: instantiated.append(True),
+    )
+
+    send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603,
+    )
+
+    assert instantiated == []
+
+
+def test_send_to_tracker_tmdb_failure_does_not_block_send(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    _basic_send_to_tracker_mocks(monkeypatch)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: "tmdb-secret"
+    )
+
+    class FailingTMDBClient:
+        def __init__(self, api_key, **kwargs):
+            pass
+
+        def get_movie_extra(self, tmdb_id):
+            raise TMDBError("boom")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.TMDBClient", FailingTMDBClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603,
+    )
+
+    assert result.draft_id == 900  # n'a pas leve, la description s'est generee sans TMDB
 
 
 def test_send_to_tracker_requires_tracker_credentials(tmp_path, monkeypatch):
