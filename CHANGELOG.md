@@ -33,6 +33,14 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
     hébergés via `raw.githubusercontent.com` (pas de bannières C411
     réutilisées : elles appartiennent à un autre utilisateur du tracker).
 
+- **Avertissement si la présentation sera incomplète (clé TMDB manquante)**
+  (retour C411, 2026-09-07 : "tous les éléments doivent y figurer... c'est
+  obligatoire") : `SendResult`/`SendToTrackerResult` gagnent
+  `presentation_warning`, affiché dans "Préparer l'upload" au même endroit
+  que l'avertissement anti-doublon — signale que Pays/Créateur(s)/Note
+  TMDB/lien IMDB manqueront tant que la clé API TMDB n'est pas configurée
+  (voir Réglages). Jamais bloquant, comme le reste des avertissements.
+
 - **Tag `source` dans le `.torrent` généré** (retour d'un membre de
   l'équipe C411, 2026-09-07) : `torrent_builder.build_torrent()` gagne un
   paramètre `source`, câblé depuis `tracker_profile.torrent_source()`

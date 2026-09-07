@@ -329,6 +329,9 @@ export default function UploadPrepPanel({
               {sendResults[index].duplicate_warning && (
                 <p className="text-warn">⚠ {sendResults[index].duplicate_warning}</p>
               )}
+              {sendResults[index].presentation_warning && (
+                <p className="text-warn">⚠ {sendResults[index].presentation_warning}</p>
+              )}
             </div>
           )}
         </div>

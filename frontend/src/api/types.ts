@@ -363,4 +363,8 @@ export interface SendToTrackerResult {
   draft_id: number | string;
   draft_url: string;
   duplicate_warning: string | null;
+  /** Non null si Pays/Créateur(s)/Note TMDB/lien IMDB manqueront dans la
+   * description faute de clé API TMDB configurée (retour C411, 2026-09-07 :
+   * ces éléments sont obligatoires) -- jamais bloquant. */
+  presentation_warning: string | null;
 }

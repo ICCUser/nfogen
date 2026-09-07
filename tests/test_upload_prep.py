@@ -635,6 +635,62 @@ def test_preview_upload_uses_real_audio_tracks_when_filename_has_no_language_tag
 # send_to_tracker (AUTOMATION.md, sous-projet 5) : cree/met a jour un
 # BROUILLON C411 -- jamais une soumission reelle.
 # --------------------------------------------------------------------------- #
+def test_send_to_tracker_warns_when_tmdb_key_not_configured(tmp_path, monkeypatch):
+    """Retour C411, 2026-09-07 : tous les elements de la presentation sont
+    obligatoires -- sans cle TMDB, Pays/Createur(s)/Note/IMDB manqueront."""
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    _basic_send_to_tracker_mocks(monkeypatch)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: None
+    )
+
+    result = send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603,
+    )
+
+    assert result.presentation_warning is not None
+    assert "TMDB" in result.presentation_warning
+
+
+def test_send_to_tracker_no_presentation_warning_when_tmdb_key_configured(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    _basic_send_to_tracker_mocks(monkeypatch)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: "tmdb-secret"
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.TMDBClient",
+        lambda *a, **k: type(
+            "F", (), {
+                "get_movie_extra": lambda self, tmdb_id: TMDBExtraDetails(country="France"),
+                "close": lambda self: None,
+            },
+        )(),
+    )
+
+    result = send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603,
+    )
+
+    assert result.presentation_warning is None
+
+
 def test_send_to_tracker_movie_creates_a_draft(tmp_path, monkeypatch):
     staged = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.mkv"
     staged.write_bytes(b"video")

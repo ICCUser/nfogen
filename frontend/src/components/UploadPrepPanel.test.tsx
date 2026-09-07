@@ -201,7 +201,8 @@ it("affiche le bouton Envoyer a C411 seulement apres confirmation, et affiche le
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(sendToTracker).mockResolvedValue({
-    draft_id: 555, draft_url: "https://c411.org/user/drafts/555", duplicate_warning: null,
+    draft_id: 555, draft_url: "https://c411.org/user/drafts/555",
+    duplicate_warning: null, presentation_warning: null,
   });
 
   renderPanel({
@@ -235,6 +236,7 @@ it("affiche l'avertissement anti-doublon quand present", async () => {
   vi.mocked(sendToTracker).mockResolvedValue({
     draft_id: 555, draft_url: "https://c411.org/user/drafts/555",
     duplicate_warning: "1 release(s) déjà approuvée(s) pour cet identifiant TMDB...",
+    presentation_warning: null,
   });
 
   renderPanel({
@@ -248,6 +250,32 @@ it("affiche l'avertissement anti-doublon quand present", async () => {
   await user.click(await screen.findByRole("button", { name: /Envoyer à C411/i }));
 
   expect(await screen.findByText(/déjà approuvée/i)).toBeInTheDocument();
+});
+
+it("affiche l'avertissement de presentation incomplete (cle TMDB manquante) quand present", async () => {
+  /* Retour C411, 2026-09-07 : tous les elements de la presentation sont
+   * obligatoires -- sans cle TMDB, Pays/Createur(s)/Note/IMDB manqueront. */
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.mocked(sendToTracker).mockResolvedValue({
+    draft_id: 555, draft_url: "https://c411.org/user/drafts/555",
+    duplicate_warning: null,
+    presentation_warning: "Description incomplète : clé API TMDB non configurée — Pays, créateur(s), note TMDB et lien IMDB seront absents (voir Réglages).",
+  });
+
+  renderPanel({
+    localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn(),
+    mediaType: "movie", radarrMovieId: 42, sonarrSeriesId: null, tmdbId: 603, tvdbId: null,
+    genre: null, seasonNumber: null,
+  });
+
+  await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(await screen.findByRole("button", { name: /Envoyer à C411/i }));
+
+  expect(await screen.findByText(/clé API TMDB non configurée/i)).toBeInTheDocument();
 });
 
 it("une erreur de chargement affiche un message", async () => {

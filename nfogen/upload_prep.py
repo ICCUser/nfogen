@@ -87,11 +87,17 @@ class SendResult:
     sous-projet 5, decision 6) -- c'est a l'utilisateur de le finaliser
     sur le site du tracker. `duplicate_warning` : non None si la
     verification anti-doublon n'a pas pu avoir lieu ou a trouve une
-    release existante -- jamais bloquant."""
+    release existante -- jamais bloquant. `presentation_warning` (retour
+    C411, 2026-09-07 -- "tous les elements doivent y figurer... c'est
+    obligatoire") : non None si Pays/Createur(s)/Note TMDB/IMDB seront
+    absents de la description faute de cle API TMDB configuree -- jamais
+    bloquant non plus, juste un signal pour ne pas se faire rejeter par
+    la moderation comme deja arrive (bit rate manquant)."""
 
     draft_id: Any
     draft_url: str
     duplicate_warning: Optional[str] = None
+    presentation_warning: Optional[str] = None
 
 
 @dataclass
@@ -456,6 +462,14 @@ def send_to_tracker(
     # utilisateur, 2026-09-07).
     country, tmdb_rating, creators = None, None, []
     tmdb_api_key = gapscan_config_store.effective_tmdb_api_key()
+    # Retour C411, 2026-09-07 : tous les elements de la presentation
+    # doivent y figurer ("c'est obligatoire") -- sans cle TMDB, Pays/
+    # Createur(s)/Note/IMDB seront absents de la description generee.
+    presentation_warning = (
+        "Description incomplète : clé API TMDB non configurée — Pays, "
+        "créateur(s), note TMDB et lien IMDB seront absents (voir Réglages)."
+        if not tmdb_api_key else None
+    )
     if tmdb_api_key and tmdb_id:
         try:
             tmdb_client = TMDBClient(tmdb_api_key)
@@ -609,7 +623,7 @@ def send_to_tracker(
 
     result = SendResult(
         draft_id=response.get("id"), draft_url=response.get("url", ""),
-        duplicate_warning=duplicate_warning,
+        duplicate_warning=duplicate_warning, presentation_warning=presentation_warning,
     )
     key = upload_history_store.processed_key(media_type, radarr_movie_id, sonarr_series_id, season_number)
     if key is not None:
