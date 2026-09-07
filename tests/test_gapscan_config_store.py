@@ -240,7 +240,7 @@ def test_write_then_read_qbittorrent():
         qbittorrent_url="http://qbittorrent.local:8080",
         qbittorrent_username="admin", qbittorrent_password="secret",
     )
-    assert store.effective_qbittorrent() == ("http://qbittorrent.local:8080", "admin", "secret")
+    assert store.effective_qbittorrent() == ("http://qbittorrent.local:8080", "admin", "secret", True)
 
 
 def test_effective_qbittorrent_none_if_any_field_missing():
@@ -252,7 +252,7 @@ def test_qbittorrent_falls_back_to_env_vars(monkeypatch):
     monkeypatch.setenv("NFOGEN_QBITTORRENT_URL", "http://from-env:8080")
     monkeypatch.setenv("NFOGEN_QBITTORRENT_USERNAME", "admin")
     monkeypatch.setenv("NFOGEN_QBITTORRENT_PASSWORD", "secret")
-    assert store.effective_qbittorrent() == ("http://from-env:8080", "admin", "secret")
+    assert store.effective_qbittorrent() == ("http://from-env:8080", "admin", "secret", True)
 
 
 def test_status_includes_qbittorrent_configured_and_url():
@@ -265,3 +265,33 @@ def test_status_includes_qbittorrent_configured_and_url():
     status = store.status()
     assert status["qbittorrent_configured"] is True
     assert status["qbittorrent_url"] == "http://qbittorrent.local:8080"
+
+
+def test_qbittorrent_verify_ssl_defaults_to_true():
+    """Retour utilisateur, 2026-09-07 : certificat auto-signe frequent sur
+    un WebUI qBittorrent en HTTPS local -- la verification TLS reste
+    active par defaut, l'utilisateur doit explicitement l'assouplir."""
+    store.write(
+        qbittorrent_url="http://qbittorrent.local:8080",
+        qbittorrent_username="admin", qbittorrent_password="secret",
+    )
+    assert store.effective_qbittorrent()[3] is True
+    assert store.status()["qbittorrent_verify_ssl"] is True
+
+
+def test_qbittorrent_verify_ssl_can_be_disabled():
+    store.write(
+        qbittorrent_url="http://qbittorrent.local:8080",
+        qbittorrent_username="admin", qbittorrent_password="secret",
+        qbittorrent_verify_ssl=False,
+    )
+    assert store.effective_qbittorrent()[3] is False
+    assert store.status()["qbittorrent_verify_ssl"] is False
+
+
+def test_qbittorrent_verify_ssl_falls_back_to_env_var(monkeypatch):
+    monkeypatch.setenv("NFOGEN_QBITTORRENT_URL", "http://from-env:8080")
+    monkeypatch.setenv("NFOGEN_QBITTORRENT_USERNAME", "admin")
+    monkeypatch.setenv("NFOGEN_QBITTORRENT_PASSWORD", "secret")
+    monkeypatch.setenv("NFOGEN_QBITTORRENT_VERIFY_SSL", "false")
+    assert store.effective_qbittorrent()[3] is False

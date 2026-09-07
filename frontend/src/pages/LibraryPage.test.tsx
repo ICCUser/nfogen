@@ -61,6 +61,7 @@ const CONFIGURED: GapscanConfig = {
   staging_dir: null,
   qbittorrent_configured: false,
   qbittorrent_url: null,
+  qbittorrent_verify_ssl: true,
 };
 
 const IDLE_STATUS: GapscanStatus = {
@@ -286,7 +287,7 @@ describe("LibraryPage", () => {
       sonarr_configured: false, sonarr_url: null, radarr_configured: false, radarr_url: null,
       sonarr_path_mappings: {}, radarr_path_mappings: {},
       tracker_announce_url_configured: false, staging_dir: null,
-      qbittorrent_configured: false, qbittorrent_url: null,
+      qbittorrent_configured: false, qbittorrent_url: null, qbittorrent_verify_ssl: true,
     });
     renderPage();
 
@@ -316,6 +317,7 @@ describe("LibraryPage", () => {
         tracker_base_url: "https://c411.org",
         sonarr_path_mappings: {},
         radarr_path_mappings: {},
+        qbittorrent_verify_ssl: true,
       },
       "c411",
     );
@@ -341,7 +343,25 @@ describe("LibraryPage", () => {
         qbittorrent_url: "http://qbittorrent.local:8080",
         qbittorrent_username: "admin",
         qbittorrent_password: "secret",
+        qbittorrent_verify_ssl: true,
       }),
+      "c411",
+    );
+  });
+
+  it("decoche la verification SSL qBittorrent -- envoie qbittorrent_verify_ssl: false", async () => {
+    /* Retour utilisateur, 2026-09-07 : certificat auto-signe frequent sur
+     * un WebUI qBittorrent en HTTPS local. */
+    const user = userEvent.setup();
+    vi.mocked(gapscanConfigWrite).mockResolvedValue(CONFIGURED);
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Configuration/ }));
+    await user.click(screen.getByLabelText(/Vérifier le certificat SSL de qBittorrent/));
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(gapscanConfigWrite).toHaveBeenCalledWith(
+      expect.objectContaining({ qbittorrent_verify_ssl: false }),
       "c411",
     );
   });

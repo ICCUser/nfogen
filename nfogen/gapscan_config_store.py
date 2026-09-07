@@ -74,6 +74,7 @@ def write(
     qbittorrent_url: Optional[str] = None,
     qbittorrent_username: Optional[str] = None,
     qbittorrent_password: Optional[str] = None,
+    qbittorrent_verify_ssl: Optional[bool] = None,
 ) -> None:
     """Met a jour uniquement les champs fournis (`None` = inchange) -- jamais
     une reecriture complete. `profile` : les identifiants de TRACKER
@@ -94,6 +95,7 @@ def write(
         "qbittorrent_url": qbittorrent_url,
         "qbittorrent_username": qbittorrent_username,
         "qbittorrent_password": qbittorrent_password,
+        "qbittorrent_verify_ssl": qbittorrent_verify_ssl,
     }
     for key, value in top_level_updates.items():
         if value is not None:
@@ -202,14 +204,25 @@ def effective_staging_dir() -> Optional[str]:
     return _load().get("staging_dir") or None
 
 
-def effective_qbittorrent() -> Optional[tuple[str, str, str]]:
-    """`(url, utilisateur, mot de passe)`, ou `None` si l'un des trois
-    manque. Configuration globale (pas namespacee par profil de tracker --
-    un seul client de seed, voir AUTOMATION.md, sous-projet 6)."""
+def effective_qbittorrent() -> Optional[tuple[str, str, str, bool]]:
+    """`(url, utilisateur, mot de passe, verifier_ssl)`, ou `None` si url/
+    utilisateur/mot de passe manque. Configuration globale (pas namespacee
+    par profil de tracker -- un seul client de seed, voir AUTOMATION.md,
+    sous-projet 6). `verifier_ssl` : `True` (verification active) par
+    defaut -- retour utilisateur, 2026-09-07, certificat auto-signe
+    frequent sur un WebUI qBittorrent en HTTPS local."""
     url = _resolve("qbittorrent_url", "NFOGEN_QBITTORRENT_URL")
     username = _resolve("qbittorrent_username", "NFOGEN_QBITTORRENT_USERNAME")
     password = _resolve("qbittorrent_password", "NFOGEN_QBITTORRENT_PASSWORD")
-    return (url, username, password) if url and username and password else None
+    if not (url and username and password):
+        return None
+    stored_verify_ssl = _load().get("qbittorrent_verify_ssl")
+    if stored_verify_ssl is not None:
+        verify_ssl = bool(stored_verify_ssl)
+    else:
+        env_verify_ssl = os.environ.get("NFOGEN_QBITTORRENT_VERIFY_SSL")
+        verify_ssl = env_verify_ssl is None or env_verify_ssl.strip().lower() not in ("0", "false", "no")
+    return (url, username, password, verify_ssl)
 
 
 def status(profile: str = "c411") -> dict[str, Any]:
@@ -235,4 +248,5 @@ def status(profile: str = "c411") -> dict[str, Any]:
         "staging_dir": effective_staging_dir(),
         "qbittorrent_configured": qbittorrent is not None,
         "qbittorrent_url": qbittorrent[0] if qbittorrent else None,
+        "qbittorrent_verify_ssl": qbittorrent[3] if qbittorrent else True,
     }

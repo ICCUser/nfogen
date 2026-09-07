@@ -11,6 +11,16 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Ajouté
 
+- **Vérification SSL qBittorrent désactivable** (retour utilisateur,
+  2026-09-07) : la connexion à un WebUI qBittorrent en HTTPS local
+  échouait systématiquement (`certificate verify failed: self-signed
+  certificate`) — httpx vérifie les certificats TLS par défaut, ce que
+  ne satisfait jamais un certificat auto-signé, très courant sur un
+  réseau domestique/privé. Nouvelle case à cocher "Vérifier le
+  certificat SSL de qBittorrent" (activée par défaut — l'utilisateur
+  l'assouplit explicitement pour SON instance, jamais désactivé
+  silencieusement).
+
 - **Description BBCode d'upload enrichie** (retour utilisateur, 2026-09-07)
   : le gabarit par défaut (`upload_description.j2`) affichait beaucoup
   moins d'informations que celles réellement disponibles — `audio_languages`

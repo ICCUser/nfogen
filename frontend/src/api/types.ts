@@ -207,6 +207,7 @@ export interface GapscanConfig {
   staging_dir: string | null;
   qbittorrent_configured: boolean;
   qbittorrent_url: string | null;
+  qbittorrent_verify_ssl: boolean;
 }
 
 /** PUT /gapscan/config : chaque champ omis reste inchange cote serveur.
@@ -227,6 +228,7 @@ export interface GapscanConfigWrite {
   qbittorrent_url?: string;
   qbittorrent_username?: string;
   qbittorrent_password?: string;
+  qbittorrent_verify_ssl?: boolean;
 }
 
 // --------------------------------------------------------------------------- //

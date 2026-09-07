@@ -28,6 +28,7 @@ class QBittorrentClient:
         base_url: str,
         username: str,
         password: str,
+        verify_ssl: bool = True,
         http_client: Optional[httpx.Client] = None,
         timeout: float = 30.0,
     ) -> None:
@@ -36,7 +37,14 @@ class QBittorrentClient:
         self._base_url = base_url.rstrip("/")
         self._username = username
         self._password = password
-        self._client = http_client or httpx.Client(timeout=timeout)
+        # `verify_ssl=False` : retour utilisateur, 2026-09-07 -- le WebUI
+        # qBittorrent en HTTPS local utilise typiquement un certificat
+        # auto-signe (jamais confiance par httpx par defaut), courant sur
+        # un reseau domestique/prive. Vrai (verification active) par
+        # defaut -- l'utilisateur doit explicitement l'assouplir pour SON
+        # instance (voir gapscan_config_store.effective_qbittorrent()),
+        # jamais desactive silencieusement.
+        self._client = http_client or httpx.Client(timeout=timeout, verify=verify_ssl)
         self._owns_client = http_client is None
         self._logged_in = False
 

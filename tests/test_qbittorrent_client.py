@@ -92,6 +92,36 @@ def test_requires_base_url_username_and_password():
         QBittorrentClient(base_url="http://x", username="a", password="")
 
 
+def test_verify_ssl_defaults_to_true_when_building_its_own_http_client(monkeypatch):
+    """Retour utilisateur, 2026-09-07 : certificat auto-signe frequent sur
+    un WebUI qBittorrent en HTTPS local -- verification TLS active par
+    defaut, l'utilisateur doit explicitement l'assouplir pour SON
+    instance (voir gapscan_config_store.effective_qbittorrent())."""
+    captured: dict = {}
+    real_client = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        captured["verify"] = kwargs.get("verify")
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", fake_client)
+    QBittorrentClient(base_url="http://x", username="a", password="b")
+    assert captured["verify"] is True
+
+
+def test_verify_ssl_false_disables_certificate_verification(monkeypatch):
+    captured: dict = {}
+    real_client = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        captured["verify"] = kwargs.get("verify")
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", fake_client)
+    QBittorrentClient(base_url="http://x", username="a", password="b", verify_ssl=False)
+    assert captured["verify"] is False
+
+
 # --------------------------------------------------------------------------- #
 # list_torrents (retour utilisateur, 2026-09-06 : voir ce qui est
 # actuellement en seed via qBittorrent).

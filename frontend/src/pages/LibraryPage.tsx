@@ -129,6 +129,7 @@ export default function LibraryPage() {
   const [qbittorrentUrl, setQbittorrentUrl] = useState("");
   const [qbittorrentUsername, setQbittorrentUsername] = useState("");
   const [qbittorrentPassword, setQbittorrentPassword] = useState("");
+  const [qbittorrentVerifySsl, setQbittorrentVerifySsl] = useState(true);
 
   useEffect(() => {
     gapscanConfig(profile)
@@ -143,6 +144,7 @@ export default function LibraryPage() {
         setRadarrPathMappings(c.radarr_path_mappings);
         setStagingDir(c.staging_dir ?? "");
         setQbittorrentUrl(c.qbittorrent_url ?? "");
+        setQbittorrentVerifySsl(c.qbittorrent_verify_ssl ?? true);
         if (!c.tracker_configured || (!c.sonarr_configured && !c.radarr_configured)) {
           setShowConfigForm(true);
         }
@@ -287,6 +289,10 @@ export default function LibraryPage() {
       if (qbittorrentUrl.trim()) fields.qbittorrent_url = qbittorrentUrl.trim();
       if (qbittorrentUsername.trim()) fields.qbittorrent_username = qbittorrentUsername.trim();
       if (qbittorrentPassword.trim()) fields.qbittorrent_password = qbittorrentPassword.trim();
+      // Contrairement aux champs texte ci-dessus, une case a cocher
+      // represente toujours une valeur explicite (pas d'etat "vide") --
+      // toujours envoyee.
+      fields.qbittorrent_verify_ssl = qbittorrentVerifySsl;
       // Contrairement aux cles/URLs ci-dessus, un dictionnaire vide est une
       // valeur explicite valide ("aucun mapping") : toujours envoye.
       fields.sonarr_path_mappings = sonarrPathMappings;
@@ -528,6 +534,21 @@ export default function LibraryPage() {
                   onChange={(e) => setQbittorrentPassword(e.target.value)}
                 />
               </label>
+              <label className="flex items-center gap-2 text-sm font-medium text-ink-dim">
+                <input
+                  type="checkbox"
+                  checked={qbittorrentVerifySsl}
+                  onChange={(e) => setQbittorrentVerifySsl(e.target.checked)}
+                />
+                Vérifier le certificat SSL de qBittorrent
+              </label>
+              {!qbittorrentVerifySsl && (
+                <p className="text-xs text-ink-faint">
+                  Désactivé : utile si le WebUI qBittorrent utilise un certificat auto-signé
+                  (courant en HTTPS local) — la connexion reste chiffrée, seule la vérification
+                  du certificat est ignorée.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

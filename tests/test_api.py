@@ -1154,13 +1154,18 @@ def test_gapscan_routes_require_auth_when_token_configured(reload_api):
 
 
 def test_gapscan_config_reports_which_services_are_configured(reload_api):
+    # Cles factices distinctives (pas "x"/"y" -- trop courtes, un simple
+    # nom de champ comme "verify_ssl" contient deja un "y" par coincidence,
+    # ce qui declenchait un faux positif sur l'assertion anti-fuite plus
+    # bas). "SECRETC411"/"SECRETRADARR" restent uniques et improbables en
+    # sous-chaine d'un nom de champ JSON.
     mod = reload_api(
         NFOGEN_API_TOKEN=None,
-        NFOGEN_C411_API_KEY="x",
+        NFOGEN_C411_API_KEY="SECRETC411",
         NFOGEN_SONARR_URL=None,
         NFOGEN_SONARR_API_KEY=None,
         NFOGEN_RADARR_URL="http://radarr.local",
-        NFOGEN_RADARR_API_KEY="y",
+        NFOGEN_RADARR_API_KEY="SECRETRADARR",
     )
     client = TestClient(mod.app)
     resp = client.get("/gapscan/config")
@@ -1179,9 +1184,10 @@ def test_gapscan_config_reports_which_services_are_configured(reload_api):
         "staging_dir": None,
         "qbittorrent_configured": False,
         "qbittorrent_url": None,
+        "qbittorrent_verify_ssl": True,
     }
     # jamais la cle elle-meme dans la reponse, meme par accident.
-    assert "x" not in resp.text and "y" not in resp.text
+    assert "SECRETC411" not in resp.text and "SECRETRADARR" not in resp.text
 
 
 def test_gapscan_config_get_defaults_to_c411_profile(reload_api):
@@ -1339,6 +1345,31 @@ def test_gapscan_config_write_then_read_back_qbittorrent(reload_api, tmp_path):
     body = client.get("/gapscan/config").json()
     assert body["qbittorrent_configured"] is True
     assert body["qbittorrent_url"] == "http://qbittorrent.local:8080"
+    assert body["qbittorrent_verify_ssl"] is True
+
+
+def test_gapscan_config_write_qbittorrent_verify_ssl_false(reload_api, tmp_path):
+    """Retour utilisateur, 2026-09-07 : certificat auto-signe frequent sur
+    un WebUI qBittorrent en HTTPS local -- l'utilisateur peut assouplir
+    la verification TLS pour SON instance."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
+    )
+    client = TestClient(mod.app)
+
+    put = client.put(
+        "/gapscan/config",
+        json={
+            "qbittorrent_url": "https://qbittorrent.local:8080",
+            "qbittorrent_username": "admin", "qbittorrent_password": "secret",
+            "qbittorrent_verify_ssl": False,
+        },
+    )
+    assert put.status_code == 200
+    assert put.json()["qbittorrent_verify_ssl"] is False
+
+    body = client.get("/gapscan/config").json()
+    assert body["qbittorrent_verify_ssl"] is False
 
 
 # --------------------------------------------------------------------------- #
