@@ -905,6 +905,42 @@ figées dans le profil, voir "Décisions") :
    release/team/nombre de fichiers/taille totale. Pas de "pays de
    production" — absent des deux API (Radarr et Sonarr), jamais deviné.
 
+   **Enrichi une deuxième fois le 2026-09-07** (retour utilisateur,
+   inspiré de la présentation auto-générée de C411 elle-même) :
+   - **Client TMDB** (`nfogen/tmdb_client.py`, nouveau) : ajoute Pays,
+     Créateur(s) (séries uniquement), Note TMDB et lien IMDB — ces
+     champs-là sont réellement absents des deux API Radarr/Sonarr
+     (confirmé par des dumps réels), contrairement au reste de la
+     description qui n'en avait jamais eu besoin. Clé API TMDB
+     **globale** (pas namespacée par profil de tracker, voir "Réglages"
+     → "Configuration globale"), `gapscan_config_store.effective_tmdb_api_key()`.
+     Best-effort par construction : clé absente ou appel en échec →
+     `country`/`creators`/`tmdb_rating`/`imdb_url` restent simplement
+     absents de la description, l'envoi du brouillon n'est jamais
+     bloqué. `imdb_url` ne nécessite pas TMDB : construit directement
+     depuis `imdb_id`, désormais exposé par `RadarrMovieDetails`/
+     `SonarrSeriesDetails`.
+   - **Tableau BBCode par piste** (audio/sous-titres) avec drapeaux
+     (`flagcdn.com`), canaux, codec, débit, sample rate — remplace la
+     simple liste de langues. Détail extrait de MediaInfo
+     (`extract.extract_video_metadata()` gagne `audio_tracks`/
+     `subtitle_tracks`), langue → nom affiché/code drapeau résolu par le
+     nouveau module `nfogen/languages.py`.
+   - **Bannières de section nfogen.nfo** : 4 images statiques
+     ("Informations"/"Synopsis"/"Détails techniques"/"Téléchargement",
+     `assets/banners/*.png`) aux couleurs réelles de l'appli nfogen
+     (`#141d19`/`#6bc9b3`, thème sombre — voir `frontend/src/index.css`),
+     remplaçant les `[h2]` texte. Générées une seule fois par
+     `scripts/generate_upload_banners.py` (Pillow, dépendance **dev-only**
+     — jamais requise pour faire tourner nfogen), commitées dans le repo
+     et servies via `https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/`.
+     Volontairement pas les bannières de l'exemple C411 fourni par
+     l'utilisateur : elles appartiennent à un autre utilisateur du
+     tracker (djoontah), hébergées sur c411.org — non redistribuables
+     comme template par défaut d'un outil tiers.
+   - Voir la spec complète :
+     `docs/superpowers/specs/2026-09-07-template-charte-tmdb-design.md`.
+
 3. **Catégorie/sous-catégorie/options : déclaratifs dans le profil
    (`rules.json` → `tracker.upload`), pas requêtés dynamiquement à
    chaque envoi, pas câblés en Python.** Répond explicitement à la

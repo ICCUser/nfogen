@@ -11,6 +11,36 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Ajouté
 
+- **Charte graphique nfogen + enrichissement TMDB de la description
+  d'upload** (retour utilisateur, 2026-09-07, inspiré de la présentation
+  auto-générée de C411 elle-même) :
+  - Nouveau client TMDB (`nfogen/tmdb_client.py`) : ajoute Pays,
+    Créateur(s) (séries), Note TMDB et lien IMDB — absents des deux API
+    Radarr/Sonarr, confirmé par des dumps réels. Cle API TMDB globale,
+    optionnelle (config "Réglages" ci-dessous) ; en son absence ou en cas
+    d'échec de l'appel, ces champs disparaissent simplement de la
+    description (jamais bloquant pour l'envoi).
+  - Tableau BBCode détaillé par piste audio/sous-titres (canaux, codec,
+    débit, sample rate, drapeau via flagcdn.com), à la place de la
+    simple liste de langues — détail extrait de MediaInfo
+    (`nfogen/extract.py`), langue→drapeau résolu par le nouveau module
+    `nfogen/languages.py`.
+  - 4 bannières de section ("Informations"/"Synopsis"/"Détails
+    techniques"/"Téléchargement") aux couleurs réelles de l'appli nfogen
+    (`#141d19`/`#6bc9b3`) avec crédit "nfogen.nfo", remplaçant les `[h2]`
+    texte — assets statiques générés une fois
+    (`scripts/generate_upload_banners.py`, dépendance dev-only Pillow) et
+    hébergés via `raw.githubusercontent.com` (pas de bannières C411
+    réutilisées : elles appartiennent à un autre utilisateur du tracker).
+
+- **Configuration globale migrée vers Réglages** (retour utilisateur,
+  2026-09-07) : le panneau "Configuration globale" (Sonarr/Radarr/
+  qBittorrent/mise en scène/mappings de chemins, plus la nouvelle clé API
+  TMDB) quitte la page Bibliothèque pour la page Réglages — ces réglages
+  ne sont pas liés au profil de tracker actif. La page Bibliothèque garde
+  uniquement le panneau "Configuration du profil" (clé/URL/adresse
+  d'annonce du tracker, namespacées par profil).
+
 - **Vérification SSL qBittorrent désactivable** (retour utilisateur,
   2026-09-07) : la connexion à un WebUI qBittorrent en HTTPS local
   échouait systématiquement (`certificate verify failed: self-signed
