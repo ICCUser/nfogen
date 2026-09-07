@@ -82,6 +82,7 @@ class SonarrSeriesDetails:
     runtime_minutes: Optional[int] = None
     network: Optional[str] = None
     certification: Optional[str] = None
+    imdb_id: Optional[str] = None
 
 
 def _parse_sonarr_date(value: Optional[str]) -> Optional[float]:
@@ -215,4 +216,5 @@ class SonarrClient:
             runtime_minutes=series.get("runtime") or None,
             network=series.get("network") or None,
             certification=series.get("certification") or None,
+            imdb_id=series.get("imdbId") or None,
         )

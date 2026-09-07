@@ -305,6 +305,14 @@ def test_get_series_details_parses_release_date_runtime_network_certification():
     assert details.certification == "TV-MA"
 
 
+def test_get_series_details_parses_imdb_id():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"id": 99, "imdbId": "tt4052886"})
+
+    details = _client(handler).get_series_details(99)
+    assert details.imdb_id == "tt4052886"
+
+
 def test_requires_base_url_and_api_key():
     with pytest.raises(SonarrError):
         SonarrClient(base_url="", api_key="x")

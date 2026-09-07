@@ -224,6 +224,14 @@ def test_get_movie_details_parses_release_date_runtime_studio_certification():
     assert details.certification == "12"
 
 
+def test_get_movie_details_parses_imdb_id():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"id": 42, "imdbId": "tt1375666"})
+
+    details = _client(handler).get_movie_details(42)
+    assert details.imdb_id == "tt1375666"
+
+
 def test_get_movie_details_release_date_falls_back_to_in_cinemas():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"id": 42, "inCinemas": "2003-06-05T00:00:00Z"})

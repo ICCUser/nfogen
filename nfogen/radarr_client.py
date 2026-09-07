@@ -78,6 +78,7 @@ class RadarrMovieDetails:
     runtime_minutes: Optional[int] = None
     studio: Optional[str] = None
     certification: Optional[str] = None
+    imdb_id: Optional[str] = None
 
 
 def _parse_radarr_date(value: Optional[str]) -> Optional[float]:
@@ -196,4 +197,5 @@ class RadarrClient:
             runtime_minutes=movie.get("runtime") or None,
             studio=movie.get("studio") or None,
             certification=movie.get("certification") or None,
+            imdb_id=movie.get("imdbId") or None,
         )
