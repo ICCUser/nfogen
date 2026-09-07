@@ -33,6 +33,14 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
     hébergés via `raw.githubusercontent.com` (pas de bannières C411
     réutilisées : elles appartiennent à un autre utilisateur du tracker).
 
+- **Conteneur et format HDR dans la description d'upload** (retour
+  utilisateur, 2026-09-07, en construisant un template C411 personnel
+  avec `{{CONTAINER}}`/`{{HDR}}`) : `extract_video_metadata()` gagne
+  `container` (dérivé de l'extension du fichier mis en scène — fiable,
+  jamais ambigu) et `hdr_format` (best-effort, MediaInfo). Ajoutés à la
+  ligne vidéo (`x265 2160p (UHD BluRay) Dolby Vision`) et une nouvelle
+  ligne "Conteneur" dans `upload_description.j2`.
+
 - **Upload direct vers C411, distinct du brouillon** (retour d'un membre
   de l'équipe C411, 2026-09-07) : un vrai endpoint d'upload direct existe
   (`POST /api/torrents`, multipart, part réellement en modération) —

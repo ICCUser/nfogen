@@ -123,6 +123,14 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
         "audio_languages": [t.language for t in mi.tracks if t.track_type == "Audio"],
         "subtitle_languages": [t.language for t in mi.tracks if t.track_type == "Text"],
         "general_title": getattr(general, "title", None) if general is not None else None,
+        # Retour utilisateur, 2026-09-07 (template C411 perso avec
+        # {{CONTAINER}}/{{HDR}}) : conteneur derive de l'EXTENSION du
+        # fichier (fiable, jamais ambigu -- contrairement au champ
+        # MediaInfo General.format, qui donne un nom long type
+        # "Matroska"). `hdr_format` : best-effort, `None` si absent
+        # (contenu SDR, ou version de MediaInfo qui ne l'expose pas).
+        "container": source.suffix.lstrip(".").upper() or None,
+        "hdr_format": (getattr(video, "hdr_format", None) or None) if video is not None else None,
         # Detail par piste (retour utilisateur, 2026-09-07 : tableau BBCode
         # audio/sous-titres avec canaux/codec/debit/sample rate, voir
         # upload_prep.py) -- vient s'ajouter a audio_languages/

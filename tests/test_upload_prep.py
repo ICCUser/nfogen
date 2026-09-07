@@ -825,6 +825,50 @@ def test_send_to_tracker_description_includes_new_metadata_fields(tmp_path, monk
     assert "12" in description
     assert "TEAM" in description  # team, extrait du release_name
     assert "Movie.2020.MULTI.VFF.1080p.BluRay-TEAM" in description  # release_name
+    assert "MKV" in description  # container, derive de l'extension du fichier mis en scene
+
+
+def test_send_to_tracker_description_includes_hdr_format(tmp_path, monkeypatch):
+    """Retour utilisateur, 2026-09-07 -- template C411 perso avec
+    {{HDR}} : nfogen doit s'en inspirer."""
+    staged = tmp_path / "Movie.2020.2160p.UHD.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.2160p.UHD.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.2160p.UHD.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.extract.extract_video_metadata",
+        lambda path: {"container": "MKV", "hdr_format": "Dolby Vision"},
+    )
+
+    captured: dict = {}
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_draft(self, **kwargs):
+            captured["kwargs"] = kwargs
+            return {"id": 559, "url": "https://c411.org/user/drafts/559"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    send_to_tracker(
+        release_name="Movie.2020.2160p.UHD.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie",
+    )
+
+    assert "Dolby Vision" in captured["kwargs"]["description"]
 
 
 def test_send_to_tracker_records_history_on_success(tmp_path, monkeypatch):

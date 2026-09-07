@@ -522,6 +522,8 @@ def send_to_tracker(
     audio_languages = [lang for lang in first_metadata.get("audio_languages", []) if lang]
     subtitle_languages = [lang for lang in first_metadata.get("subtitle_languages", []) if lang]
     video_bit_rate = first_metadata.get("video_bit_rate")
+    container = first_metadata.get("container")
+    hdr_format = first_metadata.get("hdr_format")
     # Formatage fait ici (pas en Jinja) : plus simple a tester, evite
     # l'arithmetique fragile dans le gabarit.
     runtime_display = (
@@ -564,6 +566,7 @@ def send_to_tracker(
             "subtitle_languages": subtitle_languages,
             "audio_rows": audio_rows, "subtitle_rows": subtitle_rows,
             "video_bit_rate_kbps": video_bit_rate_kbps,
+            "container": container, "hdr_format": hdr_format,
             "release_date": release_date, "runtime_display": runtime_display,
             "distributor": distributor, "certification": certification,
             "release_name": release_name, "team": team,

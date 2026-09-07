@@ -20,8 +20,9 @@
 
 [img]{{ banner_details_techniques }}[/img]
 [list]
-[*]Vidéo : {{ video_codec }} {{ resolution }}p ({{ source }})
+[*]Vidéo : {{ video_codec }} {{ resolution }}p ({{ source }}){% if hdr_format %} {{ hdr_format }}{% endif %}
 {% if video_bit_rate_kbps %}[*]Débit vidéo : {{ video_bit_rate_kbps }} kb/s
+{% endif %}{% if container %}[*]Conteneur : {{ container }}
 {% endif %}[/list]
 {% if audio_rows %}[table][tr][th]#[/th][th]Langue[/th][th]Canaux[/th][th]Codec[/th][th]Débit[/th][th]Sample Rate[/th][/tr]
 {% for a in audio_rows %}[tr][td]{{ loop.index }}[/td][td]{% if a.flag %}[img=20x15]{{ a.flag }}[/img] {% endif %}{{ a.language }}[/td][td]{{ a.channels }}[/td][td]{{ a.codec }}[/td][td]{{ a.bit_rate_kbps }} kb/s[/td][td]{{ a.sampling_khz }} kHz[/td][/tr]

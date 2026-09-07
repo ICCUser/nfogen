@@ -77,3 +77,35 @@ def test_extract_video_metadata_no_audio_or_subtitle_tracks(monkeypatch):
 
     assert meta["audio_tracks"] == []
     assert meta["subtitle_tracks"] == []
+
+
+def test_extract_video_metadata_returns_container_from_file_extension(monkeypatch):
+    """Retour utilisateur, 2026-09-07 -- template C411 perso avec
+    `{{CONTAINER}}` : le conteneur vient de l'EXTENSION du fichier mis en
+    scene (fiable a 100%, jamais ambigu contrairement au champ MediaInfo
+    General.format qui donne un nom long type "Matroska")."""
+    _mock_parse(monkeypatch, [_video_track()])
+
+    meta = extract.extract_video_metadata(Path("Release.Name.mkv"))
+
+    assert meta["container"] == "MKV"
+
+
+def test_extract_video_metadata_returns_hdr_format_when_present(monkeypatch):
+    video = _FakeTrack(
+        "Video", bit_rate=8000000, frame_rate="23.976", height=2160, width=3840,
+        format="HEVC", hdr_format="Dolby Vision",
+    )
+    _mock_parse(monkeypatch, [video])
+
+    meta = extract.extract_video_metadata(Path("fake.mkv"))
+
+    assert meta["hdr_format"] == "Dolby Vision"
+
+
+def test_extract_video_metadata_hdr_format_none_when_absent(monkeypatch):
+    _mock_parse(monkeypatch, [_video_track()])  # pas d'attribut hdr_format -- contenu SDR
+
+    meta = extract.extract_video_metadata(Path("fake.mkv"))
+
+    assert meta["hdr_format"] is None

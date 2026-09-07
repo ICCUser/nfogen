@@ -35,6 +35,8 @@ FULL_CONTEXT = {
         {"flag": "https://flagcdn.com/20x15/fr.png", "language": "Français", "forced": True},
     ],
     "video_bit_rate_kbps": 12000,
+    "container": "MKV",
+    "hdr_format": "Dolby Vision",
     "release_date": "2010-07-15",
     "runtime_display": "2h28min",
     "distributor": "Warner Bros.",
@@ -92,6 +94,14 @@ def test_renders_audio_and_subtitle_tables_with_flags():
     assert "FORCÉ" in out
 
 
+def test_renders_container_and_hdr_format():
+    """Retour utilisateur, 2026-09-07 -- template C411 perso avec
+    {{CONTAINER}}/{{HDR}} : nfogen doit s'en inspirer."""
+    out = render_upload_description("c411", FULL_CONTEXT)
+    assert "MKV" in out
+    assert "Dolby Vision" in out
+
+
 def test_renders_release_date_runtime_certification_distributor():
     """Champs confirmes disponibles en conditions reelles le 2026-09-06
     (retour utilisateur, GET /api/v3/movie et /api/v3/series reels)."""
@@ -124,12 +134,14 @@ def test_renders_without_optional_fields():
         "creators": [], "tmdb_rating": None, "imdb_url": None,
         "resolution": "2160", "source": "BluRay", "video_codec": "hevc",
         "audio_rows": [], "subtitle_rows": [], "video_bit_rate_kbps": None,
+        "container": None, "hdr_format": None,
         "release_date": None, "runtime_display": None,
         "distributor": None, "certification": None, "team": None,
     }
     out = render_upload_description("c411", minimal)
     assert "Inception" in out
     assert "[table]" not in out
+    assert "Conteneur" not in out
     assert len(out) >= 20  # respecte le minimum de 20 caracteres exige par l'API C411
 
 
@@ -144,6 +156,7 @@ def test_output_meets_c411_minimum_length():
         "creators": [], "tmdb_rating": None, "imdb_url": None,
         "resolution": "1080", "source": "WEB", "video_codec": "x264",
         "audio_rows": [], "subtitle_rows": [], "video_bit_rate_kbps": None,
+        "container": None, "hdr_format": None,
         "release_date": None, "runtime_display": None,
         "distributor": None, "certification": None, "team": None,
     }
