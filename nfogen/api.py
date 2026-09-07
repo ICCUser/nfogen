@@ -717,6 +717,7 @@ class GapscanConfigWriteRequest(BaseModel):
     qbittorrent_username: Optional[str] = None
     qbittorrent_password: Optional[str] = None
     qbittorrent_verify_ssl: Optional[bool] = None
+    tmdb_api_key: Optional[str] = None
 
 
 @app.put("/gapscan/config", dependencies=[Depends(require_token)])

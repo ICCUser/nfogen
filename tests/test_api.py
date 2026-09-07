@@ -1185,6 +1185,7 @@ def test_gapscan_config_reports_which_services_are_configured(reload_api):
         "qbittorrent_configured": False,
         "qbittorrent_url": None,
         "qbittorrent_verify_ssl": True,
+        "tmdb_configured": False,
     }
     # jamais la cle elle-meme dans la reponse, meme par accident.
     assert "SECRETC411" not in resp.text and "SECRETRADARR" not in resp.text

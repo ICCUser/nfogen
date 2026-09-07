@@ -75,6 +75,7 @@ def write(
     qbittorrent_username: Optional[str] = None,
     qbittorrent_password: Optional[str] = None,
     qbittorrent_verify_ssl: Optional[bool] = None,
+    tmdb_api_key: Optional[str] = None,
 ) -> None:
     """Met a jour uniquement les champs fournis (`None` = inchange) -- jamais
     une reecriture complete. `profile` : les identifiants de TRACKER
@@ -96,6 +97,7 @@ def write(
         "qbittorrent_username": qbittorrent_username,
         "qbittorrent_password": qbittorrent_password,
         "qbittorrent_verify_ssl": qbittorrent_verify_ssl,
+        "tmdb_api_key": tmdb_api_key,
     }
     for key, value in top_level_updates.items():
         if value is not None:
@@ -225,6 +227,13 @@ def effective_qbittorrent() -> Optional[tuple[str, str, str, bool]]:
     return (url, username, password, verify_ssl)
 
 
+def effective_tmdb_api_key() -> Optional[str]:
+    """Cle API TMDB (v3, parametre de requete `api_key`) -- GLOBALE, pas
+    namespacee par profil de tracker (voir tmdb_client.py). `None` si non
+    configuree : l'enrichissement TMDB du template reste best-effort."""
+    return _resolve("tmdb_api_key", "NFOGEN_TMDB_API_KEY")
+
+
 def status(profile: str = "c411") -> dict[str, Any]:
     """Etat effectif pour CE profil (fichier prioritaire, sinon variables
     d'environnement pour `c411`) -- jamais les cles/secrets eux-memes.
@@ -249,4 +258,5 @@ def status(profile: str = "c411") -> dict[str, Any]:
         "qbittorrent_configured": qbittorrent is not None,
         "qbittorrent_url": qbittorrent[0] if qbittorrent else None,
         "qbittorrent_verify_ssl": qbittorrent[3] if qbittorrent else True,
+        "tmdb_configured": effective_tmdb_api_key() is not None,
     }

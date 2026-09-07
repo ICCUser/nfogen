@@ -295,3 +295,25 @@ def test_qbittorrent_verify_ssl_falls_back_to_env_var(monkeypatch):
     monkeypatch.setenv("NFOGEN_QBITTORRENT_PASSWORD", "secret")
     monkeypatch.setenv("NFOGEN_QBITTORRENT_VERIFY_SSL", "false")
     assert store.effective_qbittorrent()[3] is False
+
+
+def test_write_and_read_tmdb_api_key():
+    store.write(tmdb_api_key="tmdb-secret-key")
+    assert store.effective_tmdb_api_key() == "tmdb-secret-key"
+
+
+def test_effective_tmdb_api_key_none_by_default():
+    assert store.effective_tmdb_api_key() is None
+
+
+def test_effective_tmdb_api_key_falls_back_to_env_var(monkeypatch):
+    monkeypatch.setenv("NFOGEN_TMDB_API_KEY", "env-tmdb-key")
+    assert store.effective_tmdb_api_key() == "env-tmdb-key"
+
+
+def test_status_reports_tmdb_configured_without_leaking_key():
+    assert store.status()["tmdb_configured"] is False
+    store.write(tmdb_api_key="tmdb-secret-key")
+    status = store.status()
+    assert status["tmdb_configured"] is True
+    assert "tmdb-secret-key" not in str(status)
