@@ -303,7 +303,7 @@ describe("LibraryPage", () => {
     });
 
     renderPage();
-    await user.click(await screen.findByRole("button", { name: /Configuration/ }));
+    await user.click(await screen.findByRole("button", { name: /Configuration globale/ }));
 
     await user.type(screen.getByLabelText("URL Sonarr"), "http://sonarr.local:8989");
     await user.type(screen.getByLabelText("Clé API Sonarr"), "sk-123");
@@ -314,7 +314,6 @@ describe("LibraryPage", () => {
         sonarr_url: "http://sonarr.local:8989",
         sonarr_api_key: "sk-123",
         radarr_url: "http://radarr.local:7878",
-        tracker_base_url: "https://c411.org",
         sonarr_path_mappings: {},
         radarr_path_mappings: {},
         qbittorrent_verify_ssl: true,
@@ -331,7 +330,7 @@ describe("LibraryPage", () => {
     });
 
     renderPage();
-    await user.click(await screen.findByRole("button", { name: /Configuration/ }));
+    await user.click(await screen.findByRole("button", { name: /Configuration globale/ }));
 
     await user.type(screen.getByLabelText("URL qBittorrent"), "http://qbittorrent.local:8080");
     await user.type(screen.getByLabelText("Utilisateur qBittorrent"), "admin");
@@ -356,7 +355,7 @@ describe("LibraryPage", () => {
     vi.mocked(gapscanConfigWrite).mockResolvedValue(CONFIGURED);
 
     renderPage();
-    await user.click(await screen.findByRole("button", { name: /Configuration/ }));
+    await user.click(await screen.findByRole("button", { name: /Configuration globale/ }));
     await user.click(screen.getByLabelText(/Vérifier le certificat SSL de qBittorrent/));
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
 
@@ -364,6 +363,34 @@ describe("LibraryPage", () => {
       expect.objectContaining({ qbittorrent_verify_ssl: false }),
       "c411",
     );
+  });
+
+  it("enregistre la config du profil tracker separement de la config globale", async () => {
+    /* Retour utilisateur, 2026-09-07 : "il faut separrer la configuration
+     * du profil ... que ce soit au meme endroit sur l'interface non pas
+     * d'accord" -- deux panneaux, deux actions d'enregistrement independantes. */
+    const user = userEvent.setup();
+    vi.mocked(gapscanConfigWrite).mockResolvedValue({
+      ...CONFIGURED, tracker_base_url: "https://c411.example",
+    });
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Configuration du profil/ }));
+
+    const baseUrlInput = screen.getByLabelText(/URL de base C411/);
+    await user.clear(baseUrlInput);
+    await user.type(baseUrlInput, "https://c411.example");
+    await user.type(screen.getByLabelText(/Clé API C411/), "sk-tracker");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(gapscanConfigWrite).toHaveBeenCalledWith(
+      {
+        tracker_base_url: "https://c411.example",
+        tracker_api_key: "sk-tracker",
+      },
+      "c411",
+    );
+    expect(screen.queryByLabelText("URL Sonarr")).not.toBeInTheDocument();
   });
 
   it("pas de scan precedent : pas de case 'Scan rapide', et le scan lance est complet", async () => {

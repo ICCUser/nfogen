@@ -109,13 +109,25 @@ export default function LibraryPage() {
   const [only, setOnly] = useState<"" | "movies" | "series">("");
   const pollRef = useRef<number | null>(null);
 
-  // Formulaire de configuration (Sonarr/Radarr/tracker) : replie par
-  // defaut, deplie automatiquement une fois qu'on sait qu'il manque
-  // quelque chose (voir l'effet plus bas, une fois `config` charge).
-  const [showConfigForm, setShowConfigForm] = useState(false);
-  const [configSaving, setConfigSaving] = useState(false);
-  const [configSaved, setConfigSaved] = useState(false);
-  const [configError, setConfigError] = useState<string | null>(null);
+  // Formulaire de configuration : deux panneaux SEPARES sur l'interface
+  // (retour utilisateur, 2026-09-07 -- "il faut separrer la configuration
+  // du profil ... que ce soit au meme endroit sur l'interface non pas
+  // d'accord apres mon test") :
+  //  - config DU PROFIL (namespacee par profil cote serveur : cle API,
+  //    URL de base et d'annonce du tracker) ;
+  //  - config GLOBALE (Sonarr, Radarr, qBittorrent, dossier de mise en
+  //    scene, mappings de chemins -- independante du profil actif).
+  // Chacun replie par defaut, deplie automatiquement une fois qu'on sait
+  // qu'il manque quelque chose (voir l'effet plus bas, une fois `config`
+  // charge).
+  const [showProfileConfigForm, setShowProfileConfigForm] = useState(false);
+  const [profileConfigSaving, setProfileConfigSaving] = useState(false);
+  const [profileConfigSaved, setProfileConfigSaved] = useState(false);
+  const [profileConfigError, setProfileConfigError] = useState<string | null>(null);
+  const [showGlobalConfigForm, setShowGlobalConfigForm] = useState(false);
+  const [globalConfigSaving, setGlobalConfigSaving] = useState(false);
+  const [globalConfigSaved, setGlobalConfigSaved] = useState(false);
+  const [globalConfigError, setGlobalConfigError] = useState<string | null>(null);
   const [sonarrUrl, setSonarrUrl] = useState("");
   const [sonarrApiKey, setSonarrApiKey] = useState("");
   const [radarrUrl, setRadarrUrl] = useState("");
@@ -145,9 +157,8 @@ export default function LibraryPage() {
         setStagingDir(c.staging_dir ?? "");
         setQbittorrentUrl(c.qbittorrent_url ?? "");
         setQbittorrentVerifySsl(c.qbittorrent_verify_ssl ?? true);
-        if (!c.tracker_configured || (!c.sonarr_configured && !c.radarr_configured)) {
-          setShowConfigForm(true);
-        }
+        if (!c.tracker_configured) setShowProfileConfigForm(true);
+        if (!c.sonarr_configured && !c.radarr_configured) setShowGlobalConfigForm(true);
       });
     refreshStatus();
     return () => stopPolling();
@@ -269,22 +280,47 @@ export default function LibraryPage() {
     }
   }
 
-  async function handleSaveConfig() {
-    setConfigSaving(true);
-    setConfigError(null);
-    setConfigSaved(false);
+  // Config DU PROFIL (namespacee par `profile` cote serveur : voir
+  // gapscan_config_store.write(), branche `tracker_updates`).
+  async function handleSaveProfileConfig() {
+    setProfileConfigSaving(true);
+    setProfileConfigError(null);
+    setProfileConfigSaved(false);
     try {
       // Seuls les champs non vides sont envoyes : un champ cle laisse vide
       // ne doit pas effacer une valeur deja enregistree (PUT partiel cote
       // serveur, voir gapscan_config_store.write()).
       const fields: GapscanConfigWrite = {};
+      if (trackerApiKey.trim()) fields.tracker_api_key = trackerApiKey.trim();
+      if (trackerBaseUrl.trim()) fields.tracker_base_url = trackerBaseUrl.trim();
+      if (trackerAnnounceUrl.trim()) fields.tracker_announce_url = trackerAnnounceUrl.trim();
+
+      const updated = await gapscanConfigWrite(fields, profile);
+      setConfig(updated);
+      setTrackerApiKey("");
+      setTrackerAnnounceUrl("");
+      setProfileConfigSaved(true);
+      setTimeout(() => setProfileConfigSaved(false), 2000);
+    } catch (e) {
+      setProfileConfigError(e instanceof ApiError ? e.message : "Enregistrement impossible.");
+    } finally {
+      setProfileConfigSaving(false);
+    }
+  }
+
+  // Config GLOBALE (Sonarr, Radarr, qBittorrent, mise en scene, mappings de
+  // chemins) : independante du profil actif, ignoree cote serveur pour ces
+  // champs (voir gapscan_config_store.write()).
+  async function handleSaveGlobalConfig() {
+    setGlobalConfigSaving(true);
+    setGlobalConfigError(null);
+    setGlobalConfigSaved(false);
+    try {
+      const fields: GapscanConfigWrite = {};
       if (sonarrUrl.trim()) fields.sonarr_url = sonarrUrl.trim();
       if (sonarrApiKey.trim()) fields.sonarr_api_key = sonarrApiKey.trim();
       if (radarrUrl.trim()) fields.radarr_url = radarrUrl.trim();
       if (radarrApiKey.trim()) fields.radarr_api_key = radarrApiKey.trim();
-      if (trackerApiKey.trim()) fields.tracker_api_key = trackerApiKey.trim();
-      if (trackerBaseUrl.trim()) fields.tracker_base_url = trackerBaseUrl.trim();
-      if (trackerAnnounceUrl.trim()) fields.tracker_announce_url = trackerAnnounceUrl.trim();
       if (stagingDir.trim()) fields.staging_dir = stagingDir.trim();
       if (qbittorrentUrl.trim()) fields.qbittorrent_url = qbittorrentUrl.trim();
       if (qbittorrentUsername.trim()) fields.qbittorrent_username = qbittorrentUsername.trim();
@@ -302,15 +338,13 @@ export default function LibraryPage() {
       setConfig(updated);
       setSonarrApiKey("");
       setRadarrApiKey("");
-      setTrackerApiKey("");
-      setTrackerAnnounceUrl("");
       setQbittorrentPassword("");
-      setConfigSaved(true);
-      setTimeout(() => setConfigSaved(false), 2000);
+      setGlobalConfigSaved(true);
+      setTimeout(() => setGlobalConfigSaved(false), 2000);
     } catch (e) {
-      setConfigError(e instanceof ApiError ? e.message : "Enregistrement impossible.");
+      setGlobalConfigError(e instanceof ApiError ? e.message : "Enregistrement impossible.");
     } finally {
-      setConfigSaving(false);
+      setGlobalConfigSaving(false);
     }
   }
 
@@ -416,18 +450,87 @@ export default function LibraryPage() {
       <div className="rounded-md border border-line bg-surface">
         <button
           type="button"
-          onClick={() => setShowConfigForm((v) => !v)}
+          onClick={() => setShowProfileConfigForm((v) => !v)}
           className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink"
         >
-          Configuration (Sonarr, Radarr, {trackerDisplayName})
-          <span className="text-ink-faint">{showConfigForm ? "▲" : "▼"}</span>
+          Configuration du profil {trackerDisplayName} ({profile})
+          <span className="text-ink-faint">{showProfileConfigForm ? "▲" : "▼"}</span>
         </button>
-        {showConfigForm && (
+        {showProfileConfigForm && (
           <div className="space-y-3 border-t border-line p-4">
             <p className="text-xs text-ink-faint">
-              Enregistré côté serveur ({" "}
+              Propre à ce profil de tracker — un autre profil peut avoir sa propre clé/URL (voir
+              le sélecteur de profil dans l'en-tête). Enregistré côté serveur ({" "}
               <code className="rounded bg-surface-2 px-1 font-mono">NFOGEN_GAPSCAN_CONFIG_FILE</code>{" "}
               requis). Un champ « clé » laissé vide ne modifie pas la clé déjà enregistrée.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm font-medium text-ink-dim">
+                URL de base {trackerDisplayName}
+                <input
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
+                  placeholder="https://c411.org"
+                  value={trackerBaseUrl}
+                  onChange={(e) => setTrackerBaseUrl(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink-dim">
+                Clé API {trackerDisplayName}
+                <input
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
+                  type="password"
+                  placeholder={config?.tracker_configured ? "•••• (enregistrée)" : ""}
+                  value={trackerApiKey}
+                  onChange={(e) => setTrackerApiKey(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink-dim">
+                Adresse d'annonce {trackerDisplayName}
+                <input
+                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
+                  type="password"
+                  placeholder={config?.tracker_announce_url_configured ? "•••• (enregistrée)" : ""}
+                  value={trackerAnnounceUrl}
+                  onChange={(e) => setTrackerAnnounceUrl(e.target.value)}
+                />
+              </label>
+            </div>
+
+            {profileConfigError && <p className="text-sm text-crit">{profileConfigError}</p>}
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSaveProfileConfig}
+                disabled={profileConfigSaving}
+                className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
+              >
+                {profileConfigSaving ? "Enregistrement…" : "Enregistrer"}
+              </button>
+              {profileConfigSaved && <span className="text-sm text-good">Enregistré.</span>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-md border border-line bg-surface">
+        <button
+          type="button"
+          onClick={() => setShowGlobalConfigForm((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink"
+        >
+          Configuration globale (Sonarr, Radarr, qBittorrent)
+          <span className="text-ink-faint">{showGlobalConfigForm ? "▲" : "▼"}</span>
+        </button>
+        {showGlobalConfigForm && (
+          <div className="space-y-3 border-t border-line p-4">
+            <p className="text-xs text-ink-faint">
+              Commune à tous les profils — indépendante du profil de tracker actif. Enregistré
+              côté serveur ({" "}
+              <code className="rounded bg-surface-2 px-1 font-mono">NFOGEN_GAPSCAN_CONFIG_FILE</code>{" "}
+              requis). Un champ « clé »/« mot de passe » laissé vide ne modifie pas la valeur déjà
+              enregistrée.
             </p>
 
             <div className="grid grid-cols-2 gap-3">
@@ -467,35 +570,6 @@ export default function LibraryPage() {
                   placeholder={config?.radarr_configured ? "•••• (enregistrée)" : ""}
                   value={radarrApiKey}
                   onChange={(e) => setRadarrApiKey(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                URL de base {trackerDisplayName}
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  placeholder="https://c411.org"
-                  value={trackerBaseUrl}
-                  onChange={(e) => setTrackerBaseUrl(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                Clé API {trackerDisplayName}
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  type="password"
-                  placeholder={config?.tracker_configured ? "•••• (enregistrée)" : ""}
-                  value={trackerApiKey}
-                  onChange={(e) => setTrackerApiKey(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                Adresse d'annonce {trackerDisplayName}
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  type="password"
-                  placeholder={config?.tracker_announce_url_configured ? "•••• (enregistrée)" : ""}
-                  value={trackerAnnounceUrl}
-                  onChange={(e) => setTrackerAnnounceUrl(e.target.value)}
                 />
               </label>
               <label className="block text-sm font-medium text-ink-dim">
@@ -574,18 +648,18 @@ export default function LibraryPage() {
               />
             </div>
 
-            {configError && <p className="text-sm text-crit">{configError}</p>}
+            {globalConfigError && <p className="text-sm text-crit">{globalConfigError}</p>}
 
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={handleSaveConfig}
-                disabled={configSaving}
+                onClick={handleSaveGlobalConfig}
+                disabled={globalConfigSaving}
                 className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
               >
-                {configSaving ? "Enregistrement…" : "Enregistrer"}
+                {globalConfigSaving ? "Enregistrement…" : "Enregistrer"}
               </button>
-              {configSaved && <span className="text-sm text-good">Enregistré.</span>}
+              {globalConfigSaved && <span className="text-sm text-good">Enregistré.</span>}
             </div>
           </div>
         )}
