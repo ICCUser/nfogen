@@ -123,6 +123,25 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
         "audio_languages": [t.language for t in mi.tracks if t.track_type == "Audio"],
         "subtitle_languages": [t.language for t in mi.tracks if t.track_type == "Text"],
         "general_title": getattr(general, "title", None) if general is not None else None,
+        # Detail par piste (retour utilisateur, 2026-09-07 : tableau BBCode
+        # audio/sous-titres avec canaux/codec/debit/sample rate, voir
+        # upload_prep.py) -- vient s'ajouter a audio_languages/
+        # subtitle_languages ci-dessus (toujours presents, utilises
+        # ailleurs), sans les remplacer.
+        "audio_tracks": [
+            {
+                "language": t.language,
+                "channels": t.channel_s,
+                "codec": t.format,
+                "bit_rate_kbps": round(int(t.bit_rate) / 1000) if t.bit_rate else None,
+                "sampling_khz": round(int(t.sampling_rate) / 1000, 1) if t.sampling_rate else None,
+            }
+            for t in mi.tracks if t.track_type == "Audio"
+        ],
+        "subtitle_tracks": [
+            {"language": t.language, "forced": getattr(t, "forced", None) == "Yes"}
+            for t in mi.tracks if t.track_type == "Text"
+        ],
     }
 
 
