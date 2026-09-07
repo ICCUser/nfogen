@@ -56,7 +56,10 @@ export default function UploadPrepPanel({
   const [commitJobs, setCommitJobs] = useState<Record<number, CommitJob>>({});
   const [commitResults, setCommitResults] = useState<Record<number, UploadCommitResult>>({});
   const [commitErrors, setCommitErrors] = useState<Record<number, string>>({});
-  const [sending, setSending] = useState<number | null>(null);
+  const [sending, setSending] = useState<{ index: number; direct: boolean } | null>(null);
+  // Quel mode a produit sendResults[index] -- distingue "Brouillon créé"
+  // de "Uploadé directement" a l'affichage (voir handleSend).
+  const [sentDirect, setSentDirect] = useState<Record<number, boolean>>({});
   const [sendResults, setSendResults] = useState<Record<number, SendToTrackerResult>>({});
   const [sendErrors, setSendErrors] = useState<Record<number, string>>({});
   const pollRefs = useRef<Record<number, number>>({});
@@ -158,10 +161,16 @@ export default function UploadPrepPanel({
     }
   }
 
-  async function handleSend(index: number) {
+  async function handleSend(index: number, direct: boolean) {
     const commit = commitResults[index];
     if (!commit) return;
-    setSending(index);
+    // Upload direct : part reellement en moderation (POST /api/torrents,
+    // retour d'un membre de l'equipe C411, 2026-09-07) -- une derniere
+    // confirmation, contrairement au brouillon qui reste toujours privé.
+    if (direct && !confirm("Uploader directement sur C411 (hors brouillon) ? Ça part réellement en modération.")) {
+      return;
+    }
+    setSending({ index, direct });
     setSendErrors((prev) => ({ ...prev, [index]: "" }));
     try {
       const result = await sendToTracker({
@@ -177,9 +186,11 @@ export default function UploadPrepPanel({
         tvdbId: tvdbId ?? undefined,
         genre: genre ?? undefined,
         seasonNumber: seasonNumber ?? undefined,
-        draftId: sendResults[index]?.draft_id,
+        draftId: direct ? undefined : sendResults[index]?.draft_id,
+        direct,
       });
       setSendResults((prev) => ({ ...prev, [index]: result }));
+      setSentDirect((prev) => ({ ...prev, [index]: direct }));
     } catch (e) {
       setSendErrors((prev) => ({
         ...prev,
@@ -301,20 +312,31 @@ export default function UploadPrepPanel({
             </p>
           )}
           {commitResults[index] && !sendResults[index] && (
-            <button
-              type="button"
-              onClick={() => handleSend(index)}
-              disabled={sending === index}
-              className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
-            >
-              {sending === index ? "Envoi…" : "Envoyer à C411"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSend(index, false)}
+                disabled={sending !== null}
+                className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
+              >
+                {sending?.index === index && !sending.direct ? "Envoi…" : "Créer un brouillon"}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSend(index, true)}
+                disabled={sending !== null}
+                title="Upload direct (POST /api/torrents) -- part réellement en modération, contrairement au brouillon."
+                className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
+              >
+                {sending?.index === index && sending.direct ? "Envoi…" : "Uploader directement"}
+              </button>
+            </div>
           )}
           {sendErrors[index] && <p className="text-xs text-crit">{sendErrors[index]}</p>}
           {sendResults[index] && (
             <div className="space-y-1 text-xs">
               <p className="text-good">
-                Brouillon créé :{" "}
+                {sentDirect[index] ? "Uploadé directement" : "Brouillon créé"} :{" "}
                 <a
                   href={sendResults[index].draft_url}
                   className="underline"
@@ -324,7 +346,9 @@ export default function UploadPrepPanel({
                   {sendResults[index].draft_url}
                 </a>
                 <br />
-                Finalise-le sur le site pour l'envoyer réellement en modération.
+                {sentDirect[index]
+                  ? "Déjà envoyé en modération sur C411 — rien de plus à faire ici."
+                  : "Finalise-le sur le site pour l'envoyer réellement en modération."}
               </p>
               {sendResults[index].duplicate_warning && (
                 <p className="text-warn">⚠ {sendResults[index].duplicate_warning}</p>

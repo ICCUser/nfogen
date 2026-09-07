@@ -33,6 +33,17 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
     hébergés via `raw.githubusercontent.com` (pas de bannières C411
     réutilisées : elles appartiennent à un autre utilisateur du tracker).
 
+- **Upload direct vers C411, distinct du brouillon** (retour d'un membre
+  de l'équipe C411, 2026-09-07) : un vrai endpoint d'upload direct existe
+  (`POST /api/torrents`, multipart, part réellement en modération) —
+  jamais découvert lors de l'exploration initiale du sous-projet 5
+  (2026-09-04), qui s'était arrêtée sur `/api/user/drafts`. Nouveau
+  `C411UploadClient.upload_torrent()`, `send_to_tracker(direct=True)`,
+  et dans "Préparer l'upload" un second bouton **"Uploader directement"**
+  à côté de **"Créer un brouillon"** (renommé), avec confirmation avant
+  l'envoi (irréversible côté C411, contrairement au brouillon). Forme
+  exacte de la réponse pas encore confirmée en conditions réelles.
+
 - **Avertissement si la présentation sera incomplète (clé TMDB manquante)**
   (retour C411, 2026-09-07 : "tous les éléments doivent y figurer... c'est
   obligatoire") : `SendResult`/`SendToTrackerResult` gagnent

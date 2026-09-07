@@ -512,7 +512,10 @@ export function cancelCommitJob(jobId: string): Promise<{ status: string }> {
 
 /** Cree (ou met a jour si draftId deja connu) un BROUILLON sur le tracker
  * pour UN groupe deja confirme -- n'entre JAMAIS en file de moderation
- * tout seul (voir AUTOMATION.md, sous-projet 5, decision 6). */
+ * tout seul (voir AUTOMATION.md, sous-projet 5, decision 6), SAUF si
+ * `direct: true` (retour d'un membre de l'equipe C411, 2026-09-07 : vrai
+ * endpoint d'upload direct, `POST /api/torrents`, part reellement en
+ * moderation -- `draftId` alors ignore, pas de notion de mise a jour). */
 export function sendToTracker(params: {
   releaseName: string;
   stagedPath: string;
@@ -527,6 +530,7 @@ export function sendToTracker(params: {
   genre?: "anime" | "documentaire";
   seasonNumber?: number;
   draftId?: number | string;
+  direct?: boolean;
 }): Promise<SendToTrackerResult> {
   return request<SendToTrackerResult>("/gapscan/prepare-upload/send", {
     method: "POST",
@@ -544,6 +548,7 @@ export function sendToTracker(params: {
       genre: params.genre,
       season_number: params.seasonNumber,
       draft_id: params.draftId,
+      direct: params.direct ?? false,
     }),
   });
 }

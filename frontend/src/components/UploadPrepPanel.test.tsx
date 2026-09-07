@@ -211,21 +211,70 @@ it("affiche le bouton Envoyer a C411 seulement apres confirmation, et affiche le
     genre: null, seasonNumber: null,
   });
 
-  expect(screen.queryByRole("button", { name: /Envoyer à C411/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Créer un brouillon/i })).not.toBeInTheDocument();
 
   await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(screen.getByRole("button", { name: /Confirmer/i }));
 
-  const sendButton = await screen.findByRole("button", { name: /Envoyer à C411/i });
+  const sendButton = await screen.findByRole("button", { name: /Créer un brouillon/i });
   await user.click(sendButton);
 
   expect(await screen.findByText(/c411\.org\/user\/drafts\/555/)).toBeInTheDocument();
+  expect(screen.getByText(/^Brouillon créé/)).toBeInTheDocument();
   expect(sendToTracker).toHaveBeenCalledWith(
     expect.objectContaining({
       releaseName: "Movie.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM",
-      mediaType: "movie", radarrMovieId: 42, tmdbId: 603,
+      mediaType: "movie", radarrMovieId: 42, tmdbId: 603, direct: false,
     }),
   );
+});
+
+it("Uploader directement demande confirmation, appelle sendToTracker avec direct:true, affiche 'Uploade directement'", async () => {
+  /* Retour d'un membre de l'equipe C411, 2026-09-07 : vrai endpoint
+   * d'upload direct (POST /api/torrents), distinct des brouillons. */
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.mocked(sendToTracker).mockResolvedValue({
+    draft_id: 777, draft_url: "https://c411.org/torrents/abc123",
+    duplicate_warning: null, presentation_warning: null,
+  });
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+  renderPanel({
+    localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn(),
+    mediaType: "movie", radarrMovieId: 42, sonarrSeriesId: null, tmdbId: 603, tvdbId: null,
+    genre: null, seasonNumber: null,
+  });
+
+  await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(await screen.findByRole("button", { name: /Uploader directement/i }));
+
+  expect(confirmSpy).toHaveBeenCalled();
+  expect(sendToTracker).toHaveBeenCalledWith(expect.objectContaining({ direct: true }));
+  expect(await screen.findByText(/^Uploadé directement/)).toBeInTheDocument();
+});
+
+it("Uploader directement n'appelle rien si l'utilisateur annule la confirmation", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+
+  renderPanel({
+    localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn(),
+    mediaType: "movie", radarrMovieId: 42, sonarrSeriesId: null, tmdbId: 603, tvdbId: null,
+    genre: null, seasonNumber: null,
+  });
+
+  await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(await screen.findByRole("button", { name: /Uploader directement/i }));
+
+  expect(sendToTracker).not.toHaveBeenCalled();
 });
 
 it("affiche l'avertissement anti-doublon quand present", async () => {
@@ -247,7 +296,7 @@ it("affiche l'avertissement anti-doublon quand present", async () => {
 
   await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(screen.getByRole("button", { name: /Confirmer/i }));
-  await user.click(await screen.findByRole("button", { name: /Envoyer à C411/i }));
+  await user.click(await screen.findByRole("button", { name: /Créer un brouillon/i }));
 
   expect(await screen.findByText(/déjà approuvée/i)).toBeInTheDocument();
 });
@@ -273,7 +322,7 @@ it("affiche l'avertissement de presentation incomplete (cle TMDB manquante) quan
 
   await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(screen.getByRole("button", { name: /Confirmer/i }));
-  await user.click(await screen.findByRole("button", { name: /Envoyer à C411/i }));
+  await user.click(await screen.findByRole("button", { name: /Créer un brouillon/i }));
 
   expect(await screen.findByText(/clé API TMDB non configurée/i)).toBeInTheDocument();
 });

@@ -1044,6 +1044,28 @@ figées dans le profil, voir "Décisions") :
      le panneau "Préparer l'upload" reste ouvert (pas persisté au-delà,
      cohérent avec le reste de ce panneau).
 
+   **Corrigé le 2026-09-07** (retour d'un membre de l'équipe C411) :
+   l'affirmation "aucun endpoint 'soumettre le brouillon' n'existe côté
+   API" reste vraie pour `/api/user/drafts` lui-même, mais un **vrai
+   endpoint d'upload direct existe** — `POST /api/torrents`, jamais
+   trouvé lors de l'exploration initiale du 2026-09-04, qui s'était
+   arrêtée sur les brouillons. Documenté dans la page "Guide de
+   l'Uploader" du wiki C411 ("API Upload") : `multipart/form-data`,
+   fichiers réels (pas de base64 contrairement aux brouillons), `options`/
+   `tmdbData` en chaînes JSON dans le formulaire — part réellement en
+   modération ("Team Pending", ou auto-approuvé pour un uploader
+   certifié). Nouveau `C411UploadClient.upload_torrent()`,
+   `send_to_tracker(direct=True)` (aucune notion de mise à jour dans ce
+   mode — un upload direct est un one-shot, `draft_id` ignoré). Dans
+   "Préparer l'upload", le bouton existant devient **"Créer un
+   brouillon"**, un second bouton **"Uploader directement"** apparaît à
+   côté (confirmation demandée avant l'envoi — irréversible côté C411,
+   contrairement au brouillon qui reste toujours privé). Forme exacte de
+   la réponse de `POST /api/torrents` pas encore confirmée en conditions
+   réelles (contrairement au format des brouillons, déjà vérifié) — code
+   défensif en attendant (préfixe une URL relative avec le domaine du
+   tracker si besoin).
+
 7. **Gestion des réponses** : succès → nfogen affiche le lien du
    brouillon (`https://c411.org/...`, à confirmer sur la vraie réponse
    JSON de `POST /api/user/drafts`). **Limite réelle à gérer** : 15
