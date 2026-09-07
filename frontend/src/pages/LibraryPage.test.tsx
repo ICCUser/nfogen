@@ -62,6 +62,7 @@ const CONFIGURED: GapscanConfig = {
   qbittorrent_configured: false,
   qbittorrent_url: null,
   qbittorrent_verify_ssl: true,
+  tmdb_configured: false,
 };
 
 const IDLE_STATUS: GapscanStatus = {
@@ -288,87 +289,21 @@ describe("LibraryPage", () => {
       sonarr_path_mappings: {}, radarr_path_mappings: {},
       tracker_announce_url_configured: false, staging_dir: null,
       qbittorrent_configured: false, qbittorrent_url: null, qbittorrent_verify_ssl: true,
+      tmdb_configured: false,
     });
     renderPage();
 
     expect(await screen.findByText(/Clé API C411 non configurée/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Lancer un scan complet" })).toBeDisabled();
-    expect(screen.getByLabelText("URL Sonarr")).toBeInTheDocument();
+    expect(screen.getByLabelText(/URL de base/)).toBeInTheDocument();
   });
 
-  it("enregistre Sonarr via le formulaire de configuration", async () => {
-    const user = userEvent.setup();
-    vi.mocked(gapscanConfigWrite).mockResolvedValue({
-      ...CONFIGURED, sonarr_configured: true, sonarr_url: "http://sonarr.local:8989",
-    });
-
-    renderPage();
-    await user.click(await screen.findByRole("button", { name: /Configuration globale/ }));
-
-    await user.type(screen.getByLabelText("URL Sonarr"), "http://sonarr.local:8989");
-    await user.type(screen.getByLabelText("Clé API Sonarr"), "sk-123");
-    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
-
-    expect(gapscanConfigWrite).toHaveBeenCalledWith(
-      {
-        sonarr_url: "http://sonarr.local:8989",
-        sonarr_api_key: "sk-123",
-        radarr_url: "http://radarr.local:7878",
-        sonarr_path_mappings: {},
-        radarr_path_mappings: {},
-        qbittorrent_verify_ssl: true,
-      },
-      "c411",
-    );
-    expect(await screen.findByText("Enregistré.")).toBeInTheDocument();
-  });
-
-  it("enregistre la configuration qBittorrent via le formulaire de configuration", async () => {
-    const user = userEvent.setup();
-    vi.mocked(gapscanConfigWrite).mockResolvedValue({
-      ...CONFIGURED, qbittorrent_configured: true, qbittorrent_url: "http://qbittorrent.local:8080",
-    });
-
-    renderPage();
-    await user.click(await screen.findByRole("button", { name: /Configuration globale/ }));
-
-    await user.type(screen.getByLabelText("URL qBittorrent"), "http://qbittorrent.local:8080");
-    await user.type(screen.getByLabelText("Utilisateur qBittorrent"), "admin");
-    await user.type(screen.getByLabelText("Mot de passe qBittorrent"), "secret");
-    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
-
-    expect(gapscanConfigWrite).toHaveBeenCalledWith(
-      expect.objectContaining({
-        qbittorrent_url: "http://qbittorrent.local:8080",
-        qbittorrent_username: "admin",
-        qbittorrent_password: "secret",
-        qbittorrent_verify_ssl: true,
-      }),
-      "c411",
-    );
-  });
-
-  it("decoche la verification SSL qBittorrent -- envoie qbittorrent_verify_ssl: false", async () => {
-    /* Retour utilisateur, 2026-09-07 : certificat auto-signe frequent sur
-     * un WebUI qBittorrent en HTTPS local. */
-    const user = userEvent.setup();
-    vi.mocked(gapscanConfigWrite).mockResolvedValue(CONFIGURED);
-
-    renderPage();
-    await user.click(await screen.findByRole("button", { name: /Configuration globale/ }));
-    await user.click(screen.getByLabelText(/Vérifier le certificat SSL de qBittorrent/));
-    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
-
-    expect(gapscanConfigWrite).toHaveBeenCalledWith(
-      expect.objectContaining({ qbittorrent_verify_ssl: false }),
-      "c411",
-    );
-  });
-
-  it("enregistre la config du profil tracker separement de la config globale", async () => {
+  it("enregistre la config du profil tracker (config globale migree vers Reglages)", async () => {
     /* Retour utilisateur, 2026-09-07 : "il faut separrer la configuration
      * du profil ... que ce soit au meme endroit sur l'interface non pas
-     * d'accord" -- deux panneaux, deux actions d'enregistrement independantes. */
+     * d'accord" -- LibraryPage ne garde plus que le panneau du profil, la
+     * config globale (Sonarr/Radarr/qBittorrent/TMDB) a migre vers
+     * SettingsPage (voir SettingsPage.test.tsx). */
     const user = userEvent.setup();
     vi.mocked(gapscanConfigWrite).mockResolvedValue({
       ...CONFIGURED, tracker_base_url: "https://c411.example",

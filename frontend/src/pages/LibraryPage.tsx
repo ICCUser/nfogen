@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import ActiveTransfersTray from "../components/ActiveTransfersTray";
-import { KeyValueEditor } from "../components/ListEditor";
 import UploadPrepPanel from "../components/UploadPrepPanel";
 import {
   clearGapscanLog,
@@ -109,39 +108,21 @@ export default function LibraryPage() {
   const [only, setOnly] = useState<"" | "movies" | "series">("");
   const pollRef = useRef<number | null>(null);
 
-  // Formulaire de configuration : deux panneaux SEPARES sur l'interface
-  // (retour utilisateur, 2026-09-07 -- "il faut separrer la configuration
-  // du profil ... que ce soit au meme endroit sur l'interface non pas
-  // d'accord apres mon test") :
-  //  - config DU PROFIL (namespacee par profil cote serveur : cle API,
-  //    URL de base et d'annonce du tracker) ;
-  //  - config GLOBALE (Sonarr, Radarr, qBittorrent, dossier de mise en
-  //    scene, mappings de chemins -- independante du profil actif).
-  // Chacun replie par defaut, deplie automatiquement une fois qu'on sait
-  // qu'il manque quelque chose (voir l'effet plus bas, une fois `config`
-  // charge).
+  // Formulaire de configuration DU PROFIL (namespacee par profil cote
+  // serveur : cle API, URL de base et d'annonce du tracker). La config
+  // GLOBALE (Sonarr/Radarr/qBittorrent/TMDB/mise en scene/mappings) a
+  // migre vers la page Reglages (retour utilisateur, 2026-09-07 -- ces
+  // reglages ne sont pas lies au profil de tracker, ils n'ont pas leur
+  // place sur la page Bibliotheque). Replie par defaut, deplie
+  // automatiquement une fois qu'on sait qu'il manque quelque chose (voir
+  // l'effet plus bas, une fois `config` charge).
   const [showProfileConfigForm, setShowProfileConfigForm] = useState(false);
   const [profileConfigSaving, setProfileConfigSaving] = useState(false);
   const [profileConfigSaved, setProfileConfigSaved] = useState(false);
   const [profileConfigError, setProfileConfigError] = useState<string | null>(null);
-  const [showGlobalConfigForm, setShowGlobalConfigForm] = useState(false);
-  const [globalConfigSaving, setGlobalConfigSaving] = useState(false);
-  const [globalConfigSaved, setGlobalConfigSaved] = useState(false);
-  const [globalConfigError, setGlobalConfigError] = useState<string | null>(null);
-  const [sonarrUrl, setSonarrUrl] = useState("");
-  const [sonarrApiKey, setSonarrApiKey] = useState("");
-  const [radarrUrl, setRadarrUrl] = useState("");
-  const [radarrApiKey, setRadarrApiKey] = useState("");
   const [trackerApiKey, setTrackerApiKey] = useState("");
   const [trackerBaseUrl, setTrackerBaseUrl] = useState("");
-  const [sonarrPathMappings, setSonarrPathMappings] = useState<Record<string, string>>({});
-  const [radarrPathMappings, setRadarrPathMappings] = useState<Record<string, string>>({});
   const [trackerAnnounceUrl, setTrackerAnnounceUrl] = useState("");
-  const [stagingDir, setStagingDir] = useState("");
-  const [qbittorrentUrl, setQbittorrentUrl] = useState("");
-  const [qbittorrentUsername, setQbittorrentUsername] = useState("");
-  const [qbittorrentPassword, setQbittorrentPassword] = useState("");
-  const [qbittorrentVerifySsl, setQbittorrentVerifySsl] = useState(true);
 
   useEffect(() => {
     gapscanConfig(profile)
@@ -149,16 +130,8 @@ export default function LibraryPage() {
       .then((c) => {
         if (!c) return;
         setConfig(c);
-        setSonarrUrl(c.sonarr_url ?? "");
-        setRadarrUrl(c.radarr_url ?? "");
         setTrackerBaseUrl(c.tracker_base_url ?? "");
-        setSonarrPathMappings(c.sonarr_path_mappings);
-        setRadarrPathMappings(c.radarr_path_mappings);
-        setStagingDir(c.staging_dir ?? "");
-        setQbittorrentUrl(c.qbittorrent_url ?? "");
-        setQbittorrentVerifySsl(c.qbittorrent_verify_ssl ?? true);
         if (!c.tracker_configured) setShowProfileConfigForm(true);
-        if (!c.sonarr_configured && !c.radarr_configured) setShowGlobalConfigForm(true);
       });
     refreshStatus();
     return () => stopPolling();
@@ -308,46 +281,6 @@ export default function LibraryPage() {
     }
   }
 
-  // Config GLOBALE (Sonarr, Radarr, qBittorrent, mise en scene, mappings de
-  // chemins) : independante du profil actif, ignoree cote serveur pour ces
-  // champs (voir gapscan_config_store.write()).
-  async function handleSaveGlobalConfig() {
-    setGlobalConfigSaving(true);
-    setGlobalConfigError(null);
-    setGlobalConfigSaved(false);
-    try {
-      const fields: GapscanConfigWrite = {};
-      if (sonarrUrl.trim()) fields.sonarr_url = sonarrUrl.trim();
-      if (sonarrApiKey.trim()) fields.sonarr_api_key = sonarrApiKey.trim();
-      if (radarrUrl.trim()) fields.radarr_url = radarrUrl.trim();
-      if (radarrApiKey.trim()) fields.radarr_api_key = radarrApiKey.trim();
-      if (stagingDir.trim()) fields.staging_dir = stagingDir.trim();
-      if (qbittorrentUrl.trim()) fields.qbittorrent_url = qbittorrentUrl.trim();
-      if (qbittorrentUsername.trim()) fields.qbittorrent_username = qbittorrentUsername.trim();
-      if (qbittorrentPassword.trim()) fields.qbittorrent_password = qbittorrentPassword.trim();
-      // Contrairement aux champs texte ci-dessus, une case a cocher
-      // represente toujours une valeur explicite (pas d'etat "vide") --
-      // toujours envoyee.
-      fields.qbittorrent_verify_ssl = qbittorrentVerifySsl;
-      // Contrairement aux cles/URLs ci-dessus, un dictionnaire vide est une
-      // valeur explicite valide ("aucun mapping") : toujours envoye.
-      fields.sonarr_path_mappings = sonarrPathMappings;
-      fields.radarr_path_mappings = radarrPathMappings;
-
-      const updated = await gapscanConfigWrite(fields, profile);
-      setConfig(updated);
-      setSonarrApiKey("");
-      setRadarrApiKey("");
-      setQbittorrentPassword("");
-      setGlobalConfigSaved(true);
-      setTimeout(() => setGlobalConfigSaved(false), 2000);
-    } catch (e) {
-      setGlobalConfigError(e instanceof ApiError ? e.message : "Enregistrement impossible.");
-    } finally {
-      setGlobalConfigSaving(false);
-    }
-  }
-
   async function handleExportCsv() {
     try {
       const blob = await gapscanExportCsv({
@@ -443,7 +376,8 @@ export default function LibraryPage() {
       )}
       {!notConfigured && noLibrary && (
         <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
-          Aucune instance Sonarr ni Radarr configurée — renseigne au moins l'une des deux ci-dessous.
+          Aucune instance Sonarr ni Radarr configurée — renseigne au moins l'une des deux dans les{" "}
+          <Link to="/settings" className="underline">Réglages</Link>.
         </div>
       )}
 
@@ -509,157 +443,6 @@ export default function LibraryPage() {
                 {profileConfigSaving ? "Enregistrement…" : "Enregistrer"}
               </button>
               {profileConfigSaved && <span className="text-sm text-good">Enregistré.</span>}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-md border border-line bg-surface">
-        <button
-          type="button"
-          onClick={() => setShowGlobalConfigForm((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink"
-        >
-          Configuration globale (Sonarr, Radarr, qBittorrent)
-          <span className="text-ink-faint">{showGlobalConfigForm ? "▲" : "▼"}</span>
-        </button>
-        {showGlobalConfigForm && (
-          <div className="space-y-3 border-t border-line p-4">
-            <p className="text-xs text-ink-faint">
-              Commune à tous les profils — indépendante du profil de tracker actif. Enregistré
-              côté serveur ({" "}
-              <code className="rounded bg-surface-2 px-1 font-mono">NFOGEN_GAPSCAN_CONFIG_FILE</code>{" "}
-              requis). Un champ « clé »/« mot de passe » laissé vide ne modifie pas la valeur déjà
-              enregistrée.
-            </p>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm font-medium text-ink-dim">
-                URL Sonarr
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  placeholder="http://sonarr.local:8989"
-                  value={sonarrUrl}
-                  onChange={(e) => setSonarrUrl(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                Clé API Sonarr
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  type="password"
-                  placeholder={config?.sonarr_configured ? "•••• (enregistrée)" : ""}
-                  value={sonarrApiKey}
-                  onChange={(e) => setSonarrApiKey(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                URL Radarr
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  placeholder="http://radarr.local:7878"
-                  value={radarrUrl}
-                  onChange={(e) => setRadarrUrl(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                Clé API Radarr
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  type="password"
-                  placeholder={config?.radarr_configured ? "•••• (enregistrée)" : ""}
-                  value={radarrApiKey}
-                  onChange={(e) => setRadarrApiKey(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                Dossier de mise en scène
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  placeholder="/data/staging"
-                  value={stagingDir}
-                  onChange={(e) => setStagingDir(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                URL qBittorrent
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  placeholder="http://qbittorrent.local:8080"
-                  value={qbittorrentUrl}
-                  onChange={(e) => setQbittorrentUrl(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                Utilisateur qBittorrent
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  value={qbittorrentUsername}
-                  onChange={(e) => setQbittorrentUsername(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink-dim">
-                Mot de passe qBittorrent
-                <input
-                  className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
-                  type="password"
-                  placeholder={config?.qbittorrent_configured ? "•••• (enregistré)" : ""}
-                  value={qbittorrentPassword}
-                  onChange={(e) => setQbittorrentPassword(e.target.value)}
-                />
-              </label>
-              <label className="flex items-center gap-2 text-sm font-medium text-ink-dim">
-                <input
-                  type="checkbox"
-                  checked={qbittorrentVerifySsl}
-                  onChange={(e) => setQbittorrentVerifySsl(e.target.checked)}
-                />
-                Vérifier le certificat SSL de qBittorrent
-              </label>
-              {!qbittorrentVerifySsl && (
-                <p className="text-xs text-ink-faint">
-                  Désactivé : utile si le WebUI qBittorrent utilise un certificat auto-signé
-                  (courant en HTTPS local) — la connexion reste chiffrée, seule la vérification
-                  du certificat est ignorée.
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-ink-dim">
-                Mapping de chemins Sonarr (si nfogen ne voit pas les mêmes chemins que Sonarr)
-              </p>
-              <KeyValueEditor
-                value={sonarrPathMappings}
-                onChange={setSonarrPathMappings}
-                keyPlaceholder="Chemin distant (Sonarr)"
-                valuePlaceholder="Chemin local (nfogen)"
-              />
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-ink-dim">
-                Mapping de chemins Radarr (si nfogen ne voit pas les mêmes chemins que Radarr)
-              </p>
-              <KeyValueEditor
-                value={radarrPathMappings}
-                onChange={setRadarrPathMappings}
-                keyPlaceholder="Chemin distant (Radarr)"
-                valuePlaceholder="Chemin local (nfogen)"
-              />
-            </div>
-
-            {globalConfigError && <p className="text-sm text-crit">{globalConfigError}</p>}
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleSaveGlobalConfig}
-                disabled={globalConfigSaving}
-                className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
-              >
-                {globalConfigSaving ? "Enregistrement…" : "Enregistrer"}
-              </button>
-              {globalConfigSaved && <span className="text-sm text-good">Enregistré.</span>}
             </div>
           </div>
         )}
