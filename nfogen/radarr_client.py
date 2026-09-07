@@ -70,6 +70,14 @@ class RadarrMovieDetails:
     genres: list[str] = field(default_factory=list)
     directors: list[str] = field(default_factory=list)
     cast: list[str] = field(default_factory=list)
+    # Confirmes disponibles en conditions reelles le 2026-09-06 (retour
+    # utilisateur, GET /api/v3/movie/{id}) : `releaseDate`, `runtime`
+    # (minutes), `studio`, `certification`. Pas de "pays de production"
+    # -- absent de la reponse Radarr, jamais devine (voir upload_description.j2).
+    release_date: Optional[str] = None  # ISO (YYYY-MM-DD), tel que retourne par Radarr
+    runtime_minutes: Optional[int] = None
+    studio: Optional[str] = None
+    certification: Optional[str] = None
 
 
 def _parse_radarr_date(value: Optional[str]) -> Optional[float]:
@@ -177,10 +185,15 @@ class RadarrClient:
             for c in movie.get("credits", [])
             if c.get("type") == "cast" and c.get("person", {}).get("name")
         ]
+        release_date_raw = movie.get("releaseDate") or movie.get("physicalRelease") or movie.get("inCinemas")
         return RadarrMovieDetails(
             overview=movie.get("overview") or "",
             poster_url=poster_url,
             genres=movie.get("genres") or [],
             directors=directors,
             cast=cast,
+            release_date=release_date_raw[:10] if release_date_raw else None,
+            runtime_minutes=movie.get("runtime") or None,
+            studio=movie.get("studio") or None,
+            certification=movie.get("certification") or None,
         )

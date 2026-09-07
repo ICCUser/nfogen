@@ -11,6 +11,18 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Ajouté
 
+- **Description BBCode d'upload enrichie** (retour utilisateur, 2026-09-07)
+  : le gabarit par défaut (`upload_description.j2`) affichait beaucoup
+  moins d'informations que celles réellement disponibles — `audio_languages`
+  était même câblé en dur à `[]`, jamais rempli. Ajout de la date de
+  sortie, la durée, la classification, le studio/la chaîne (confirmés
+  disponibles sur Radarr/Sonarr en conditions réelles, `releaseDate`/
+  `runtime`/`certification`/`studio`/`network`), des vraies langues
+  audio/sous-titres et du débit vidéo (extraits du fichier réel via
+  MediaInfo, jamais utilisés jusqu'ici), et du nom de release/team/nombre
+  de fichiers/taille totale. Pas de "pays de production" — absent des
+  deux API, jamais deviné.
+
 - **Généralisation tracker-agnostique** (AUTOMATION.md, sous-projet 4b) :
   les quatre dernières valeurs spécifiques à C411 câblées en Python
   (codes de catégorie Torznab, barème de taille de pièce torrent, codes

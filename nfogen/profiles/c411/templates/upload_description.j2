@@ -2,16 +2,28 @@
 
 {% if poster_url %}[center][img]{{ poster_url }}[/img][/center]
 
-{% endif %}[h2]Synopsis[/h2]
+{% endif %}[h2]🎬 Informations[/h2]
+{% if genres %}[b]Genres :[/b] {{ genres|join(", ") }}
+{% endif %}{% if release_date %}[b]Date de sortie :[/b] {{ release_date }}
+{% endif %}{% if runtime_display %}[b]Durée :[/b] {{ runtime_display }}
+{% endif %}{% if certification %}[b]Classification :[/b] {{ certification }}
+{% endif %}{% if distributor %}[b]Studio/Chaîne :[/b] {{ distributor }}
+{% endif %}{% if directors %}[b]Réalisateur(s) :[/b] {{ directors|join(", ") }}
+{% endif %}{% if cast %}[b]Acteurs :[/b] {{ cast|join(", ") }}
+{% endif %}
+[h2]📖 Synopsis[/h2]
 {% if overview %}{{ overview }}{% else %}(synopsis non disponible){% endif %}
 
-[h2]Informations[/h2]
-{% if directors %}[b]Réalisateur :[/b] {{ directors|join(", ") }}
-{% endif %}{% if cast %}[b]Acteurs :[/b] {{ cast|join(", ") }}
-{% endif %}{% if genres %}[b]Genre :[/b] {{ genres|join(", ") }}
-{% endif %}
-[h2]Qualité[/h2]
+[h2]⚙️ Détails techniques[/h2]
 [list]
 [*]Vidéo : {{ video_codec }} {{ resolution }}p ({{ source }})
-{% if audio_languages %}[*]Audio : {{ audio_languages|join(", ") }}
+{% if video_bit_rate_kbps %}[*]Débit vidéo : {{ video_bit_rate_kbps }} kb/s
+{% endif %}{% if audio_languages %}[*]Audio : {{ audio_languages|join(", ") }}
+{% endif %}{% if subtitle_languages %}[*]Sous-titres : {{ subtitle_languages|join(", ") }}
 {% endif %}[/list]
+
+[h2]📥 Téléchargement[/h2]
+[b]Release :[/b] {{ release_name }}
+{% if team %}[b]Team :[/b] {{ team }}
+{% endif %}[b]Nombre de fichier(s) :[/b] {{ file_count }}
+[b]Taille totale :[/b] {{ total_size_bytes|human_bin }}

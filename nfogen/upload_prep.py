@@ -403,8 +403,12 @@ def send_to_tracker(
     api_key, base_url = tracker_config
 
     # Metadonnees de presentation : a la demande, jamais pendant le scan
-    # (voir AUTOMATION.md, decision 1).
+    # (voir AUTOMATION.md, decision 1). `release_date`/`runtime_minutes`/
+    # `distributor`/`certification` confirmes disponibles en conditions
+    # reelles le 2026-09-06 (retour utilisateur) -- pas de "pays de
+    # production", absent des deux API, jamais devine.
     overview, poster_url, genres, directors, cast = "", None, [], [], []
+    release_date, runtime_minutes, distributor, certification = None, None, None, None
     if media_type == "movie" and radarr_movie_id is not None:
         radarr_config = gapscan_config_store.effective_radarr()
         if radarr_config:
@@ -413,6 +417,8 @@ def send_to_tracker(
                 details = radarr.get_movie_details(radarr_movie_id)
                 overview, poster_url = details.overview, details.poster_url
                 genres, directors, cast = details.genres, details.directors, details.cast
+                release_date, runtime_minutes = details.release_date, details.runtime_minutes
+                distributor, certification = details.studio, details.certification
             finally:
                 radarr.close()
     elif media_type == "series" and sonarr_series_id is not None:
@@ -423,14 +429,45 @@ def send_to_tracker(
                 details = sonarr.get_series_details(sonarr_series_id)
                 overview, poster_url = details.overview, details.poster_url
                 genres, directors, cast = details.genres, details.directors, details.cast
+                release_date, runtime_minutes = details.release_date, details.runtime_minutes
+                distributor, certification = details.network, details.certification
             finally:
                 sonarr.close()
 
     # Infos qualite (source/langue/codec/resolution) : extraites du
     # release_name DEJA CONFIRME via les memes tokens que la validation
-    # (sous-projet 4b), pas redemandees au moteur de nommage.
+    # (sous-projet 4b), pas redemandees au moteur de nommage. `team` :
+    # meme extraction que `name_proposal.py` (evite de dupliquer une
+    # regex, voir extract_team_tag).
     schema = read_profile(profile)["rules"].get("video", {})
     capture_values = rules_captures(release_name, schema)
+    team = extract_team_tag(release_name)
+
+    # Langues audio/sous-titres + debit video : extraits du VRAI fichier
+    # mis en scene (MediaInfo), jamais devines -- `audio_languages`
+    # restait cable en dur a [] jusqu'ici (retour utilisateur, 2026-09-06).
+    # Pour un pack (dossier), le premier episode reste representatif
+    # (codec/langues identiques d'un episode a l'autre dans l'ecrasante
+    # majorite des cas).
+    staged = Path(staged_path)
+    if staged.is_dir():
+        per_file_metadata = extract.extract_video_dir_metadata(staged)
+        first_metadata = per_file_metadata[0] if per_file_metadata else {}
+        file_count = len(per_file_metadata)
+        total_size_bytes = sum(f.stat().st_size for f in staged.rglob("*") if f.is_file())
+    else:
+        first_metadata = extract.extract_video_metadata(staged)
+        file_count = 1
+        total_size_bytes = staged.stat().st_size
+    audio_languages = [lang for lang in first_metadata.get("audio_languages", []) if lang]
+    subtitle_languages = [lang for lang in first_metadata.get("subtitle_languages", []) if lang]
+    video_bit_rate = first_metadata.get("video_bit_rate")
+    # Formatage fait ici (pas en Jinja) : plus simple a tester, evite
+    # l'arithmetique fragile dans le gabarit.
+    runtime_display = (
+        f"{runtime_minutes // 60}h{runtime_minutes % 60:02d}min" if runtime_minutes else None
+    )
+    video_bit_rate_kbps = round(video_bit_rate / 1000) if video_bit_rate else None
 
     description = render_upload_description(
         profile,
@@ -440,7 +477,13 @@ def send_to_tracker(
             "resolution": capture_values.get("resolution", ""),
             "source": capture_values.get("source", ""),
             "video_codec": capture_values.get("video_codec", ""),
-            "audio_languages": [],
+            "audio_languages": audio_languages,
+            "subtitle_languages": subtitle_languages,
+            "video_bit_rate_kbps": video_bit_rate_kbps,
+            "release_date": release_date, "runtime_display": runtime_display,
+            "distributor": distributor, "certification": certification,
+            "release_name": release_name, "team": team,
+            "file_count": file_count, "total_size_bytes": total_size_bytes,
         },
     )
 

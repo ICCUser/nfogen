@@ -675,6 +675,74 @@ def test_send_to_tracker_movie_creates_a_draft(tmp_path, monkeypatch):
     assert kwargs["options"] == {"1": [2], "2": 413}  # VFF (MULTI.VFF) + BluRay.HDLight
 
 
+def test_send_to_tracker_description_includes_new_metadata_fields(tmp_path, monkeypatch):
+    """Retour utilisateur, 2026-09-06 : `release_date`/`runtime`/
+    `studio`/`certification` (confirmes disponibles via Radarr en
+    conditions reelles) et `team`/`file_count`/`total_size_bytes`
+    (deja connus a ce stade) doivent apparaitre dans la description --
+    `audio_languages` restait meme cable en dur a [] jusqu'ici."""
+    staged = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+
+    class FakeRadarrClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_movie_details(self, movie_id):
+            from nfogen.radarr_client import RadarrMovieDetails
+            return RadarrMovieDetails(
+                overview="Synopsis test.", release_date="2020-05-01",
+                runtime_minutes=108, studio="Test Studio", certification="12",
+            )
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.RadarrClient", FakeRadarrClient)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_radarr",
+        lambda: ("http://radarr.local", "radarr-key"),
+    )
+
+    captured: dict = {}
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_draft(self, **kwargs):
+            captured["kwargs"] = kwargs
+            return {"id": 558, "url": "https://c411.org/user/drafts/558"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    send_to_tracker(
+        release_name="Movie.2020.MULTI.VFF.1080p.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", radarr_movie_id=42,
+    )
+
+    description = captured["kwargs"]["description"]
+    assert "2020-05-01" in description
+    assert "1h48min" in description
+    assert "Test Studio" in description
+    assert "12" in description
+    assert "TEAM" in description  # team, extrait du release_name
+    assert "Movie.2020.MULTI.VFF.1080p.BluRay-TEAM" in description  # release_name
+
+
 def test_send_to_tracker_records_history_on_success(tmp_path, monkeypatch):
     monkeypatch.setenv("NFOGEN_UPLOAD_HISTORY_FILE", str(tmp_path / "history.json"))
     staged = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.mkv"

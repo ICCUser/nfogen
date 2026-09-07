@@ -895,6 +895,15 @@ figées dans le profil, voir "Décisions") :
    du système `register`/`registry` par catégorie. Éditable comme
    n'importe quel template de profil, jamais de BBCode généré en dur en
    Python.
+   **Enrichi le 2026-09-07** (retour utilisateur) : date de sortie,
+   durée, classification, studio/chaîne (`RadarrMovieDetails`/
+   `SonarrSeriesDetails` gagnent `release_date`/`runtime_minutes`/
+   `studio` ou `network`/`certification`, confirmés disponibles en
+   conditions réelles) ; langues audio/sous-titres et débit vidéo
+   (extraits du fichier réel mis en scène via `extract.extract_video_metadata`
+   — `audio_languages` restait câblé en dur à `[]` jusque-là) ; nom de
+   release/team/nombre de fichiers/taille totale. Pas de "pays de
+   production" — absent des deux API (Radarr et Sonarr), jamais deviné.
 
 3. **Catégorie/sous-catégorie/options : déclaratifs dans le profil
    (`rules.json` → `tracker.upload`), pas requêtés dynamiquement à

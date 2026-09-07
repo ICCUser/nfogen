@@ -191,6 +191,45 @@ def test_get_movie_details_degrades_gracefully_when_fields_absent():
     assert details.genres == []
     assert details.directors == []
     assert details.cast == []
+    assert details.release_date is None
+    assert details.runtime_minutes is None
+    assert details.studio is None
+    assert details.certification is None
+
+
+def test_get_movie_details_parses_release_date_runtime_studio_certification():
+    """Champs confirmes disponibles en conditions reelles le 2026-09-06
+    (retour utilisateur, GET /api/v3/movie/{id} reel) -- `releaseDate`
+    (prioritaire, sinon `physicalRelease`/`inCinemas`), `runtime`
+    (minutes), `studio`, `certification`."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": 42,
+                "releaseDate": "2003-08-29T00:00:00Z",
+                "physicalRelease": "2003-08-29T00:00:00Z",
+                "inCinemas": "2003-06-05T00:00:00Z",
+                "runtime": 108,
+                "studio": "Ardustry Entertainment",
+                "certification": "12",
+            },
+        )
+
+    details = _client(handler).get_movie_details(42)
+
+    assert details.release_date == "2003-08-29"
+    assert details.runtime_minutes == 108
+    assert details.studio == "Ardustry Entertainment"
+    assert details.certification == "12"
+
+
+def test_get_movie_details_release_date_falls_back_to_in_cinemas():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"id": 42, "inCinemas": "2003-06-05T00:00:00Z"})
+
+    details = _client(handler).get_movie_details(42)
+    assert details.release_date == "2003-06-05"
 
 
 def test_requires_base_url_and_api_key():

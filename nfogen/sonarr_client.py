@@ -74,6 +74,14 @@ class SonarrSeriesDetails:
     genres: list[str] = field(default_factory=list)
     directors: list[str] = field(default_factory=list)
     cast: list[str] = field(default_factory=list)
+    # Confirmes disponibles en conditions reelles le 2026-09-06 (retour
+    # utilisateur, GET /api/v3/series/{id}) : `firstAired`, `runtime`
+    # (minutes), `network`, `certification`. Pas de "pays de production"
+    # -- absent de la reponse Sonarr, jamais devine (voir upload_description.j2).
+    release_date: Optional[str] = None  # ISO (YYYY-MM-DD), tel que retourne par Sonarr
+    runtime_minutes: Optional[int] = None
+    network: Optional[str] = None
+    certification: Optional[str] = None
 
 
 def _parse_sonarr_date(value: Optional[str]) -> Optional[float]:
@@ -198,8 +206,13 @@ class SonarrClient:
             (img.get("remoteUrl") for img in series.get("images", []) if img.get("coverType") == "poster"),
             None,
         )
+        first_aired = series.get("firstAired")
         return SonarrSeriesDetails(
             overview=series.get("overview") or "",
             poster_url=poster_url,
             genres=series.get("genres") or [],
+            release_date=first_aired[:10] if first_aired else None,
+            runtime_minutes=series.get("runtime") or None,
+            network=series.get("network") or None,
+            certification=series.get("certification") or None,
         )

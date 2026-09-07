@@ -275,6 +275,34 @@ def test_get_series_details_degrades_gracefully_when_fields_absent():
     assert details.overview == ""
     assert details.poster_url is None
     assert details.genres == []
+    assert details.release_date is None
+    assert details.runtime_minutes is None
+    assert details.network is None
+    assert details.certification is None
+
+
+def test_get_series_details_parses_release_date_runtime_network_certification():
+    """Champs confirmes disponibles en conditions reelles le 2026-09-06
+    (retour utilisateur, GET /api/v3/series/{id} reel) -- `firstAired`,
+    `runtime` (minutes), `network`, `certification`."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": 99,
+                "firstAired": "2016-11-25T00:00:00Z",
+                "runtime": 45,
+                "network": "Netflix",
+                "certification": "TV-MA",
+            },
+        )
+
+    details = _client(handler).get_series_details(99)
+
+    assert details.release_date == "2016-11-25"
+    assert details.runtime_minutes == 45
+    assert details.network == "Netflix"
+    assert details.certification == "TV-MA"
 
 
 def test_requires_base_url_and_api_key():
