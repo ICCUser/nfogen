@@ -1638,6 +1638,39 @@ def test_prepare_upload_send_creates_a_draft(reload_api, tmp_path, monkeypatch):
     assert body["duplicate_warning"] is None
 
 
+def test_prepare_upload_send_forwards_direct_flag(reload_api, tmp_path, monkeypatch):
+    """Retour d'un membre de l'equipe C411, 2026-09-07 : upload direct
+    (POST /api/torrents), distinct des brouillons."""
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    captured: dict = {}
+
+    def fake_send_to_tracker(**kwargs):
+        captured.update(kwargs)
+        return mod.upload_prep.SendResult(draft_id=777, draft_url="https://c411.org/torrents/abc123")
+
+    monkeypatch.setattr(mod.upload_prep, "send_to_tracker", fake_send_to_tracker)
+    client = TestClient(mod.app)
+
+    resp = client.post(
+        "/gapscan/prepare-upload/send",
+        json={
+            "release_name": "Movie.2020.BluRay-TEAM",
+            "staged_path": str(staged), "torrent_path": str(torrent), "nfo_path": str(nfo),
+            "profile": "c411", "media_type": "movie", "radarr_movie_id": 42, "tmdb_id": 603,
+            "direct": True,
+        },
+    )
+    assert resp.status_code == 200
+    assert captured["direct"] is True
+
+
 def test_prepare_upload_send_requires_auth_when_token_configured(reload_api):
     mod = reload_api(NFOGEN_API_TOKEN="secret123")
     client = TestClient(mod.app)

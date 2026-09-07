@@ -1201,12 +1201,16 @@ class PrepareUploadSendRequest(BaseModel):
     genre: Optional[str] = None
     season_number: Optional[int] = None
     draft_id: Optional[Any] = None
+    direct: bool = False
 
 
 @app.post("/gapscan/prepare-upload/send", dependencies=[Depends(require_token)])
 def gapscan_prepare_upload_send(req: PrepareUploadSendRequest) -> dict[str, Any]:
-    """Cree (ou met a jour) un BROUILLON C411 -- jamais une soumission
-    reelle en moderation (voir AUTOMATION.md, sous-projet 5, decision 6)."""
+    """Cree (ou met a jour) un BROUILLON C411 par defaut -- jamais une
+    soumission reelle en moderation (voir AUTOMATION.md, sous-projet 5,
+    decision 6). `direct=True` (retour d'un membre de l'equipe C411,
+    2026-09-07) : upload DIRECT (`POST /api/torrents`), part reellement
+    en moderation -- voir `upload_prep.send_to_tracker`."""
     _require_gapscan_available()
     result = _run_upload_prep(
         upload_prep.send_to_tracker,
@@ -1214,7 +1218,7 @@ def gapscan_prepare_upload_send(req: PrepareUploadSendRequest) -> dict[str, Any]
         nfo_path=req.nfo_path, profile=req.profile, media_type=req.media_type,
         radarr_movie_id=req.radarr_movie_id, sonarr_series_id=req.sonarr_series_id,
         tmdb_id=req.tmdb_id, tvdb_id=req.tvdb_id, genre=req.genre, season_number=req.season_number,
-        draft_id=req.draft_id,
+        draft_id=req.draft_id, direct=req.direct,
     )
     return asdict(result)
 

@@ -82,17 +82,20 @@ class GroupProposal:
 
 @dataclass
 class SendResult:
-    """Resultat de `send_to_tracker()` : le brouillon cree/mis a jour
-    n'entre JAMAIS en file de moderation tout seul (voir AUTOMATION.md,
-    sous-projet 5, decision 6) -- c'est a l'utilisateur de le finaliser
-    sur le site du tracker. `duplicate_warning` : non None si la
-    verification anti-doublon n'a pas pu avoir lieu ou a trouve une
-    release existante -- jamais bloquant. `presentation_warning` (retour
-    C411, 2026-09-07 -- "tous les elements doivent y figurer... c'est
-    obligatoire") : non None si Pays/Createur(s)/Note TMDB/IMDB seront
-    absents de la description faute de cle API TMDB configuree -- jamais
-    bloquant non plus, juste un signal pour ne pas se faire rejeter par
-    la moderation comme deja arrive (bit rate manquant)."""
+    """Resultat de `send_to_tracker()`. Par defaut (`direct=False`), le
+    brouillon cree/mis a jour n'entre JAMAIS en file de moderation tout
+    seul (voir AUTOMATION.md, sous-projet 5, decision 6) -- c'est a
+    l'utilisateur de le finaliser sur le site du tracker ; `draft_id`/
+    `draft_url` identifient alors ce brouillon. En mode `direct=True`
+    (upload direct, `POST /api/torrents`), ces memes champs identifient
+    plutot le torrent uploade, deja parti en moderation. `duplicate_warning` :
+    non None si la verification anti-doublon n'a pas pu avoir lieu ou a
+    trouve une release existante -- jamais bloquant. `presentation_warning`
+    (retour C411, 2026-09-07 -- "tous les elements doivent y figurer...
+    c'est obligatoire") : non None si Pays/Createur(s)/Note TMDB/IMDB
+    seront absents de la description faute de cle API TMDB configuree --
+    jamais bloquant non plus, juste un signal pour ne pas se faire
+    rejeter par la moderation comme deja arrive (bit rate manquant)."""
 
     draft_id: Any
     draft_url: str
@@ -404,10 +407,15 @@ def send_to_tracker(
     genre: Optional[str] = None,
     season_number: Optional[int] = None,
     draft_id: Optional[Any] = None,
+    direct: bool = False,
 ) -> SendResult:
-    """Cree (ou met a jour si `draft_id` deja connu) un BROUILLON C411
-    pour un groupe deja confirme par `commit_upload()` -- jamais une
-    soumission reelle (voir AUTOMATION.md, sous-projet 5, decision 6).
+    """Cree (ou met a jour si `draft_id` deja connu) un BROUILLON C411 par
+    defaut -- jamais une soumission reelle (voir AUTOMATION.md, sous-projet
+    5, decision 6). `direct=True` (retour d'un membre de l'equipe C411,
+    2026-09-07 : un vrai endpoint d'upload direct existe, decouvert apres
+    coup -- voir `C411UploadClient.upload_torrent`) : part reellement en
+    moderation (`POST /api/torrents`), jamais de notion de mise a jour
+    (`draft_id` ignore dans ce mode -- un upload direct est un one-shot).
     Recupere les metadonnees de presentation (synopsis/affiche/genres) A
     LA DEMANDE aupres de Radarr/Sonarr (jamais pendant le scan GapScan),
     rend la description BBCode, calcule categorie/sous-categorie/options
@@ -604,7 +612,16 @@ def send_to_tracker(
 
         tmdb_data = {"id": tmdb_id, "type": "movie" if media_type == "movie" else "tv"} if tmdb_id else None
 
-        if draft_id is not None:
+        if direct:
+            # Upload direct : jamais de notion de mise a jour (draft_id
+            # ignore), un seul appel, part reellement en moderation.
+            response = upload_client.upload_torrent(
+                torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes,
+                torrent_filename=f"{release_name}.torrent", nfo_filename=f"{release_name}.nfo",
+                title=release_name, description=description, category_id=category_id,
+                subcategory_id=subcategory_id, options=options, tmdb_data=tmdb_data,
+            )
+        elif draft_id is not None:
             response = upload_client.update_draft(
                 draft_id, torrent_bytes=torrent_bytes, nfo_bytes=nfo_bytes,
                 torrent_filename=f"{release_name}.torrent", nfo_filename=f"{release_name}.nfo",
@@ -621,8 +638,17 @@ def send_to_tracker(
     finally:
         upload_client.close()
 
+    # `POST /api/torrents` peut renvoyer une URL relative (voir l'exemple
+    # `by-tmdb` de la doc C411, "url": "/torrents/{infoHash}") -- jamais
+    # confirme en conditions reelles pour CET endpoint precis (contrairement
+    # au format des brouillons, deja verifie), donc reste defensif : prefixe
+    # avec le domaine du tracker si l'URL renvoyee n'en a pas deja un.
+    draft_url = response.get("url", "")
+    if direct and draft_url and not draft_url.startswith("http"):
+        draft_url = base_url.rstrip("/") + draft_url
+
     result = SendResult(
-        draft_id=response.get("id"), draft_url=response.get("url", ""),
+        draft_id=response.get("id"), draft_url=draft_url,
         duplicate_warning=duplicate_warning, presentation_warning=presentation_warning,
     )
     key = upload_history_store.processed_key(media_type, radarr_movie_id, sonarr_series_id, season_number)

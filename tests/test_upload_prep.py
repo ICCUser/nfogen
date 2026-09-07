@@ -1198,6 +1198,94 @@ def test_send_to_tracker_tmdb_failure_does_not_block_send(tmp_path, monkeypatch)
     assert result.draft_id == 900  # n'a pas leve, la description s'est generee sans TMDB
 
 
+def test_send_to_tracker_direct_calls_upload_torrent_not_drafts(tmp_path, monkeypatch):
+    """Retour d'un membre de l'equipe C411, 2026-09-07 : vrai endpoint
+    d'upload direct (POST /api/torrents), distinct des brouillons."""
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+    calls: list[str] = []
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def upload_torrent(self, **kwargs):
+            calls.append("upload_torrent")
+            return {"id": 777, "url": "/torrents/abc123"}
+
+        def create_draft(self, **kwargs):
+            calls.append("create_draft")
+            return {"id": 555, "url": "https://c411.org/user/drafts/555"}
+
+        def update_draft(self, draft_id, **kwargs):
+            calls.append("update_draft")
+            return {"id": draft_id, "url": "https://c411.org/user/drafts/555"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603, direct=True,
+        draft_id=999,  # ignore en mode direct -- ne doit jamais declencher update_draft
+    )
+
+    assert calls == ["upload_torrent"]
+    assert result.draft_id == 777
+
+
+def test_send_to_tracker_direct_prefixes_relative_url_with_tracker_domain(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def upload_torrent(self, **kwargs):
+            return {"id": 777, "url": "/torrents/abc123"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603, direct=True,
+    )
+
+    assert result.draft_url == "https://c411.org/torrents/abc123"
+
+
 def test_send_to_tracker_requires_tracker_credentials(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "nfogen.upload_prep.gapscan_config_store.effective_tracker", lambda profile: None
