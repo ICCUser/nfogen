@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-WIDTH, HEIGHT = 460, 56
+WIDTH, HEIGHT = 640, 78
 BG_COLOR = "#141d19"
 ACCENT_COLOR = "#6bc9b3"
 CREDIT_COLOR = "#4d5c53"
@@ -48,15 +48,15 @@ def _font(size: int) -> ImageFont.FreeTypeFont:
 
 def generate() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    title_font = _font(22)
-    credit_font = _font(11)
+    title_font = _font(30)
+    credit_font = _font(13)
     for filename, label in BANNERS:
         img = Image.new("RGB", (WIDTH, HEIGHT), BG_COLOR)
         draw = ImageDraw.Draw(img)
         # Lisere d'accent, coherent avec la maquette validee.
-        draw.rectangle((0, 0, 4, HEIGHT), fill=ACCENT_COLOR)
-        draw.text((22, 14), label, font=title_font, fill=ACCENT_COLOR)
-        draw.text((WIDTH - 92, HEIGHT - 16), "nfogen.nfo", font=credit_font, fill=CREDIT_COLOR)
+        draw.rectangle((0, 0, 6, HEIGHT), fill=ACCENT_COLOR)
+        draw.text((30, 21), label, font=title_font, fill=ACCENT_COLOR)
+        draw.text((WIDTH - 110, HEIGHT - 22), "nfogen.nfo", font=credit_font, fill=CREDIT_COLOR)
         path = OUT_DIR / f"{filename}.png"
         img.save(path, "PNG")
         print(f"Écrit : {path}")
