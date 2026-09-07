@@ -53,7 +53,8 @@ def generate() -> None:
     for filename, label in BANNERS:
         img = Image.new("RGB", (WIDTH, HEIGHT), BG_COLOR)
         draw = ImageDraw.Draw(img)
-        draw.rectangle((0, 0, 4, HEIGHT), fill=ACCENT_COLOR)  # liseré d'accent, coherent avec la maquette validee
+        # Lisere d'accent, coherent avec la maquette validee.
+        draw.rectangle((0, 0, 4, HEIGHT), fill=ACCENT_COLOR)
         draw.text((22, 14), label, font=title_font, fill=ACCENT_COLOR)
         draw.text((WIDTH - 92, HEIGHT - 16), "nfogen.nfo", font=credit_font, fill=CREDIT_COLOR)
         path = OUT_DIR / f"{filename}.png"
