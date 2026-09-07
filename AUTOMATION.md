@@ -1209,6 +1209,18 @@ exige une session navigateur authentifiée, pas la clé API. Aucune
 automatisation de la récupération n'est donc possible sans reproduire un
 login complet (hors de portée de ce projet).
 
+**Piste de simplification, pas encore vérifiée en conditions réelles**
+(retour d'un membre de l'équipe C411, 2026-09-07) : le `.torrent` généré
+par nfogen lui-même pourrait suffire pour la mise en seed, à condition
+d'y inscrire le tag `source=C411` — mécanisme que la plupart des
+trackers privés utilisent pour reconnaître un torrent comme le leur
+(modifie le hash). Ajouté côté génération (`tracker_profile.torrent_source()`,
+`torrent_builder.build_torrent(..., source=...)`, `rules.json` du profil
+c411 → `tracker.torrent_source: "C411"`) — mais **le dépôt manuel du
+`.torrent` re-signé dans "À mettre en seed" reste en place** tant que ça
+n'a pas été testé en conditions réelles (un futur torrent généré
+localement avec ce tag pourra être testé directement).
+
 **Nouvelle file d'attente "À mettre en seed"** (`/seed-queue`) : liste
 les titres déjà envoyés à C411 (voir sous-projet 5) mais pas encore
 ajoutés à un client de seed (`GET /gapscan/seed-queue`, alimentée par

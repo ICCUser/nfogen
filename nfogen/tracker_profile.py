@@ -9,7 +9,7 @@ par defaut qui degradent proprement (jamais de supposition) pour un profil
 qui n'a pas encore de section "tracker"."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from . import profile_store
 
@@ -60,6 +60,19 @@ def torrent_piece_sizes(profile: str) -> list[dict[str, int]]:
     (torrent_builder leve alors une erreur claire plutot que de deviner
     une taille)."""
     return _tracker_section(profile).get("torrent_piece_sizes", [])
+
+
+def torrent_source(profile: str) -> Optional[str]:
+    """Tag `source` a inscrire dans le .torrent genere (voir
+    torrent_builder.build_torrent) -- modifie le hash du torrent, c'est le
+    mecanisme utilise par la plupart des trackers prives pour reconnaitre
+    un torrent comme le leur (retour C411, 2026-09-07 : "le plus simple
+    c'est de le generer correctement de ton cote, en precisant
+    source=C411" -- plus besoin de telecharger un .torrent re-signe apres
+    moderation). `None` si non declare : `build_torrent` n'ajoute alors
+    aucun tag `source`, comportement inchange pour un profil qui n'en a
+    pas besoin."""
+    return _tracker_section(profile).get("torrent_source") or None
 
 
 def upload_config(profile: str) -> dict[str, Any]:

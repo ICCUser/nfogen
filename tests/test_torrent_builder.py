@@ -102,6 +102,34 @@ def test_build_torrent_creates_a_valid_private_torrent(tmp_path):
     assert reloaded.piece_size == piece_size_for(100, _C411_PIECE_SIZES)
 
 
+def test_build_torrent_sets_source_when_given(tmp_path):
+    """Retour C411, 2026-09-07 : "le plus simple c'est de le generer
+    correctement de ton cote, en precisant source=C411" -- plus besoin de
+    telecharger un .torrent re-signe apres moderation."""
+    staged = tmp_path / "Release.Name.mkv"
+    staged.write_bytes(b"x" * 100)
+    output = tmp_path / "output.torrent"
+
+    build_torrent(
+        str(staged), "https://c411.org/announce/SECRET", str(output), _C411_PIECE_SIZES,
+        source="C411",
+    )
+
+    reloaded = torf.Torrent.read(str(output))
+    assert reloaded.source == "C411"
+
+
+def test_build_torrent_no_source_tag_when_not_given(tmp_path):
+    staged = tmp_path / "Release.Name.mkv"
+    staged.write_bytes(b"x" * 100)
+    output = tmp_path / "output.torrent"
+
+    build_torrent(str(staged), "https://c411.org/announce/SECRET", str(output), _C411_PIECE_SIZES)
+
+    reloaded = torf.Torrent.read(str(output))
+    assert reloaded.source is None
+
+
 def test_build_torrent_supports_a_directory_for_multi_file_packs(tmp_path):
     staged_dir = tmp_path / "Release.Name"
     staged_dir.mkdir()

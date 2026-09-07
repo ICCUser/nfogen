@@ -516,6 +516,33 @@ def test_commit_upload_without_hooks_behaves_exactly_as_before(tmp_path, monkeyp
     assert _Path(result.staged_path).is_file()
 
 
+def test_commit_upload_sets_torrent_source_from_profile(tmp_path, monkeypatch):
+    """Retour C411, 2026-09-07 : "le plus simple c'est de le generer
+    correctement de ton cote, en precisant source=C411" -- voir
+    tracker_profile.torrent_source() et torrent_builder.build_torrent()."""
+    import torf
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.extract.extract_video_text", lambda path: "General\nFormat : Matroska\n"
+    )
+    source = _make_source(tmp_path, "source.mkv")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+
+    result = commit_upload("Movie.2020.1080p.x264-TEAM", files, profile="c411")
+
+    reloaded = torf.Torrent.read(result.torrent_path)
+    assert reloaded.source == "C411"
+
+
 def test_commit_upload_propagates_cancellation(tmp_path, monkeypatch):
     """Force le repli COPIE (jamais hardlink, EXDEV simule -- meme
     technique que test_file_staging.py) : l'annulation y est verifiee des

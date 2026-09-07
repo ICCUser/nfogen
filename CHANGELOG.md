@@ -33,6 +33,16 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
     hébergés via `raw.githubusercontent.com` (pas de bannières C411
     réutilisées : elles appartiennent à un autre utilisateur du tracker).
 
+- **Tag `source` dans le `.torrent` généré** (retour d'un membre de
+  l'équipe C411, 2026-09-07) : `torrent_builder.build_torrent()` gagne un
+  paramètre `source`, câblé depuis `tracker_profile.torrent_source()`
+  (nouveau champ `rules.json` → `tracker.torrent_source`, `"C411"` pour
+  le profil livré). Ce tag modifie le hash du torrent — mécanisme utilisé
+  par la plupart des trackers privés pour reconnaître un torrent comme le
+  leur. Piste de simplification pour la mise en seed (sous-projet 6), pas
+  encore vérifiée en conditions réelles — le dépôt manuel du `.torrent`
+  re-signé reste la voie documentée pour l'instant.
+
 - **Configuration globale migrée vers Réglages** (retour utilisateur,
   2026-09-07) : le panneau "Configuration globale" (Sonarr/Radarr/
   qBittorrent/mise en scène/mappings de chemins, plus la nouvelle clé API

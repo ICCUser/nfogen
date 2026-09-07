@@ -38,6 +38,10 @@
             "additionalProperties": false
           }
         },
+        "torrent_source": {
+          "type": "string",
+          "description": "Tag `source` inscrit dans le .torrent genere (voir torrent_builder.build_torrent) -- modifie le hash, mecanisme utilise par la plupart des trackers prives pour reconnaitre un torrent comme le leur. Omis : aucun tag source ajoute."
+        },
         "upload": { "$ref": "#/$defs/tracker_upload" }
       },
       "additionalProperties": false

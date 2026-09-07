@@ -54,6 +54,7 @@ def build_torrent(
     cancel_event: Optional[threading.Event] = None,
     threads: Optional[int] = None,
     overwrite: bool = False,
+    source: Optional[str] = None,
 ) -> None:
     """Construit un .torrent prive a partir de `staged_path` (fichier ou
     dossier -- un dossier pour un pack multi-fichiers -- deja mis en scene
@@ -76,13 +77,22 @@ def build_torrent(
     nativement d'ecraser un `.torrent` deja present (`torf.WriteError`,
     errno EEXIST) ; traduit ici en `FileExistsError` standard, pour que
     l'appelant (upload_prep.commit_upload) le traite exactement comme la
-    meme situation cote fichier mis en scene."""
+    meme situation cote fichier mis en scene.
+
+    `source` (retour C411, 2026-09-07 -- voir tracker_profile.torrent_source) :
+    tag `source` inscrit dans le .torrent, modifie son hash. C'est le
+    mecanisme utilise par la plupart des trackers prives pour reconnaitre
+    un torrent comme le leur -- une fois ce tag correct, plus besoin de
+    telecharger un .torrent re-signe apres moderation pour le mettre en
+    seed (voir AUTOMATION.md, sous-projet 6). `None` par defaut : aucun
+    tag ajoute, comportement inchange pour un profil qui n'en declare pas."""
     total_bytes = _total_size(staged_path)
     torrent = torf.Torrent(
         path=staged_path,
         trackers=[announce_url],
         private=True,
         piece_size=piece_size_for(total_bytes, piece_sizes),
+        source=source,
     )
 
     callback = None

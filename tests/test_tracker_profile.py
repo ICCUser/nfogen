@@ -19,6 +19,7 @@ FULL_TRACKER_RULES = {
             {"max_bytes": 1073741824, "piece_size": 1048576},
             {"piece_size": 16777216},
         ],
+        "torrent_source": "C411",
     }
 }
 
@@ -47,6 +48,7 @@ def test_reads_every_declared_field():
         {"max_bytes": 1073741824, "piece_size": 1048576},
         {"piece_size": 16777216},
     ]
+    assert tracker_profile.torrent_source("full") == "C411"
 
 
 def test_display_name_falls_back_to_the_profile_name_when_undeclared():
@@ -74,6 +76,11 @@ def test_torrent_piece_sizes_empty_list_when_undeclared():
     assert tracker_profile.torrent_piece_sizes("bare5") == []
 
 
+def test_torrent_source_none_when_undeclared():
+    ps.write_profile("bare6", rules={}, templates={})
+    assert tracker_profile.torrent_source("bare6") is None
+
+
 def test_degrades_gracefully_for_a_profile_that_does_not_exist_at_all():
     # Pas juste "sans section tracker" (cas ci-dessus) -- un nom de profil
     # qui n'existe carrement pas (ni utilisateur, ni livre) ne doit jamais
@@ -82,6 +89,7 @@ def test_degrades_gracefully_for_a_profile_that_does_not_exist_at_all():
     assert tracker_profile.audio_language_codes("does-not-exist") == {}
     assert tracker_profile.min_request_interval_seconds("does-not-exist") == 0.0
     assert tracker_profile.torrent_piece_sizes("does-not-exist") == []
+    assert tracker_profile.torrent_source("does-not-exist") is None
     assert tracker_profile.display_name("does-not-exist") == "does-not-exist"
 
 

@@ -365,7 +365,7 @@ def commit_upload(
         torrent_builder.build_torrent(
             staged_path, announce_url, torrent_path, piece_sizes,
             on_progress=_torrent_progress if on_progress else None, cancel_event=cancel_event,
-            overwrite=overwrite,
+            overwrite=overwrite, source=tracker_profile.torrent_source(profile),
         )
     except FileExistsError as exc:
         when = ""

@@ -18,6 +18,7 @@
       {"max_bytes": 8589934592, "piece_size": 8388608},
       {"piece_size": 16777216}
     ],
+    "torrent_source": "C411",
     "upload": {
       "category_id": 1,
       "subcategory_id": {
