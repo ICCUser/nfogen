@@ -1231,17 +1231,26 @@ exige une session navigateur authentifiée, pas la clé API. Aucune
 automatisation de la récupération n'est donc possible sans reproduire un
 login complet (hors de portée de ce projet).
 
-**Piste de simplification, pas encore vérifiée en conditions réelles**
-(retour d'un membre de l'équipe C411, 2026-09-07) : le `.torrent` généré
-par nfogen lui-même pourrait suffire pour la mise en seed, à condition
-d'y inscrire le tag `source=C411` — mécanisme que la plupart des
-trackers privés utilisent pour reconnaître un torrent comme le leur
-(modifie le hash). Ajouté côté génération (`tracker_profile.torrent_source()`,
+**Simplification confirmée en conditions réelles le 2026-09-07** (retour
+d'un membre de l'équipe C411) : le `.torrent` généré par nfogen
+lui-même suffit pour la mise en seed, à condition d'y inscrire le tag
+`source=C411` — mécanisme que la plupart des trackers privés utilisent
+pour reconnaître un torrent comme le leur (modifie le hash). Ajouté côté
+génération (`tracker_profile.torrent_source()`,
 `torrent_builder.build_torrent(..., source=...)`, `rules.json` du profil
-c411 → `tracker.torrent_source: "C411"`) — mais **le dépôt manuel du
-`.torrent` re-signé dans "À mettre en seed" reste en place** tant que ça
-n'a pas été testé en conditions réelles (un futur torrent généré
-localement avec ce tag pourra être testé directement).
+c411 → `tracker.torrent_source: "C411"`). Conséquence directe : pour un
+**upload direct** (`send_to_tracker(direct=True)`, voir sous-projet 5),
+`send_to_tracker()` ajoute désormais **automatiquement** ce même
+`.torrent` (déjà en scène) à qBittorrent juste après l'envoi réussi —
+retour utilisateur, 2026-09-07 : "le torrent n'est jamais envoyé à qbit
+!!!!" (premier essai réel : upload direct réussi côté C411, mais rien
+n'était ajouté à qBittorrent, l'automatisation s'arrêtait avant). Best-
+effort, jamais bloquant (`SendResult.seed_warning` si qBittorrent non
+configuré ou échec d'ajout). **Jamais pour un brouillon** — reste privé
+tant que l'utilisateur ne le finalise pas lui-même sur le site, donc
+jamais mis en seed automatiquement pour ce mode. La file "À mettre en
+seed" ci-dessous reste utile pour les titres déjà envoyés AVANT ce
+changement, ou envoyés en brouillon.
 
 **Nouvelle file d'attente "À mettre en seed"** (`/seed-queue`) : liste
 les titres déjà envoyés à C411 (voir sous-projet 5) mais pas encore

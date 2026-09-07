@@ -10,6 +10,7 @@ import pytest
 
 from nfogen import upload_history_store
 from nfogen.cancellation import OperationCancelled
+from nfogen.qbittorrent_client import QBittorrentError
 from nfogen.tmdb_client import TMDBError, TMDBExtraDetails
 from nfogen.upload_prep import (
     CommitResult,
@@ -1240,6 +1241,213 @@ def test_send_to_tracker_tmdb_failure_does_not_block_send(tmp_path, monkeypatch)
     )
 
     assert result.draft_id == 900  # n'a pas leve, la description s'est generee sans TMDB
+
+
+def test_send_to_tracker_direct_adds_torrent_to_qbittorrent_on_success(tmp_path, monkeypatch):
+    """Retour utilisateur, 2026-09-07 : le torrent uploade directement
+    (source=C411 deja inscrit, voir torrent_builder.py) n'etait jamais
+    ajoute a qBittorrent -- deux etapes deliberement separees jusqu'ici
+    (voir seed-queue), mais desormais automatique pour l'upload direct
+    seulement (jamais pour un brouillon, qui reste prive tant que
+    l'utilisateur ne le finalise pas lui-meme)."""
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent-bytes")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_qbittorrent",
+        lambda: ("http://qbittorrent.local:8080", "admin", "secret", True),
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def upload_torrent(self, **kwargs):
+            return {"id": 777, "url": "/torrents/abc123"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    added: dict = {}
+
+    class FakeQBittorrentClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def add_torrent(self, torrent_bytes, save_path, filename):
+            added["torrent_bytes"] = torrent_bytes
+            added["save_path"] = save_path
+            added["filename"] = filename
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.QBittorrentClient", FakeQBittorrentClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603, direct=True,
+    )
+
+    assert added["torrent_bytes"] == b"torrent-bytes"
+    assert added["save_path"] == str(tmp_path)
+    assert added["filename"] == "Movie.2020.BluRay-TEAM.torrent"
+    assert result.seed_warning is None
+
+
+def test_send_to_tracker_draft_never_adds_to_qbittorrent(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent-bytes")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_qbittorrent",
+        lambda: ("http://qbittorrent.local:8080", "admin", "secret", True),
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def create_draft(self, **kwargs):
+            return {"id": 555, "url": "https://c411.org/user/drafts/555"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    called = []
+    monkeypatch.setattr(
+        "nfogen.upload_prep.QBittorrentClient", lambda *a, **k: called.append(True)
+    )
+
+    send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603, direct=False,
+    )
+
+    assert called == []
+
+
+def test_send_to_tracker_direct_seed_failure_does_not_block_upload_but_warns(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent-bytes")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_qbittorrent",
+        lambda: ("http://qbittorrent.local:8080", "admin", "secret", True),
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def upload_torrent(self, **kwargs):
+            return {"id": 777, "url": "/torrents/abc123"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    class FailingQBittorrentClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def add_torrent(self, torrent_bytes, save_path, filename):
+            raise QBittorrentError("Connexion échouée")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.QBittorrentClient", FailingQBittorrentClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603, direct=True,
+    )
+
+    assert result.draft_id == 777  # l'upload a quand meme reussi
+    assert result.seed_warning is not None
+    assert "qBittorrent" in result.seed_warning
+
+
+def test_send_to_tracker_direct_seed_warns_when_qbittorrent_not_configured(tmp_path, monkeypatch):
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent-bytes")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_qbittorrent", lambda: None
+    )
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def upload_torrent(self, **kwargs):
+            return {"id": 777, "url": "/torrents/abc123"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603, direct=True,
+    )
+
+    assert result.seed_warning is not None
 
 
 def test_send_to_tracker_direct_calls_upload_torrent_not_drafts(tmp_path, monkeypatch):

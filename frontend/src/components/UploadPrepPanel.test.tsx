@@ -202,7 +202,7 @@ it("affiche le bouton Envoyer a C411 seulement apres confirmation, et affiche le
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(sendToTracker).mockResolvedValue({
     draft_id: 555, draft_url: "https://c411.org/user/drafts/555",
-    duplicate_warning: null, presentation_warning: null,
+    duplicate_warning: null, presentation_warning: null, seed_warning: null,
   });
 
   renderPanel({
@@ -238,7 +238,7 @@ it("Uploader directement demande confirmation, appelle sendToTracker avec direct
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(sendToTracker).mockResolvedValue({
     draft_id: 777, draft_url: "https://c411.org/torrents/abc123",
-    duplicate_warning: null, presentation_warning: null,
+    duplicate_warning: null, presentation_warning: null, seed_warning: null,
   });
   const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
@@ -277,6 +277,33 @@ it("Uploader directement n'appelle rien si l'utilisateur annule la confirmation"
   expect(sendToTracker).not.toHaveBeenCalled();
 });
 
+it("affiche l'avertissement d'ajout qBittorrent quand present (upload direct)", async () => {
+  /* Retour utilisateur, 2026-09-07 : "le torrent n'est jamais envoye a
+   * qbit !!!!" -- ajout auto a qBittorrent en mode direct, best-effort. */
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.mocked(sendToTracker).mockResolvedValue({
+    draft_id: 777, draft_url: "https://c411.org/torrents/abc123",
+    duplicate_warning: null, presentation_warning: null,
+    seed_warning: "Torrent envoyé à C411, mais pas ajouté à qBittorrent : non configuré (voir Réglages).",
+  });
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+
+  renderPanel({
+    localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn(),
+    mediaType: "movie", radarrMovieId: 42, sonarrSeriesId: null, tmdbId: 603, tvdbId: null,
+    genre: null, seasonNumber: null,
+  });
+
+  await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(screen.getByRole("button", { name: /Confirmer/i }));
+  await user.click(await screen.findByRole("button", { name: /Uploader directement/i }));
+
+  expect(await screen.findByText(/pas ajouté à qBittorrent/i)).toBeInTheDocument();
+});
+
 it("affiche l'avertissement anti-doublon quand present", async () => {
   const user = userEvent.setup();
   vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
@@ -285,7 +312,7 @@ it("affiche l'avertissement anti-doublon quand present", async () => {
   vi.mocked(sendToTracker).mockResolvedValue({
     draft_id: 555, draft_url: "https://c411.org/user/drafts/555",
     duplicate_warning: "1 release(s) déjà approuvée(s) pour cet identifiant TMDB...",
-    presentation_warning: null,
+    presentation_warning: null, seed_warning: null,
   });
 
   renderPanel({
@@ -311,7 +338,7 @@ it("affiche l'avertissement de presentation incomplete (cle TMDB manquante) quan
   vi.mocked(sendToTracker).mockResolvedValue({
     draft_id: 555, draft_url: "https://c411.org/user/drafts/555",
     duplicate_warning: null,
-    presentation_warning: "Description incomplète : clé API TMDB non configurée — Pays, créateur(s), note TMDB et lien IMDB seront absents (voir Réglages).",
+    presentation_warning: "Description incomplète : clé API TMDB non configurée — Pays, créateur(s), note TMDB et lien IMDB seront absents (voir Réglages).", seed_warning: null,
   });
 
   renderPanel({

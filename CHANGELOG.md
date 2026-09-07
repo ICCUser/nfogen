@@ -33,6 +33,16 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
     hébergés via `raw.githubusercontent.com` (pas de bannières C411
     réutilisées : elles appartiennent à un autre utilisateur du tracker).
 
+- **Ajout automatique à qBittorrent après un upload direct** (retour
+  utilisateur, 2026-09-07 : "le torrent n'est jamais envoyé à qbit !!!!")
+  : `send_to_tracker(direct=True)` ajoute désormais le `.torrent` déjà en
+  scène à qBittorrent juste après un envoi réussi — le `.torrent` local
+  porte déjà `source=C411` (voir plus haut), plus besoin du dépôt manuel
+  dans "À mettre en seed" pour ce mode. Jamais pour un brouillon (reste
+  privé tant que non finalisé). Best-effort : qBittorrent non configuré
+  ou échec d'ajout → `SendResult.seed_warning`, jamais bloquant (l'upload
+  C411 a déjà réussi à ce stade).
+
 - **Conteneur et format HDR dans la description d'upload** (retour
   utilisateur, 2026-09-07, en construisant un template C411 personnel
   avec `{{CONTAINER}}`/`{{HDR}}`) : `extract_video_metadata()` gagne

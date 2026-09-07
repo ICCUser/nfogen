@@ -30,6 +30,7 @@ from .languages import flagcdn_url, resolve_language
 from .models import RenderContext
 from .name_proposal import extract_team_tag, strip_ext
 from .profile_store import read_profile
+from .qbittorrent_client import QBittorrentClient, QBittorrentError
 from .radarr_client import RadarrClient
 from .registry import get_validator
 from .rules import captures as rules_captures
@@ -95,12 +96,19 @@ class SendResult:
     c'est obligatoire") : non None si Pays/Createur(s)/Note TMDB/IMDB
     seront absents de la description faute de cle API TMDB configuree --
     jamais bloquant non plus, juste un signal pour ne pas se faire
-    rejeter par la moderation comme deja arrive (bit rate manquant)."""
+    rejeter par la moderation comme deja arrive (bit rate manquant).
+    `seed_warning` (retour utilisateur, 2026-09-07 -- "le torrent n'est
+    jamais envoye a qbit !!!!") : non None si l'ajout automatique a
+    qBittorrent (uniquement en mode `direct=True` -- un brouillon reste
+    prive, jamais mis en seed automatiquement) n'a pas pu avoir lieu
+    (qBittorrent non configure, ou echec de connexion/ajout) -- jamais
+    bloquant, l'upload C411 a deja reussi a ce stade."""
 
     draft_id: Any
     draft_url: str
     duplicate_warning: Optional[str] = None
     presentation_warning: Optional[str] = None
+    seed_warning: Optional[str] = None
 
 
 @dataclass
@@ -650,9 +658,35 @@ def send_to_tracker(
     if direct and draft_url and not draft_url.startswith("http"):
         draft_url = base_url.rstrip("/") + draft_url
 
+    # Ajout automatique a qBittorrent -- UNIQUEMENT pour l'upload direct
+    # (retour utilisateur, 2026-09-07 : "le torrent n'est jamais envoye a
+    # qbit" -- le .torrent local porte deja source=C411, voir
+    # torrent_builder.py, donc plus besoin du depot manuel une fois
+    # reellement parti en moderation). Un brouillon reste prive tant que
+    # l'utilisateur ne le finalise pas lui-meme : jamais mis en seed ici.
+    # Best-effort, jamais bloquant -- l'upload C411 a deja reussi.
+    seed_warning = None
+    if direct:
+        qbittorrent_config = gapscan_config_store.effective_qbittorrent()
+        if qbittorrent_config is None:
+            seed_warning = (
+                "Torrent envoyé à C411, mais pas ajouté à qBittorrent : non configuré (voir Réglages)."
+            )
+        else:
+            qb = QBittorrentClient(*qbittorrent_config)
+            try:
+                qb.add_torrent(
+                    torrent_bytes, str(Path(staged_path).parent), filename=f"{release_name}.torrent",
+                )
+            except QBittorrentError as exc:
+                seed_warning = f"Torrent envoyé à C411, mais échec de l'ajout à qBittorrent : {exc}"
+            finally:
+                qb.close()
+
     result = SendResult(
         draft_id=response.get("id"), draft_url=draft_url,
         duplicate_warning=duplicate_warning, presentation_warning=presentation_warning,
+        seed_warning=seed_warning,
     )
     key = upload_history_store.processed_key(media_type, radarr_movie_id, sonarr_series_id, season_number)
     if key is not None:

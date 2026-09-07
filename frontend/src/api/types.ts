@@ -367,4 +367,9 @@ export interface SendToTrackerResult {
    * description faute de clé API TMDB configurée (retour C411, 2026-09-07 :
    * ces éléments sont obligatoires) -- jamais bloquant. */
   presentation_warning: string | null;
+  /** Non null si l'ajout automatique à qBittorrent (upload direct
+   * uniquement, voir AUTOMATION.md sous-projet 6) a échoué ou n'a pas pu
+   * avoir lieu (qBittorrent non configuré) -- jamais bloquant, l'upload
+   * C411 a déjà réussi à ce stade. Toujours null en mode brouillon. */
+  seed_warning: string | null;
 }
