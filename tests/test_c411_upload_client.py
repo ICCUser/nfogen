@@ -169,3 +169,85 @@ def test_update_draft_patches_the_existing_draft():
 
     assert result == {"id": 555, "url": "https://c411.org/user/drafts/555"}
     assert captured["body"]["title"] == "X updated"
+
+
+def test_upload_torrent_posts_multipart_with_expected_fields():
+    """`POST /api/torrents` (retour d'un membre de l'equipe C411,
+    2026-09-07) : upload direct, distinct des brouillons -- multipart/form-data
+    avec les fichiers reels (pas de base64), `options`/`tmdbData` en
+    chaines JSON dans le formulaire (voir la doc "API Upload" collee par
+    l'utilisateur, exemples curl)."""
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/torrents"
+        assert request.method == "POST"
+        assert request.headers.get("authorization") == "Bearer test-key"
+        captured["content_type"] = request.headers.get("content-type", "")
+        captured["body"] = request.content
+        return httpx.Response(201, json={"id": 999, "infoHash": "abc123", "url": "/torrents/abc123"})
+
+    client = _client_with_handler(handler)
+    result = client.upload_torrent(
+        torrent_bytes=b"torrent-bytes",
+        nfo_bytes=b"nfo-bytes",
+        torrent_filename="Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.torrent",
+        nfo_filename="Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.nfo",
+        title="Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM",
+        description="[h2]Synopsis[/h2]" + "x" * 20,
+        category_id=1,
+        subcategory_id=6,
+        options={"1": [4], "2": 10},
+    )
+
+    assert result == {"id": 999, "infoHash": "abc123", "url": "/torrents/abc123"}
+    assert captured["content_type"].startswith("multipart/form-data")
+    body = captured["body"]
+    assert b'name="torrent"' in body
+    assert b'filename="Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.torrent"' in body
+    assert b"torrent-bytes" in body
+    assert b'name="nfo"' in body
+    assert b'filename="Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM.nfo"' in body
+    assert b"nfo-bytes" in body
+    assert b'name="title"' in body
+    assert b"Inception.2010.MULTI.VFF.2160p.BluRay.x265-TEAM" in body
+    assert b'name="categoryId"' in body and b"1" in body
+    assert b'name="subcategoryId"' in body
+    assert b'name="descriptionFormat"' in body and b"standard" in body
+    assert b'name="options"' in body
+    assert json.dumps({"1": [4], "2": 10}).encode() in body
+    # Jamais les champs plats/base64 des brouillons sur cet endpoint.
+    assert b"torrentFileData" not in body
+    assert b"nfoFileData" not in body
+
+
+def test_upload_torrent_includes_optional_fields_when_given():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.content
+        return httpx.Response(201, json={"id": 999, "url": "/torrents/abc123"})
+
+    client = _client_with_handler(handler)
+    client.upload_torrent(
+        torrent_bytes=b"t", nfo_bytes=b"n", torrent_filename="X.torrent", nfo_filename="X.nfo",
+        title="X", description="X" * 20, category_id=1, subcategory_id=6, options={},
+        uploader_note="Note test", tmdb_data={"id": 27205, "type": "movie"},
+    )
+
+    body = captured["body"]
+    assert b'name="uploaderNote"' in body and b"Note test" in body
+    assert b'name="tmdbData"' in body
+    assert json.dumps({"id": 27205, "type": "movie"}).encode() in body
+
+
+def test_upload_torrent_raises_a_clear_message_on_401():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"message": "Invalid token"})
+
+    client = _client_with_handler(handler)
+    with pytest.raises(C411UploadError, match="scope"):
+        client.upload_torrent(
+            torrent_bytes=b"t", nfo_bytes=b"n", torrent_filename="X.torrent", nfo_filename="X.nfo",
+            title="X", description="X" * 20, category_id=1, subcategory_id=6, options={},
+        )

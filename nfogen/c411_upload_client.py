@@ -1,5 +1,12 @@
 """Client pour l'API d'upload de C411 (POST/PATCH /api/user/drafts,
-GET /api/torrents/by-tmdb) -- voir AUTOMATION.md, sous-projet 5.
+POST /api/torrents, GET /api/torrents/by-tmdb) -- voir AUTOMATION.md,
+sous-projet 5.
+
+`POST /api/torrents` (upload DIRECT, distinct des brouillons -- voir
+`upload_torrent`) decouvert le 2026-09-07 via la doc "API Upload" de
+C411 (retour d'un membre de l'equipe) : l'exploration initiale du
+sous-projet 5 (2026-09-04) n'avait teste que `/api/user/drafts`, sans
+savoir qu'un endpoint d'upload direct existait deja.
 
 DELIBEREMENT specifique a C411, contrairement a torznab_client.py : cette
 API REST (endpoints, champs, format `options`) n'a aucun standard
@@ -24,6 +31,7 @@ deviner sans comparer un brouillon reel cree depuis le site web."""
 from __future__ import annotations
 
 import base64
+import json
 from typing import Any, Optional
 
 import httpx
@@ -124,6 +132,55 @@ class C411UploadClient:
         if tmdb_data:
             body["tmdbData"] = tmdb_data
         return body
+
+    def upload_torrent(
+        self,
+        *,
+        torrent_bytes: bytes,
+        nfo_bytes: bytes,
+        torrent_filename: str,
+        nfo_filename: str,
+        title: str,
+        description: str,
+        category_id: int,
+        subcategory_id: int,
+        options: dict[str, Any],
+        description_format: str = "standard",
+        uploader_note: Optional[str] = None,
+        tmdb_data: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """`POST /api/torrents` : upload DIRECT, distinct des brouillons
+        (voir `create_draft`) -- part reellement en moderation ("Team
+        Pending", ou auto-approuve pour un uploader certifie). Endpoint et
+        format confirmes via la doc "API Upload" de C411 (retour d'un
+        membre de l'equipe, 2026-09-07) : `multipart/form-data`, fichiers
+        REELS (pas de base64 contrairement aux brouillons), `options`/
+        `tmdbData` envoyes comme des chaines JSON dans le formulaire. La
+        forme exacte de la reponse n'a pas encore ete confirmee en
+        conditions reelles (contrairement au format des brouillons, deja
+        verifie) -- a ajuster si le premier essai reel differe."""
+        data: dict[str, Any] = {
+            "title": title,
+            "description": description,
+            "categoryId": str(category_id),
+            "subcategoryId": str(subcategory_id),
+            "descriptionFormat": description_format,
+            "options": json.dumps(options),
+        }
+        if uploader_note:
+            data["uploaderNote"] = uploader_note
+        if tmdb_data:
+            data["tmdbData"] = json.dumps(tmdb_data)
+        files = {
+            "torrent": (torrent_filename, torrent_bytes, "application/x-bittorrent"),
+            "nfo": (nfo_filename, nfo_bytes, "text/plain"),
+        }
+        return self._handle_draft_response(
+            "Upload direct",
+            lambda: self._client.post(
+                f"{self._base_url}/torrents", data=data, files=files, headers=self._headers()
+            ),
+        )
 
     def _handle_draft_response(self, request_desc: str, send) -> dict[str, Any]:
         try:
