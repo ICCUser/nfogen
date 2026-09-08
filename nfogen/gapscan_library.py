@@ -26,6 +26,7 @@ from typing import Optional
 
 from . import upload_history_store
 from .gapscan import GapResult, genre_of, movie_key, series_key
+from .name_proposal import extract_team_tag
 from .quality import ReleaseQuality, build_quality
 from .radarr_client import RadarrClient
 from .sonarr_client import SonarrClient
@@ -67,6 +68,12 @@ class LibraryItem:
     # `genres` (Radarr/Sonarr) : les deux classifications restent
     # volontairement independantes (voir la spec du sous-projet 8).
     tracker_genre: Optional[str] = None
+    # Tag d'equipe (retour utilisateur, 2026-09-08 : afficher la team par
+    # ligne dans la Bibliotheque, pour reperer d'un coup d'oeil quelles
+    # saisons d'une meme serie partagent la meme equipe -- ex. en vue d'un
+    # pack "INTEGRALE"). Meme extraction que upload_prep.py, jamais
+    # devine autrement : `None` si aucun tag detecte dans le scene_name.
+    team: Optional[str] = None
 
 
 def _previous_key(r: GapResult) -> str:
@@ -132,6 +139,7 @@ def list_library(
                     path_resolved=previous.path_resolved if previous else False,
                     path_error=previous.path_error if previous else None,
                     tracker_genre=genre_of(previous, profile) if previous else None,
+                    team=extract_team_tag(movie.scene_name or movie.title),
                 )
             )
     if sonarr is not None:
@@ -168,6 +176,7 @@ def list_library(
                     path_resolved=previous.path_resolved if previous else False,
                     path_error=previous.path_error if previous else None,
                     tracker_genre=genre_of(previous, profile) if previous else None,
+                    team=extract_team_tag(season.scene_name or season.title),
                 )
             )
     return items

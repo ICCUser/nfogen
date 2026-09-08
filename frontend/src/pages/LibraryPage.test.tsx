@@ -77,7 +77,7 @@ const MATRIX_ITEM: LibraryItem = {
   radarr_movie_id: null, sonarr_series_id: null, already_processed: false, last_processed_at: null,
   key: '["movie","tt0133093",1999]',
   status: "absent", checked_at: 1700000000, has_freeleech_alternative: false, has_double_upload_window: false,
-  error: null, local_paths: [], path_resolved: true, path_error: null, tracker_genre: null,
+  error: null, local_paths: [], path_resolved: true, path_error: null, tracker_genre: null, team: "TEAM",
 };
 
 /** Titre jamais scanne (statut inconnu) -- comportement d'origine de la
@@ -89,7 +89,7 @@ const SHOW_ITEM: LibraryItem = {
   radarr_movie_id: null, sonarr_series_id: 7, already_processed: false, last_processed_at: null,
   key: '["series",99,1]',
   status: null, checked_at: null, has_freeleech_alternative: false, has_double_upload_window: false,
-  error: null, local_paths: [], path_resolved: false, path_error: null, tracker_genre: null,
+  error: null, local_paths: [], path_resolved: false, path_error: null, tracker_genre: null, team: null,
 };
 
 function renderPage() {
@@ -127,6 +127,16 @@ describe("LibraryPage", () => {
     renderPage();
     expect(await screen.findByText(/Matrix \(1999\)/)).toBeInTheDocument();
     expect(libraryResults).toHaveBeenCalled();
+  });
+
+  it("affiche le tag d'equipe par ligne, ou un tiret si absent", async () => {
+    /* Retour utilisateur, 2026-09-08 : reperer d'un coup d'oeil quelles
+     * saisons d'une meme serie partagent la meme equipe. */
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM, SHOW_ITEM], total: 2 });
+    renderPage();
+    await screen.findByText(/Matrix \(1999\)/);
+    expect(screen.getByText("TEAM")).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader", { name: "Team" })).toHaveLength(1);
   });
 
   it("affiche le statut tracker connu, avec ses badges", async () => {

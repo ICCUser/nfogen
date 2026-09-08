@@ -642,6 +642,7 @@ export default function LibraryPage() {
               <th className="px-4 py-2">Type</th>
               <th className="px-4 py-2">Genres</th>
               <th className="px-4 py-2">Statut</th>
+              <th className="px-4 py-2">Team</th>
               <th className="px-4 py-2">Ta version</th>
               <th className="px-4 py-2" />
             </tr>
@@ -689,6 +690,7 @@ export default function LibraryPage() {
                     <span className="ml-1 rounded-full bg-info-bg px-2 py-0.5 text-xs text-info">2x</span>
                   )}
                 </td>
+                <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">{item.team ?? "—"}</td>
                 <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">
                   {qualitySummary(item.local_quality)}
                 </td>

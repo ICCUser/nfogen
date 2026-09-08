@@ -56,6 +56,34 @@ def test_list_library_builds_movie_item_with_selection_key():
     assert item.key == upload_history_store.key_str(movie_key("tt001", "1", "Movie", 2020))
 
 
+def test_list_library_extracts_team_from_movie_scene_name():
+    """Retour utilisateur, 2026-09-08 : afficher le tag d'equipe par ligne
+    dans la Bibliotheque -- meme extraction que celle deja utilisee dans
+    upload_prep.py (name_proposal.extract_team_tag)."""
+    movie = RadarrMovieFile(
+        movie_id=1, title="Movie", year=2020, imdb_id="tt001", tmdb_id=1,
+        scene_name="Movie.2020.MULTI.VFF.1080p.BluRay.x264-TEAM",
+    )
+    items = gapscan_library.list_library(radarr=_FakeRadarr([movie]), sonarr=None)
+    assert items[0].team == "TEAM"
+
+
+def test_list_library_team_none_when_no_tag_detected():
+    movie = RadarrMovieFile(movie_id=1, title="Movie", year=2020, imdb_id="tt001", tmdb_id=1)
+    items = gapscan_library.list_library(radarr=_FakeRadarr([movie]), sonarr=None)
+    assert items[0].team is None
+
+
+def test_list_library_extracts_team_from_series_scene_name():
+    season = SonarrSeasonFile(
+        series_id=7, title="Show", year=2019, tvdb_id=99, imdb_id=None,
+        season_number=5, episode_file_count=10,
+        scene_name="Show.S05.MULTI.VFF.1080p.WEB.AAC.2.0.x265-Frosties",
+    )
+    items = gapscan_library.list_library(radarr=None, sonarr=_FakeSonarr([season]))
+    assert items[0].team == "Frosties"
+
+
 def test_list_library_marks_already_processed_movie():
     movie = RadarrMovieFile(movie_id=42, title="Movie", year=2020, imdb_id="tt001", tmdb_id=1)
     upload_history_store.record(

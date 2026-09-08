@@ -271,6 +271,9 @@ export interface LibraryItem {
    * `genres` (Radarr/Sonarr) : les deux classifications restent
    * volontairement independantes. */
   tracker_genre: "anime" | "documentaire" | null;
+  /** Tag d'equipe (retour utilisateur, 2026-09-08) -- extrait du
+   * scene_name Radarr/Sonarr, `null` si aucun tag detecte. */
+  team: string | null;
 }
 
 export interface LibraryResultsPage {

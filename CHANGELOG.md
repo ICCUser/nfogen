@@ -11,6 +11,13 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Ajouté
 
+- **Tag d'équipe dans la Bibliothèque** (retour utilisateur, 2026-09-08 :
+  repérer d'un coup d'œil quelles saisons d'une même série partagent la
+  même équipe, en vue d'un futur pack "INTÉGRALE") : `LibraryItem` gagne
+  `team`, extrait du `scene_name` Radarr/Sonarr (`extract_team_tag()`,
+  déjà utilisé dans `upload_prep.py`) — nouvelle colonne "Team" dans le
+  tableau, `—` si aucun tag détecté.
+
 - **Charte graphique nfogen + enrichissement TMDB de la description
   d'upload** (retour utilisateur, 2026-09-07, inspiré de la présentation
   auto-générée de C411 elle-même) :
