@@ -9,6 +9,19 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ## [Non publié]
 
+### Modifié
+
+- **Bannières de section en `.webp` (au lieu de `.png`)** (retour
+  utilisateur, 2026-09-08 : "j'ai vue que les banniere de base sont des
+  webp `[img]/images/banners/c411-informations.webp[/img]`" — les
+  bannières natives de C411 sont servies en `.webp`). Test pour voir si
+  le format fait partie des critères de rendu `[img]` de C411, en plus du
+  domaine — `scripts/generate_upload_banners.py` régénère
+  `assets/banners/*.webp` (lossless), `upload_prep.py` pointe dessus.
+  **Si les bannières restent des liens texte malgré ce changement**, ça
+  confirme un whitelist par domaine plutôt que par format — retour prévu
+  vers des `[h2]` texte dans ce cas.
+
 ### Ajouté
 
 - **Packs de saisons "INTÉGRALE"** (retour utilisateur, 2026-09-08, suite

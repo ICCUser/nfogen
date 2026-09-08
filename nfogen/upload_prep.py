@@ -43,10 +43,10 @@ from .upload_description import render_upload_description
 # 2026-09-07-template-charte-tmdb-design.md) -- pas une config
 # utilisateur, ce sont des assets nfogen commites dans le repo.
 _BANNER_BASE_URL = "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners"
-_BANNER_INFORMATIONS = f"{_BANNER_BASE_URL}/informations.png"
-_BANNER_SYNOPSIS = f"{_BANNER_BASE_URL}/synopsis.png"
-_BANNER_DETAILS_TECHNIQUES = f"{_BANNER_BASE_URL}/details-techniques.png"
-_BANNER_TELECHARGEMENT = f"{_BANNER_BASE_URL}/telechargement.png"
+_BANNER_INFORMATIONS = f"{_BANNER_BASE_URL}/informations.webp"
+_BANNER_SYNOPSIS = f"{_BANNER_BASE_URL}/synopsis.webp"
+_BANNER_DETAILS_TECHNIQUES = f"{_BANNER_BASE_URL}/details-techniques.webp"
+_BANNER_TELECHARGEMENT = f"{_BANNER_BASE_URL}/telechargement.webp"
 
 try:
     from . import torrent_builder

@@ -1,9 +1,17 @@
 """Genere les 4 bannieres de section du template d'upload nfogen
 (voir nfogen/profiles/c411/templates/upload_description.j2) -- SCRIPT
 DEV-ONLY, jamais execute au runtime nfogen. A relancer manuellement si la
-charte graphique change ; le resultat (assets/banners/*.png) est commite
+charte graphique change ; le resultat (assets/banners/*.webp) est commite
 dans le repo et servi via raw.githubusercontent.com (voir
-docs/superpowers/specs/2026-09-07-template-charte-tmdb-design.md)."""
+docs/superpowers/specs/2026-09-07-template-charte-tmdb-design.md).
+
+Format WEBP (et non PNG) depuis le 2026-09-08 : test suite a un retour
+utilisateur observant que les bannieres natives de C411 elles-memes sont
+servies en .webp (`/images/banners/c411-*.webp`) -- a verifier si le
+format fait partie des criteres de rendu `[img]` cote C411, en plus (ou a
+la place) du domaine. Si le probleme persiste malgre ce changement,
+l'hypothese du domaine (raw.githubusercontent.com non whitelist) reste
+la plus probable -- prevu de revenir a des `[h2]` texte dans ce cas."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,8 +65,8 @@ def generate() -> None:
         draw.rectangle((0, 0, 6, HEIGHT), fill=ACCENT_COLOR)
         draw.text((30, 21), label, font=title_font, fill=ACCENT_COLOR)
         draw.text((WIDTH - 110, HEIGHT - 22), "nfogen.nfo", font=credit_font, fill=CREDIT_COLOR)
-        path = OUT_DIR / f"{filename}.png"
-        img.save(path, "PNG")
+        path = OUT_DIR / f"{filename}.webp"
+        img.save(path, "WEBP", lossless=True)
         print(f"Écrit : {path}")
 
 

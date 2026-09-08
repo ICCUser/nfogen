@@ -7,10 +7,10 @@ from __future__ import annotations
 from nfogen.upload_description import render_upload_description
 
 _BANNERS = {
-    "banner_informations": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/informations.png",
-    "banner_synopsis": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/synopsis.png",
-    "banner_details_techniques": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/details-techniques.png",
-    "banner_telechargement": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/telechargement.png",
+    "banner_informations": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/informations.webp",
+    "banner_synopsis": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/synopsis.webp",
+    "banner_details_techniques": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/details-techniques.webp",
+    "banner_telechargement": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/telechargement.webp",
 }
 
 FULL_CONTEXT = {
@@ -73,10 +73,10 @@ def test_renders_genres_directors_cast():
 
 def test_renders_banners():
     out = render_upload_description("c411", FULL_CONTEXT)
-    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/informations.png" in out
-    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/synopsis.png" in out
-    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/details-techniques.png" in out
-    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/telechargement.png" in out
+    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/informations.webp" in out
+    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/synopsis.webp" in out
+    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/details-techniques.webp" in out
+    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/telechargement.webp" in out
 
 
 def test_renders_country_creators_rating_imdb():
