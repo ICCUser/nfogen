@@ -2146,6 +2146,83 @@ def test_gapscan_library_filters_by_tracker_genre(reload_api, monkeypatch):
     assert client.get("/gapscan/library", params={"tracker_genre": "anime"}).json()["total"] == 0
 
 
+class _CountingFakeGapscanRadarr(_FakeGapscanRadarr):
+    """Comme _FakeGapscanRadarr, mais compte les appels reseau reels
+    (list_movie_files) -- verifie le cache en memoire de
+    _cached_library_items (retour utilisateur, 2026-09-08 : "5 a 10
+    secondes" a chaque frappe de recherche)."""
+
+    calls = 0
+
+    def list_movie_files(self):
+        type(self).calls += 1
+        return super().list_movie_files()
+
+
+def test_gapscan_library_reuses_cached_result_within_ttl(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _CountingFakeGapscanRadarr.calls = 0
+    monkeypatch.setattr(mod, "RadarrClient", _CountingFakeGapscanRadarr)
+    client = TestClient(mod.app)
+
+    client.get("/gapscan/library", params={"q": "matrix"})
+    client.get("/gapscan/library", params={"q": "nothing-like-this"})
+
+    # Deux appels HTTP avec des filtres DIFFERENTS -- une seule requete
+    # reseau reelle vers Radarr (le resultat brut est mis en cache, le
+    # filtre applique en Python a chaque fois).
+    assert _CountingFakeGapscanRadarr.calls == 1
+
+
+def test_gapscan_library_refetches_after_ttl_expires(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _CountingFakeGapscanRadarr.calls = 0
+    monkeypatch.setattr(mod, "RadarrClient", _CountingFakeGapscanRadarr)
+    client = TestClient(mod.app)
+
+    fake_now = [1_000_000.0]
+    monkeypatch.setattr(mod.time, "time", lambda: fake_now[0])
+
+    client.get("/gapscan/library")
+    fake_now[0] += mod._LIBRARY_CACHE_TTL_SECONDS + 1
+    client.get("/gapscan/library")
+
+    assert _CountingFakeGapscanRadarr.calls == 2
+
+
+def test_gapscan_library_cache_invalidated_by_a_finished_scan(reload_api, monkeypatch):
+    """Un scan qui vient de se terminer doit rafraichir la bibliotheque
+    IMMEDIATEMENT (statut tracker a jour), sans attendre l'expiration du
+    TTL -- la cle de cache inclut gapscan_runner.status()['finished_at']."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _CountingFakeGapscanRadarr.calls = 0
+    _patch_gapscan_clients(monkeypatch, mod, radarr_cls=_CountingFakeGapscanRadarr)
+    client = TestClient(mod.app)
+
+    client.get("/gapscan/library")
+    calls_after_first_library_load = _CountingFakeGapscanRadarr.calls
+    assert calls_after_first_library_load >= 1
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+    calls_after_scan = _CountingFakeGapscanRadarr.calls  # le scan lui-meme appelle list_movie_files()
+
+    client.get("/gapscan/library")
+
+    # Le finished_at a change (nouveau scan termine) -> nouvelle cle de
+    # cache -> refetch reel, PAS juste reutilisation de l'entree precedente.
+    assert _CountingFakeGapscanRadarr.calls > calls_after_scan
+
+
 class _FakeGapscanRadarrThreeMovies(_FakeGapscanRadarr):
     def list_movie_files(self):
         return [

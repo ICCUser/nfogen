@@ -944,6 +944,57 @@ def gapscan_results_export_csv(
     )
 
 
+# Retour utilisateur, 2026-09-08 : "5 a 10 secondes" de chargement, puis
+# "5 a 10 secondes de plus" apres chaque frappe dans la recherche --
+# gapscan_library.list_library() recalcule TOUT depuis Radarr/Sonarr a
+# chaque appel (aucun cache), et SonarrClient.list_season_files() fait un
+# appel HTTP PAR SERIE (list_episode_files, N+1) -- couteux sur une grosse
+# bibliotheque, repete a chaque frappe cote frontend (avant meme le
+# debounce ajoute ce jour-la sur LibraryPage.tsx). Cache en memoire, courte
+# duree, en attendant une eventuelle elimination du N+1 cote Sonarr (a
+# verifier : /api/v3/episodefile sans `seriesId` renvoie-t-il tout en un
+# seul appel ?).
+_LIBRARY_CACHE_TTL_SECONDS = 30.0
+_library_cache: dict[tuple[str, Any], tuple[float, list[Any]]] = {}
+
+
+def _cached_library_items(
+    profile: str,
+    sonarr_config: Optional[tuple[str, str]],
+    radarr_config: Optional[tuple[str, str]],
+) -> list[Any]:
+    """Resultat BRUT (non filtre/pagine) de `gapscan_library.list_library()`,
+    reutilise pendant `_LIBRARY_CACHE_TTL_SECONDS` -- la cle inclut le
+    dernier `finished_at` de scan connu (voir gapscan_runner.status()) :
+    un scan qui vient de se terminer invalide immediatement l'entree
+    precedente (statut tracker a jour), sans attendre l'expiration du TTL.
+    Une seule entree conservee a la fois (`_library_cache.clear()` avant
+    d'inserer) -- inutile de garder plusieurs profils/generations en
+    memoire pour ce cas d'usage."""
+    scan_finished_at = gapscan_runner.status()["finished_at"]
+    cache_key = (profile, scan_finished_at)
+    now = time.time()
+    cached = _library_cache.get(cache_key)
+    if cached is not None and (now - cached[0]) < _LIBRARY_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
+    radarr = RadarrClient(*radarr_config) if radarr_config else None
+    try:
+        items = gapscan_library.list_library(
+            radarr=radarr, sonarr=sonarr, previous_results=gapscan_runner.results(), profile=profile
+        )
+    finally:
+        if sonarr is not None:
+            sonarr.close()
+        if radarr is not None:
+            radarr.close()
+
+    _library_cache.clear()
+    _library_cache[cache_key] = (now, items)
+    return items
+
+
 @app.get("/gapscan/library", dependencies=[Depends(require_token)])
 def gapscan_library_endpoint(
     q: Optional[str] = Query(None),
@@ -958,8 +1009,7 @@ def gapscan_library_endpoint(
     profile: str = Query("c411"),
 ) -> dict[str, Any]:
     """Inventaire local Radarr/Sonarr, ZERO appel tracker (AUTOMATION.md,
-    sous-projet 8) -- rechargement quasi instantane, contrairement a
-    POST /gapscan/run. `q` : recherche texte sur le titre (insensible a la
+    sous-projet 8). `q` : recherche texte sur le titre (insensible a la
     casse, sous-chaine). `genre` : genres Radarr/Sonarr (LibraryItem.genres).
     `tracker_genre` : categorie C411 du dernier scan connu ("anime"/
     "documentaire", voir gapscan.genre_of) -- DISTINCT de `genre`, les deux
@@ -969,29 +1019,23 @@ def gapscan_library_endpoint(
     il y a moins de N jours (ignore les items sans added_at connu).
     `processed` : filtre sur already_processed. `profile` : quel profil de
     tracker pour classer `tracker_genre` (fusion Bibliotheque/Scan, retour
-    utilisateur 2026-09-06 : les deux pages faisaient doublon)."""
+    utilisateur 2026-09-06 : les deux pages faisaient doublon). Le
+    resultat brut Radarr/Sonarr est mis en cache brievement (voir
+    `_cached_library_items`) -- filtre/pagine a chaque appel, jamais mis
+    en cache lui-meme (bon marche, en memoire)."""
     _require_gapscan_available()
     sonarr_config = gapscan_config_store.effective_sonarr()
-    sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
     radarr_config = gapscan_config_store.effective_radarr()
-    radarr = RadarrClient(*radarr_config) if radarr_config else None
-    if sonarr is None and radarr is None:
+    if sonarr_config is None and radarr_config is None:
         raise HTTPException(
             status_code=400,
             detail="Aucune instance Sonarr ni Radarr configuree "
             "(NFOGEN_SONARR_URL/_API_KEY et/ou NFOGEN_RADARR_URL/_API_KEY, ou PUT /gapscan/config).",
         )
     try:
-        items = gapscan_library.list_library(
-            radarr=radarr, sonarr=sonarr, previous_results=gapscan_runner.results(), profile=profile
-        )
+        items = _cached_library_items(profile, sonarr_config, radarr_config)
     except (RadarrError, SonarrError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    finally:
-        if sonarr is not None:
-            sonarr.close()
-        if radarr is not None:
-            radarr.close()
 
     if q:
         needle = q.strip().lower()

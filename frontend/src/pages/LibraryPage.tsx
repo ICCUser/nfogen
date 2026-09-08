@@ -75,6 +75,17 @@ export default function LibraryPage() {
   const [items, setItems] = useState<LibraryItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
+  // Recherche texte debouncee (retour utilisateur, 2026-09-08 : "5 a 10
+  // secondes apres chaque frappe" -- sans ca, chaque caractere tape
+  // relancait un appel complet /gapscan/library, potentiellement couteux
+  // cote Sonarr, voir plus bas). `q` reste la valeur immediate affichee
+  // dans le champ ; `debouncedQ` (utilisee par load()) ne se met a jour
+  // que 400ms apres la derniere frappe.
+  const [debouncedQ, setDebouncedQ] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQ(q), 400);
+    return () => window.clearTimeout(timer);
+  }, [q]);
   const [mediaType, setMediaType] = useState<"" | "movie" | "series">("");
   const [genre, setGenre] = useState("");
   const [trackerGenre, setTrackerGenre] = useState<"" | "anime" | "documentaire">("");
@@ -141,7 +152,7 @@ export default function LibraryPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, mediaType, genre, trackerGenre, statusFilter, addedSinceDays, processed, page, profile]);
+  }, [debouncedQ, mediaType, genre, trackerGenre, statusFilter, addedSinceDays, processed, page, profile]);
 
   function resetPageAnd<T>(setter: (v: T) => void) {
     return (v: T) => {
@@ -182,7 +193,7 @@ export default function LibraryPage() {
   async function load() {
     try {
       const res = await libraryResults({
-        q: q || undefined,
+        q: debouncedQ || undefined,
         mediaType: mediaType || undefined,
         genre: genre || undefined,
         trackerGenre: trackerGenre || undefined,

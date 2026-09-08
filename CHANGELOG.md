@@ -169,6 +169,22 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   point ; caractères accentués translittérés (`é` → `e`, pas supprimés) ;
   chaque mot du titre capitalisé (convention scene).
 
+### Corrigé
+
+- **Bibliothèque très lente** (retour utilisateur, 2026-09-08 : "5 à 10
+  secondes" au chargement, "5 à 10 secondes de plus" à chaque frappe de
+  recherche) — deux causes réelles cumulées, identifiées par débogage
+  systématique (pas devinées) :
+  - **Zéro debounce côté frontend** : le champ recherche relançait un
+    appel `GET /gapscan/library` complet à **chaque frappe**. Recherche
+    désormais debouncée (400ms, `LibraryPage.tsx`).
+  - **Zéro cache côté backend, N+1 réel** : `gapscan_library.list_library()`
+    recalculait tout depuis Radarr/Sonarr à chaque appel, et
+    `SonarrClient.list_season_files()` fait un appel HTTP **par série**
+    (`list_episode_files`) — coûteux sur une grosse bibliothèque. Nouveau
+    cache en mémoire, courte durée (30s), invalidé immédiatement par un
+    scan qui vient de se terminer (`nfogen/api.py:_cached_library_items`).
+
 ### Ajouté
 
 - **AV1 reconnu comme codec vidéo** dans le profil c411

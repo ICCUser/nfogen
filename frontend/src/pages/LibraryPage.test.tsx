@@ -410,6 +410,30 @@ describe("LibraryPage", () => {
     });
   });
 
+  it("la recherche est debouncee -- taper vite ne relance pas un appel par frappe", async () => {
+    /* Retour utilisateur, 2026-09-08 : "5 a 10 secondes de plus pour que
+     * la recherche soit prise en compte" -- avant ce fix, chaque frappe
+     * relancait immediatement /gapscan/library. */
+    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(libraryResults).toHaveBeenCalled());
+    const callsBeforeTyping = vi.mocked(libraryResults).mock.calls.length;
+
+    await user.type(screen.getByLabelText(/Recherche/i), "matrix");
+    // Immediatement apres avoir tape (avant les 400ms de debounce) :
+    // aucun nouvel appel avec q rempli ne doit encore avoir eu lieu.
+    const callsRightAfterTyping = vi.mocked(libraryResults).mock.calls.length;
+    expect(callsRightAfterTyping).toBe(callsBeforeTyping);
+
+    await waitFor(() => {
+      const lastCall = vi.mocked(libraryResults).mock.calls.at(-1)?.[0];
+      expect(lastCall?.q).toBe("matrix");
+    });
+    // Un seul appel supplementaire pour toute la saisie, pas un par lettre.
+    expect(vi.mocked(libraryResults).mock.calls.length).toBe(callsBeforeTyping + 1);
+  });
+
   it("le filtre Statut inclut 'Non vérifié' et le transmet a libraryResults", async () => {
     vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
     const user = userEvent.setup();
