@@ -19,6 +19,7 @@ import type {
   GapscanStatus,
   GapStatus,
   LibraryItem,
+  SeasonPackRequest,
   SeasonPackSuggestion,
 } from "../api/types";
 import { useProfile } from "../ProfileContext";
@@ -114,6 +115,7 @@ export default function LibraryPage() {
     tvdbId: number | null;
     genre: "anime" | "documentaire" | null;
     seasonNumber: number | null;
+    seasonPack?: SeasonPackRequest;
   } | null>(null);
 
   // Scan rapide (mode incremental) : coche par defaut des qu'un scan
@@ -220,6 +222,25 @@ export default function LibraryPage() {
       setTotal(0);
       setError(e instanceof ApiError ? e.message : "Bibliothèque indisponible.");
     }
+  }
+
+  // Resout les chemins locaux par saison pour un SeasonPackSuggestion, a
+  // partir des lignes actuellement affichees (`items`). Limitation connue
+  // (retour utilisateur, 2026-09-08) : une saison absente de la page/du
+  // filtre courant (recherche, pagination) ne peut pas etre resolue ici --
+  // le bouton "Preparer le pack" reste desactive dans ce cas (voir
+  // seasonsForPack ci-dessous, valeur null si une saison manque).
+  function seasonsForPack(pack: SeasonPackSuggestion): SeasonPackRequest["seasons"] | null {
+    if (!items) return null;
+    const seasons: SeasonPackRequest["seasons"] = [];
+    for (const seasonNumber of pack.season_numbers) {
+      const match = items.find(
+        (i) => i.sonarr_series_id === pack.sonarr_series_id && i.season_number === seasonNumber,
+      );
+      if (!match || match.local_paths.length === 0) return null;
+      seasons.push({ season_number: seasonNumber, local_paths: match.local_paths });
+    }
+    return seasons;
   }
 
   function toggleOne(key: string) {
@@ -642,29 +663,56 @@ export default function LibraryPage() {
       {seasonPacks.length > 0 && (
         <div className="space-y-2 rounded-md border border-line bg-surface p-4">
           <p className="text-sm font-medium text-ink-dim">Packs disponibles</p>
-          {seasonPacks.map((pack) => (
-            <div
-              key={`${pack.sonarr_series_id}-${pack.season_numbers.join("-")}`}
-              className="flex items-center justify-between text-sm"
-            >
-              <span>
-                {pack.title} —{" "}
-                {pack.is_full_series
-                  ? "INTEGRALE"
-                  : `S${String(pack.season_numbers[0]).padStart(2, "0")}S${String(
-                      pack.season_numbers[pack.season_numbers.length - 1],
-                    ).padStart(2, "0")}`}{" "}
-                ({pack.team})
-              </span>
-              {/* onClick cable a la Task 8 -- pour l'instant, bouton sans action */}
-              <button
-                type="button"
-                className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2"
+          {seasonPacks.map((pack) => {
+            const seasons = seasonsForPack(pack);
+            const label = pack.is_full_series
+              ? "INTEGRALE"
+              : `S${String(pack.season_numbers[0]).padStart(2, "0")}S${String(
+                  pack.season_numbers[pack.season_numbers.length - 1],
+                ).padStart(2, "0")}`;
+            return (
+              <div
+                key={`${pack.sonarr_series_id}-${pack.season_numbers.join("-")}`}
+                className="flex items-center justify-between text-sm"
               >
-                Préparer le pack
-              </button>
-            </div>
-          ))}
+                <span>
+                  {pack.title} — {label} ({pack.team})
+                </span>
+                <button
+                  type="button"
+                  disabled={seasons === null}
+                  title={
+                    seasons === null
+                      ? "Certaines saisons de ce pack ne sont pas visibles dans la page/le filtre actuel."
+                      : undefined
+                  }
+                  onClick={() => {
+                    if (seasons === null) return;
+                    setActiveUpload({
+                      title: `${pack.title} ${label}`,
+                      localPaths: seasons.flatMap((s) => s.local_paths),
+                      mediaType: "series",
+                      radarrMovieId: null,
+                      sonarrSeriesId: pack.sonarr_series_id,
+                      tmdbId: null,
+                      tvdbId: null,
+                      genre: null,
+                      seasonNumber: null,
+                      seasonPack: {
+                        title: pack.title,
+                        team: pack.team,
+                        is_full_series: pack.is_full_series,
+                        seasons,
+                      },
+                    });
+                  }}
+                  className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
+                >
+                  Préparer le pack
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -806,6 +854,7 @@ export default function LibraryPage() {
           tvdbId={activeUpload.tvdbId}
           genre={activeUpload.genre}
           seasonNumber={activeUpload.seasonNumber}
+          seasonPack={activeUpload.seasonPack}
           onClose={() => setActiveUpload(null)}
         />
       )}

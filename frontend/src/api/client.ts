@@ -12,6 +12,7 @@ import type {
   NameProposal,
   ProfilesByCategory,
   RulesDocument,
+  SeasonPackRequest,
   SeedingTorrent,
   SeedQueueEntry,
   SendToTrackerResult,
@@ -454,10 +455,16 @@ export function prepareUploadPreview(
   localPaths: string[],
   profile = "c411",
   titleOverride?: string,
+  seasonPack?: SeasonPackRequest,
 ): Promise<UploadGroupProposal[]> {
   return request<UploadGroupProposal[]>("/gapscan/prepare-upload/preview", {
     method: "POST",
-    body: JSON.stringify({ local_paths: localPaths, profile, title_override: titleOverride }),
+    body: JSON.stringify({
+      local_paths: localPaths,
+      profile,
+      title_override: titleOverride,
+      season_pack: seasonPack,
+    }),
   });
 }
 

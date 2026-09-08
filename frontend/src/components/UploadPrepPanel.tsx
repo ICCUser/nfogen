@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { cancelCommitJob, commitJobStatus, prepareUploadCommit, prepareUploadPreview, sendToTracker } from "../api/client";
 import { ApiError } from "../api/types";
-import type { CommitJob, SendToTrackerResult, UploadCommitResult, UploadGroupProposal } from "../api/types";
+import type {
+  CommitJob,
+  SeasonPackRequest,
+  SendToTrackerResult,
+  UploadCommitResult,
+  UploadGroupProposal,
+} from "../api/types";
 import { useProfile } from "../ProfileContext";
 
 const STEP_LABELS: Record<string, string> = {
@@ -34,6 +40,7 @@ export default function UploadPrepPanel({
   tvdbId,
   genre,
   seasonNumber,
+  seasonPack,
   onClose,
 }: {
   localPaths: string[];
@@ -45,6 +52,10 @@ export default function UploadPrepPanel({
   tvdbId: number | null;
   genre: "anime" | "documentaire" | null;
   seasonNumber: number | null;
+  /** Pack de saisons fusionnees (bouton "Preparer le pack", Bibliotheque) --
+   * quand fourni, ignore localPaths cote backend et construit un seul
+   * groupe multi-saisons (voir nfogen/upload_prep.py:_preview_season_pack). */
+  seasonPack?: SeasonPackRequest;
   onClose: () => void;
 }) {
   const { profile: globalProfile, profiles } = useProfile();
@@ -68,7 +79,7 @@ export default function UploadPrepPanel({
     setRecalculating(true);
     setLoadError(null);
     try {
-      const g = await prepareUploadPreview(localPaths, profileOverride, override || undefined);
+      const g = await prepareUploadPreview(localPaths, profileOverride, override || undefined, seasonPack);
       setGroups(g);
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : "Aperçu indisponible.");

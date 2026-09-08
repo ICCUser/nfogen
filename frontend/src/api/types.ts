@@ -295,6 +295,21 @@ export interface LibraryResultsPage {
   season_packs: SeasonPackSuggestion[];
 }
 
+/** Payload envoye a POST /gapscan/prepare-upload/preview pour fusionner
+ * plusieurs saisons (memes team) en un seul groupe d'upload "INTEGRALE"
+ * (AUTOMATION.md, sous-projet 8 -- pack de saisons). */
+export interface SeasonPackSeasonFilesRequest {
+  season_number: number;
+  local_paths: string[];
+}
+
+export interface SeasonPackRequest {
+  title: string;
+  team: string;
+  is_full_series: boolean;
+  seasons: SeasonPackSeasonFilesRequest[];
+}
+
 // --------------------------------------------------------------------------- //
 // File d'attente de mise en seed (AUTOMATION.md, sous-projet 6) : titres
 // envoyes a C411 mais pas encore ajoutes a un client de seed. Import

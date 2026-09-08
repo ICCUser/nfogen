@@ -25,7 +25,7 @@ import {
   sendToTracker,
 } from "../api/client";
 import { ApiError } from "../api/types";
-import type { UploadGroupProposal } from "../api/types";
+import type { SeasonPackRequest, UploadGroupProposal } from "../api/types";
 
 function renderPanel(props: {
   localPaths: string[];
@@ -38,6 +38,7 @@ function renderPanel(props: {
   tvdbId?: number | null;
   genre?: "anime" | "documentaire" | null;
   seasonNumber?: number | null;
+  seasonPack?: SeasonPackRequest;
 }) {
   return render(
     <ProfileProvider>
@@ -106,7 +107,7 @@ it("charge et affiche l'apercu au montage avec le titre deja connu (GapResult) c
   await waitFor(() => {
     expect(screen.getByText(/Movie\.2020\.MULTI\.VFF\.1080p\.BluRay\.AC3\.x264-TEAM$/)).toBeInTheDocument();
   });
-  expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", "Movie");
+  expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", "Movie", undefined);
   expect(screen.getByLabelText(/Titre/i)).toHaveValue("Movie");
 });
 
@@ -385,6 +386,7 @@ it("Recalculer renvoie le titre corrige a prepareUploadPreview", async () => {
     ["/media/movie.mkv"],
     "c411",
     "Un Gars, Une Fille",
+    undefined,
   );
 });
 
@@ -393,7 +395,7 @@ it("defaults to the globally active profile", async () => {
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
   await waitFor(() => {
-    expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", "Movie");
+    expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", "Movie", undefined);
   });
 });
 
@@ -407,6 +409,34 @@ it("lets the user override the profile for this one upload without changing the 
   await user.selectOptions(select, "ygg");
 
   await waitFor(() => {
-    expect(prepareUploadPreview).toHaveBeenLastCalledWith(["/media/movie.mkv"], "ygg", "Movie");
+    expect(prepareUploadPreview).toHaveBeenLastCalledWith(["/media/movie.mkv"], "ygg", "Movie", undefined);
+  });
+});
+
+it("transmet seasonPack a prepareUploadPreview quand fourni (bouton 'Preparer le pack', Bibliotheque)", async () => {
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  const seasonPack = {
+    title: "Lucifer",
+    team: "Frosties",
+    is_full_series: true,
+    seasons: [
+      { season_number: 1, local_paths: ["/media/s01.mkv"] },
+      { season_number: 2, local_paths: ["/media/s02.mkv"] },
+    ],
+  };
+  renderPanel({
+    localPaths: ["/media/s01.mkv", "/media/s02.mkv"],
+    title: "Lucifer INTEGRALE",
+    onClose: vi.fn(),
+    seasonPack,
+  });
+
+  await waitFor(() => {
+    expect(prepareUploadPreview).toHaveBeenCalledWith(
+      ["/media/s01.mkv", "/media/s02.mkv"],
+      "c411",
+      "Lucifer INTEGRALE",
+      seasonPack,
+    );
   });
 });

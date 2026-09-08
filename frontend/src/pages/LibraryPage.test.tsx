@@ -19,11 +19,20 @@ vi.mock("../api/client", () => ({
 vi.mock("../components/UploadPrepPanel", () => ({
   default: (props: {
     title: string; onClose: () => void; mediaType?: string; tmdbId?: number | null;
+    localPaths?: string[];
+    seasonPack?: { title: string; team: string; is_full_series: boolean; seasons: { season_number: number; local_paths: string[] }[] };
   }) => (
     <div>
       <p>Panneau upload pour {props.title}</p>
       <p>media_type={props.mediaType}</p>
       <p>tmdb_id={String(props.tmdbId)}</p>
+      <p>local_paths={(props.localPaths ?? []).join(",")}</p>
+      {props.seasonPack && (
+        <p>
+          season_pack={props.seasonPack.title}/{props.seasonPack.team}/
+          {props.seasonPack.seasons.map((s) => s.season_number).join("-")}
+        </p>
+      )}
       <button onClick={props.onClose}>Fermer le panneau</button>
     </div>
   ),
@@ -90,6 +99,23 @@ const SHOW_ITEM: LibraryItem = {
   key: '["series",99,1]',
   status: null, checked_at: null, has_freeleech_alternative: false, has_double_upload_window: false,
   error: null, local_paths: [], path_resolved: false, path_error: null, tracker_genre: null, team: null,
+};
+
+/** Deux saisons de "Lucifer", meme serie/equipe -- source pour le test du
+ * bouton "Preparer le pack" (fusion de saisons, voir seasonsForPack). */
+const LUCIFER_S05: LibraryItem = {
+  media_type: "series", title: "Lucifer", year: 2016, season_number: 5,
+  imdb_id: null, tvdb_id: 305288, tmdb_id: null, genres: ["Drama"], added_at: null,
+  local_quality: { raw: "", resolution: 1080, source: "WEB", codec: "X264", languages: ["VFF"], multi: false, pure: false },
+  radarr_movie_id: null, sonarr_series_id: 7, already_processed: false, last_processed_at: null,
+  key: '["series",305288,5]',
+  status: "absent", checked_at: 1700000000, has_freeleech_alternative: false, has_double_upload_window: false,
+  error: null, local_paths: ["/media/lucifer/s05.mkv"], path_resolved: true, path_error: null,
+  tracker_genre: null, team: "Frosties",
+};
+
+const LUCIFER_S06: LibraryItem = {
+  ...LUCIFER_S05, season_number: 6, key: '["series",305288,6]', local_paths: ["/media/lucifer/s06.mkv"],
 };
 
 function renderPage() {
@@ -159,6 +185,47 @@ describe("LibraryPage", () => {
     renderPage();
     await screen.findByText(/Matrix \(1999\)/);
     expect(screen.queryByText("Packs disponibles")).not.toBeInTheDocument();
+  });
+
+  it("'Preparer le pack' ouvre UploadPrepPanel avec les saisons fusionnees", async () => {
+    const user = userEvent.setup();
+    vi.mocked(libraryResults).mockResolvedValue({
+      items: [LUCIFER_S05, LUCIFER_S06], total: 2,
+      season_packs: [
+        {
+          sonarr_series_id: 7, title: "Lucifer", year: 2016, team: "Frosties",
+          season_numbers: [5, 6], is_full_series: false, item_keys: [LUCIFER_S05.key, LUCIFER_S06.key],
+        },
+      ],
+    });
+    renderPage();
+    await screen.findByText("Packs disponibles");
+
+    await user.click(screen.getByRole("button", { name: "Préparer le pack" }));
+
+    expect(await screen.findByText("Panneau upload pour Lucifer S05S06")).toBeInTheDocument();
+    expect(screen.getByText("media_type=series")).toBeInTheDocument();
+    expect(screen.getByText("local_paths=/media/lucifer/s05.mkv,/media/lucifer/s06.mkv")).toBeInTheDocument();
+    expect(screen.getByText("season_pack=Lucifer/Frosties/5-6")).toBeInTheDocument();
+  });
+
+  it("'Preparer le pack' est desactive si une saison du pack n'est pas visible dans la page/le filtre courant", async () => {
+    /* Limitation connue (retour utilisateur, 2026-09-08) : seasonsForPack
+     * ne peut resoudre que les saisons presentes dans `items` -- ici seule
+     * S05 est chargee, S06 manque (page suivante, filtre...). */
+    vi.mocked(libraryResults).mockResolvedValue({
+      items: [LUCIFER_S05], total: 1,
+      season_packs: [
+        {
+          sonarr_series_id: 7, title: "Lucifer", year: 2016, team: "Frosties",
+          season_numbers: [5, 6], is_full_series: false, item_keys: [LUCIFER_S05.key, LUCIFER_S06.key],
+        },
+      ],
+    });
+    renderPage();
+    await screen.findByText("Packs disponibles");
+
+    expect(screen.getByRole("button", { name: "Préparer le pack" })).toBeDisabled();
   });
 
   it("affiche le statut tracker connu, avec ses badges", async () => {
