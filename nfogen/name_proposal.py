@@ -311,3 +311,85 @@ def propose_video_release_name(
     # point avant ce tiret cote C411 (convention 'CodecVideo-TEAM').
     name = re.sub(r"\.-", "-", name)
     return NameProposal(name, fields, warnings)
+
+
+def propose_season_pack_name(
+    *,
+    title: str,
+    season_numbers: list[int],
+    is_full_series: bool,
+    team: str,
+    representative_filename: str,
+    config: dict[str, Any],
+) -> NameProposal:
+    """Construit un release_name pour un pack MULTI-SAISONS deja valide
+    par l'appelant (memes equipe garantie, saisons consecutives -- voir
+    gapscan_library.detect_season_packs). Delibrement separee de
+    `propose_video_release_name` : celle-ci detecte saison/equipe en
+    PARSANT des noms de fichiers et REJETTE explicitement plusieurs
+    saisons detectees (comportement correct pour un groupe de fichiers
+    ordinaire, jamais pour un pack assemble deliberement). `season_numbers`
+    doit deja etre trie et consecutif. `is_full_series` : True -> tag
+    INTEGRALE (rules.json -> video -> name_proposal.season_pack.integrale_tag,
+    ou season_pack.integrale_single_season_format si une seule saison) ;
+    False -> intervalle (season_pack.range_format). Absence de
+    `season_pack` dans `config` : fonctionnalite desactivee pour ce
+    profil, echec explicite plutot qu'une convention devinee."""
+    template = config.get("template")
+    if not template:
+        return NameProposal(
+            None, {},
+            [
+                "Aucun modèle de proposition configuré pour ce profil "
+                "(rules.json -> video -> name_proposal.template)."
+            ],
+        )
+    season_pack_config = config.get("season_pack")
+    if not season_pack_config:
+        return NameProposal(
+            None, {},
+            [
+                "Pack multi-saisons non configuré pour ce profil "
+                "(rules.json -> video -> name_proposal.season_pack)."
+            ],
+        )
+
+    integrale_tag = season_pack_config.get("integrale_tag", "INTEGRALE")
+    if is_full_series:
+        if len(season_numbers) == 1:
+            single_format = season_pack_config.get(
+                "integrale_single_season_format", "S{season:02d}.{integrale_tag}"
+            )
+            identifier = single_format.format(season=season_numbers[0], integrale_tag=integrale_tag)
+        else:
+            identifier = integrale_tag
+    else:
+        range_format = season_pack_config.get("range_format", "S{start:02d}S{end:02d}")
+        identifier = range_format.format(start=season_numbers[0], end=season_numbers[-1])
+
+    alias_groups: dict[str, dict[str, str]] = {
+        "language": config.get("language_aliases", {}),
+        "source": config.get("source_aliases", {}),
+        "video_codec": config.get("video_codec_aliases", {}),
+        "audio_codec": config.get("audio_codec_aliases", {}),
+    }
+    info = _extract_release_info(representative_filename, alias_groups)
+
+    fields = {
+        "title": _normalize_title_text(title),
+        "identifier": identifier,
+        "language": info["language"],
+        "resolution": info["resolution"],
+        "video_codec": info["video_codec"],
+        "audio": info["audio"],
+        "source": info["source"],
+        "team": team,
+    }
+    try:
+        name = template.format(**fields)
+    except KeyError as exc:
+        return NameProposal(None, fields, [f"Champ manquant dans le modèle de proposition : {exc}"])
+
+    name = re.sub(r"\.{2,}", ".", name).strip(".")
+    name = re.sub(r"\.-", "-", name)
+    return NameProposal(name, fields, [])

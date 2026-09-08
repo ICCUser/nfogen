@@ -3,7 +3,7 @@ moteur travaille uniquement sur des NOMS de fichiers (jamais leur contenu),
 c'est ce qui le rend utilisable instantanement avant tout upload."""
 from __future__ import annotations
 
-from nfogen.name_proposal import propose_video_release_name
+from nfogen.name_proposal import propose_season_pack_name, propose_video_release_name
 
 TEMPLATE = "{title}.{identifier}.{language}.{resolution}p.{source}.{audio}.{video_codec}-{team}"
 CONFIG = {
@@ -331,3 +331,63 @@ def test_title_override_capitalization_preserves_internal_casing():
     files = ["Movie.2020.1080p.WEB.x264-TEAM.mkv"]
     proposal = propose_video_release_name(files, CONFIG, title_override="FBI Duo Tres Special")
     assert proposal.fields["title"] == "FBI.Duo.Tres.Special"
+
+
+_SEASON_PACK_CONFIG = {**CONFIG, "season_pack": {
+    "range_format": "S{start:02d}S{end:02d}",
+    "integrale_tag": "INTEGRALE",
+    "integrale_single_season_format": "S{season:02d}.{integrale_tag}",
+}}
+
+
+def test_propose_season_pack_name_partial_range():
+    result = propose_season_pack_name(
+        title="Lucifer", season_numbers=[5, 6], is_full_series=False, team="Frosties",
+        representative_filename="Lucifer.S05E01.FR.1080p.WEBDL.x264-Frosties.mkv",
+        config=_SEASON_PACK_CONFIG,
+    )
+    assert result.name is not None
+    assert "S05S06" in result.name
+    assert result.name.endswith("-Frosties")
+    assert "VFF" in result.name
+    assert "WEB" in result.name
+
+
+def test_propose_season_pack_name_full_series_uses_integrale():
+    result = propose_season_pack_name(
+        title="Breaking Bad", season_numbers=[1, 2, 3], is_full_series=True, team="MiND",
+        representative_filename="Breaking.Bad.S01E01.FR.720p.BluRay.AC3.x264-MiND.mkv",
+        config=_SEASON_PACK_CONFIG,
+    )
+    assert result.name is not None
+    assert "INTEGRALE" in result.name
+    assert "S01" not in result.name  # pas de token saison pour une integrale multi-saisons
+
+
+def test_propose_season_pack_name_single_season_integrale_keeps_season_token():
+    result = propose_season_pack_name(
+        title="Show", season_numbers=[1], is_full_series=True, team="TEAM",
+        representative_filename="Show.S01E01.FR.1080p.WEBDL.x264-TEAM.mkv",
+        config=_SEASON_PACK_CONFIG,
+    )
+    assert result.name is not None
+    assert "S01.INTEGRALE" in result.name
+
+
+def test_propose_season_pack_name_none_when_season_pack_not_configured():
+    result = propose_season_pack_name(
+        title="Show", season_numbers=[1, 2], is_full_series=False, team="TEAM",
+        representative_filename="Show.S01E01.FR.1080p.WEBDL.x264-TEAM.mkv",
+        config=CONFIG,  # sans season_pack
+    )
+    assert result.name is None
+    assert "season_pack" in result.warnings[0]
+
+
+def test_propose_season_pack_name_none_when_template_not_configured():
+    result = propose_season_pack_name(
+        title="Show", season_numbers=[1, 2], is_full_series=False, team="TEAM",
+        representative_filename="Show.S01E01.mkv",
+        config={},
+    )
+    assert result.name is None
