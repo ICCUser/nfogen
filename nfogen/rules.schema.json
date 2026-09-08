@@ -129,6 +129,16 @@
         "audio_codec_aliases": {
           "type": "object",
           "additionalProperties": { "type": "string" }
+        },
+        "season_pack": {
+          "type": "object",
+          "description": "Convention de nommage pour un pack multi-saisons (retour utilisateur, 2026-09-08 -- voir gapscan_library.detect_season_packs). Propre au tracker, jamais codee en dur en Python. Absent : fonctionnalite pack desactivee pour ce profil.",
+          "properties": {
+            "range_format": { "type": "string" },
+            "integrale_tag": { "type": "string" },
+            "integrale_single_season_format": { "type": "string" }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

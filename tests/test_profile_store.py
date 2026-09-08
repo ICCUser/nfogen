@@ -37,6 +37,29 @@ def _profiles_dir(tmp_path, monkeypatch):
         unregister_profile(name)
 
 
+def test_season_pack_config_is_valid_in_schema():
+    """Retour utilisateur, 2026-09-08 : convention de nommage SxxSyy/
+    INTEGRALE pour les packs multi-saisons, declarative dans rules.json --
+    voir gapscan_library.detect_season_packs / name_proposal.propose_season_pack_name."""
+    rules = {
+        "video": {
+            "name_proposal": {
+                "template": (
+                    "{title}.{identifier}.{language}.{resolution}p."
+                    "{source}.{audio}.{video_codec}-{team}"
+                ),
+                "season_pack": {
+                    "range_format": "S{start:02d}S{end:02d}",
+                    "integrale_tag": "INTEGRALE",
+                    "integrale_single_season_format": "S{season:02d}.{integrale_tag}",
+                },
+            }
+        }
+    }
+    # Ne doit pas lever ValueError (voir rules_engine.validate_rules_document).
+    ps.write_profile("season-pack-test", rules=rules, templates={})
+
+
 def test_write_then_read_round_trip():
     ps.write_profile("monprofil", rules=RULES, templates=TEMPLATES)
     data = ps.read_profile("monprofil")

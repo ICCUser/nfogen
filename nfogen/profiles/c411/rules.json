@@ -196,6 +196,11 @@
         "MP3": "MP3",
         "OPUS": "OPUS",
         "TRUEHD": "TRUEHD"
+      },
+      "season_pack": {
+        "range_format": "S{start:02d}S{end:02d}",
+        "integrale_tag": "INTEGRALE",
+        "integrale_single_season_format": "S{season:02d}.{integrale_tag}"
       }
     }
   }
