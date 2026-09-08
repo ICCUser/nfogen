@@ -105,7 +105,7 @@ function renderPage() {
 beforeEach(() => {
   vi.mocked(gapscanConfig).mockResolvedValue(CONFIGURED);
   vi.mocked(gapscanStatus).mockResolvedValue(IDLE_STATUS);
-  vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
+  vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0, season_packs: [] });
   vi.mocked(listAllProfiles).mockResolvedValue({ c411: ["video"] });
   vi.mocked(readManagedProfile).mockResolvedValue({
     name: "c411", rules: { tracker: { display_name: "C411" } }, templates: {},
@@ -123,7 +123,7 @@ describe("LibraryPage", () => {
   });
 
   it("charge et affiche la bibliotheque au montage", async () => {
-    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 1 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 1, season_packs: [] });
     renderPage();
     expect(await screen.findByText(/Matrix \(1999\)/)).toBeInTheDocument();
     expect(libraryResults).toHaveBeenCalled();
@@ -132,17 +132,39 @@ describe("LibraryPage", () => {
   it("affiche le tag d'equipe par ligne, ou un tiret si absent", async () => {
     /* Retour utilisateur, 2026-09-08 : reperer d'un coup d'oeil quelles
      * saisons d'une meme serie partagent la meme equipe. */
-    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM, SHOW_ITEM], total: 2 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM, SHOW_ITEM], total: 2, season_packs: [] });
     renderPage();
     await screen.findByText(/Matrix \(1999\)/);
     expect(screen.getByText("TEAM")).toBeInTheDocument();
     expect(screen.getAllByRole("columnheader", { name: "Team" })).toHaveLength(1);
   });
 
+  it("affiche le bloc 'Packs disponibles' quand la bibliotheque en detecte", async () => {
+    vi.mocked(libraryResults).mockResolvedValue({
+      items: [MATRIX_ITEM], total: 1,
+      season_packs: [
+        {
+          sonarr_series_id: 7, title: "Lucifer", year: 2016, team: "Frosties",
+          season_numbers: [5, 6], is_full_series: true, item_keys: ["k1", "k2"],
+        },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText("Packs disponibles")).toBeInTheDocument();
+    expect(screen.getByText(/Lucifer — INTEGRALE \(Frosties\)/)).toBeInTheDocument();
+  });
+
+  it("n'affiche pas le bloc 'Packs disponibles' si aucune suggestion", async () => {
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 1, season_packs: [] });
+    renderPage();
+    await screen.findByText(/Matrix \(1999\)/);
+    expect(screen.queryByText("Packs disponibles")).not.toBeInTheDocument();
+  });
+
   it("affiche le statut tracker connu, avec ses badges", async () => {
     vi.mocked(libraryResults).mockResolvedValue({
       items: [{ ...MATRIX_ITEM, has_freeleech_alternative: true, has_double_upload_window: true }],
-      total: 1,
+      total: 1, season_packs: [],
     });
     renderPage();
 
@@ -155,7 +177,7 @@ describe("LibraryPage", () => {
   });
 
   it("affiche 'Non vérifié' pour un titre jamais scanne", async () => {
-    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1, season_packs: [] });
     renderPage();
 
     await screen.findByText(/Show \(2020\)/);
@@ -165,7 +187,7 @@ describe("LibraryPage", () => {
 
   it("n'affiche pas de badge de chemin pour un titre jamais scanne (path_resolved faux par defaut)", async () => {
     renderPage();
-    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1, season_packs: [] });
     // Le mock ci-dessus n'a d'effet qu'au prochain appel -- redeclenche un
     // chargement via un changement de filtre pour l'exercer proprement.
     await screen.findByRole("button", { name: "Lancer un scan complet" });
@@ -174,7 +196,7 @@ describe("LibraryPage", () => {
   it("signale un chemin local non resolu par un badge UNIQUEMENT si deja scanne", async () => {
     vi.mocked(libraryResults).mockResolvedValue({
       items: [{ ...MATRIX_ITEM, path_resolved: false, path_error: "Fichier introuvable : /mnt/nas/Matrix.mkv" }],
-      total: 1,
+      total: 1, season_packs: [],
     });
     renderPage();
 
@@ -186,7 +208,7 @@ describe("LibraryPage", () => {
     const user = userEvent.setup();
     vi.mocked(libraryResults).mockResolvedValue({
       items: [{ ...MATRIX_ITEM, local_paths: ["/media/matrix.mkv"], path_resolved: true }],
-      total: 1,
+      total: 1, season_packs: [],
     });
 
     renderPage();
@@ -201,7 +223,7 @@ describe("LibraryPage", () => {
     const user = userEvent.setup();
     vi.mocked(libraryResults).mockResolvedValue({
       items: [{ ...MATRIX_ITEM, local_paths: ["/media/matrix.mkv"], path_resolved: true }],
-      total: 1,
+      total: 1, season_packs: [],
     });
 
     renderPage();
@@ -212,7 +234,7 @@ describe("LibraryPage", () => {
   });
 
   it("n'affiche pas de bouton Préparer l'upload si le chemin n'est pas résolu", async () => {
-    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1, season_packs: [] });
     renderPage();
     await screen.findByText(/Show \(2020\)/);
     expect(screen.queryByRole("button", { name: /Préparer l'upload/i })).not.toBeInTheDocument();
@@ -233,8 +255,8 @@ describe("LibraryPage", () => {
       .mockResolvedValueOnce(IDLE_STATUS)
       .mockResolvedValueOnce({ ...IDLE_STATUS, state: "done", total: 1, processed: 1 });
     vi.mocked(libraryResults)
-      .mockResolvedValueOnce({ items: [], total: 0 })
-      .mockResolvedValueOnce({ items: [MATRIX_ITEM], total: 1 });
+      .mockResolvedValueOnce({ items: [], total: 0, season_packs: [] })
+      .mockResolvedValueOnce({ items: [MATRIX_ITEM], total: 1, season_packs: [] });
 
     renderPage();
     await screen.findByRole("button", { name: "Lancer un scan complet" });
@@ -355,7 +377,7 @@ describe("LibraryPage", () => {
     const user = userEvent.setup();
     const DONE_STATUS: GapscanStatus = { ...IDLE_STATUS, state: "done", total: 1, processed: 1, finished_at: 1700000000 };
     vi.mocked(gapscanStatus).mockResolvedValue(DONE_STATUS);
-    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 1 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 1, season_packs: [] });
     vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });
 
     renderPage();
@@ -383,7 +405,7 @@ describe("LibraryPage", () => {
   // Selection + scan cible (ancienne page "Bibliotheque")
   // ------------------------------------------------------------------- //
   it("selectionner une ligne puis Verifier appelle gapscanRun avec la selection, sans naviguer ailleurs", async () => {
-    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1, season_packs: [] });
     vi.mocked(gapscanRun).mockResolvedValue({ status: "started" });
     const user = userEvent.setup();
     renderPage();
@@ -400,14 +422,14 @@ describe("LibraryPage", () => {
   });
 
   it("le bouton Verifier est desactive sans selection", async () => {
-    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1, season_packs: [] });
     renderPage();
     await screen.findByText(/Show \(2020\)/);
     expect(screen.getByRole("button", { name: /Vérifier sur le tracker/i })).toBeDisabled();
   });
 
   it("le filtre texte relance libraryResults avec q, revient a la page 1", async () => {
-    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0, season_packs: [] });
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(libraryResults).toHaveBeenCalled());
@@ -424,7 +446,7 @@ describe("LibraryPage", () => {
     /* Retour utilisateur, 2026-09-08 : "5 a 10 secondes de plus pour que
      * la recherche soit prise en compte" -- avant ce fix, chaque frappe
      * relancait immediatement /gapscan/library. */
-    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0, season_packs: [] });
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(libraryResults).toHaveBeenCalled());
@@ -445,7 +467,7 @@ describe("LibraryPage", () => {
   });
 
   it("le filtre Statut inclut 'Non vérifié' et le transmet a libraryResults", async () => {
-    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0, season_packs: [] });
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(libraryResults).toHaveBeenCalled());
@@ -459,7 +481,7 @@ describe("LibraryPage", () => {
   });
 
   it("le filtre Genre tracker (distinct du Genre bibliotheque) est transmis a libraryResults", async () => {
-    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0, season_packs: [] });
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(libraryResults).toHaveBeenCalled());
@@ -474,7 +496,7 @@ describe("LibraryPage", () => {
 
   it("affiche la pagination et change de page au clic sur Suivant", async () => {
     const user = userEvent.setup();
-    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 120 });
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 120, season_packs: [] });
 
     renderPage();
     await screen.findByText(/Page 1 \/ 3/);

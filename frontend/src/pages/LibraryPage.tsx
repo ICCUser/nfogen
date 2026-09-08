@@ -13,7 +13,14 @@ import {
   libraryResults,
 } from "../api/client";
 import { ApiError } from "../api/types";
-import type { GapscanConfig, GapscanConfigWrite, GapscanStatus, GapStatus, LibraryItem } from "../api/types";
+import type {
+  GapscanConfig,
+  GapscanConfigWrite,
+  GapscanStatus,
+  GapStatus,
+  LibraryItem,
+  SeasonPackSuggestion,
+} from "../api/types";
 import { useProfile } from "../ProfileContext";
 
 /** Libelles de statut : parametres par le nom du tracker actif
@@ -74,6 +81,7 @@ export default function LibraryPage() {
   const [status, setStatus] = useState<GapscanStatus | null>(null);
   const [items, setItems] = useState<LibraryItem[] | null>(null);
   const [total, setTotal] = useState(0);
+  const [seasonPacks, setSeasonPacks] = useState<SeasonPackSuggestion[]>([]);
   const [q, setQ] = useState("");
   // Recherche texte debouncee (retour utilisateur, 2026-09-08 : "5 a 10
   // secondes apres chaque frappe" -- sans ca, chaque caractere tape
@@ -206,6 +214,7 @@ export default function LibraryPage() {
       });
       setItems(res.items);
       setTotal(res.total);
+      setSeasonPacks(res.season_packs);
     } catch (e) {
       setItems(null);
       setTotal(0);
@@ -629,6 +638,35 @@ export default function LibraryPage() {
           Vérifier sur le tracker ({selected.size} sélectionnés)
         </button>
       </div>
+
+      {seasonPacks.length > 0 && (
+        <div className="space-y-2 rounded-md border border-line bg-surface p-4">
+          <p className="text-sm font-medium text-ink-dim">Packs disponibles</p>
+          {seasonPacks.map((pack) => (
+            <div
+              key={`${pack.sonarr_series_id}-${pack.season_numbers.join("-")}`}
+              className="flex items-center justify-between text-sm"
+            >
+              <span>
+                {pack.title} —{" "}
+                {pack.is_full_series
+                  ? "INTEGRALE"
+                  : `S${String(pack.season_numbers[0]).padStart(2, "0")}S${String(
+                      pack.season_numbers[pack.season_numbers.length - 1],
+                    ).padStart(2, "0")}`}{" "}
+                ({pack.team})
+              </span>
+              {/* onClick cable a la Task 8 -- pour l'instant, bouton sans action */}
+              <button
+                type="button"
+                className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2"
+              >
+                Préparer le pack
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {items === null && !error && <p className="text-sm text-ink-faint">Chargement…</p>}
       {items !== null && items.length === 0 && <p className="text-sm text-ink-faint">Aucun résultat.</p>}

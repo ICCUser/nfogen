@@ -276,9 +276,23 @@ export interface LibraryItem {
   team: string | null;
 }
 
+/** Groupe de saisons consecutives d'une meme serie, meme equipe, propose
+ * en pack (retour utilisateur, 2026-09-08). Voir
+ * gapscan_library.detect_season_packs. */
+export interface SeasonPackSuggestion {
+  sonarr_series_id: number;
+  title: string;
+  year: number | null;
+  team: string;
+  season_numbers: number[];
+  is_full_series: boolean;
+  item_keys: string[];
+}
+
 export interface LibraryResultsPage {
   items: LibraryItem[];
   total: number;
+  season_packs: SeasonPackSuggestion[];
 }
 
 // --------------------------------------------------------------------------- //

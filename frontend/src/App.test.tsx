@@ -30,7 +30,7 @@ beforeEach(() => {
   vi.mocked(gapscanStatus).mockResolvedValue({
     state: "idle", total: 0, processed: 0, started_at: null, finished_at: null, error: null, log: [],
   });
-  vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0 });
+  vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0, season_packs: [] });
 });
 
 describe("App", () => {
