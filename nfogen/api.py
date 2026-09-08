@@ -1159,17 +1159,41 @@ def _run_upload_prep(fn: Any, *args: Any, **kwargs: Any) -> Any:
         raise HTTPException(status_code=500, detail="Erreur interne du serveur.") from exc
 
 
+class SeasonPackSeasonFilesRequest(BaseModel):
+    season_number: int
+    local_paths: list[str]
+
+
+class SeasonPackRequestModel(BaseModel):
+    title: str
+    team: str
+    is_full_series: bool
+    seasons: list[SeasonPackSeasonFilesRequest]
+
+
 class PrepareUploadPreviewRequest(BaseModel):
     local_paths: list[str] = []
     profile: str = "c411"
     title_override: Optional[str] = None
+    season_pack: Optional[SeasonPackRequestModel] = None
 
 
 @app.post("/gapscan/prepare-upload/preview", dependencies=[Depends(require_token)])
 def gapscan_prepare_upload_preview(req: PrepareUploadPreviewRequest) -> list[dict[str, Any]]:
     _require_gapscan_available()
+    season_pack = None
+    if req.season_pack is not None:
+        season_pack = upload_prep.SeasonPackRequest(
+            title=req.season_pack.title, team=req.season_pack.team,
+            is_full_series=req.season_pack.is_full_series,
+            seasons=[
+                upload_prep.SeasonPackSeasonFiles(season_number=s.season_number, local_paths=s.local_paths)
+                for s in req.season_pack.seasons
+            ],
+        )
     proposals = _run_upload_prep(
-        upload_prep.preview_upload, req.local_paths, profile=req.profile, title_override=req.title_override
+        upload_prep.preview_upload, req.local_paths, profile=req.profile,
+        title_override=req.title_override, season_pack=season_pack,
     )
     return [asdict(p) for p in proposals]
 

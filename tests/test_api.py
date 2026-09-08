@@ -1430,6 +1430,33 @@ def test_prepare_upload_preview_real_c411_profile(reload_api):
     assert body[0]["files"][0]["source_path"] == "/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"
 
 
+def test_prepare_upload_preview_season_pack(reload_api):
+    """Retour utilisateur, 2026-09-08 : pack multi-saisons -- pas de fichier
+    reel necessaire (extraction MediaInfo best-effort sur un chemin
+    inexistant, meme comportement que test_prepare_upload_preview_real_c411_profile)."""
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post(
+        "/gapscan/prepare-upload/preview",
+        json={
+            "profile": "c411",
+            "season_pack": {
+                "title": "Lucifer", "team": "Frosties", "is_full_series": True,
+                "seasons": [
+                    {"season_number": 5, "local_paths": ["/media/S05/ep1.mkv"]},
+                    {"season_number": 6, "local_paths": ["/media/S06/ep1.mkv"]},
+                ],
+            },
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert "INTEGRALE" in body[0]["release_name"]
+    assert body[0]["files"][0]["staged_name"] == "S05/ep1.mkv"
+    assert body[0]["files"][1]["staged_name"] == "S06/ep1.mkv"
+
+
 def test_prepare_upload_preview_title_override(reload_api):
     """Cas reel (2026-08-28) : le titre Sonarr/Radarr ne correspond pas au
     titre officiel attendu par C411 -- override manuel."""
