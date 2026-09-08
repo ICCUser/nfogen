@@ -76,6 +76,71 @@ class LibraryItem:
     team: Optional[str] = None
 
 
+@dataclass
+class SeasonPackSuggestion:
+    """Groupe de saisons consecutives d'UNE serie, meme equipe, propose en
+    pack (retour utilisateur, 2026-09-08). Voir detect_season_packs."""
+
+    sonarr_series_id: int
+    title: str
+    year: Optional[int]
+    team: str
+    season_numbers: list[int]  # trie, consecutif
+    is_full_series: bool  # True -> INTEGRALE, False -> intervalle SxxSyy
+    item_keys: list[str]  # LibraryItem.key des saisons du groupe, meme ordre
+
+
+def detect_season_packs(items: list[LibraryItem]) -> list[SeasonPackSuggestion]:
+    """Sur la bibliotheque COMPLETE (non filtree/non paginee) : groupe les
+    items serie par sonarr_series_id, repere les runs MAXIMAUX de saisons
+    CONSECUTIVES partageant la MEME equipe (jamais None, jamais mixte).
+    Un run de longueur 1 n'est jamais propose. `is_full_series` : True si
+    le run couvre TOUTES les saisons CONNUES LOCALEMENT pour cette serie
+    (y compris celles sans equipe detectee/chemin non resolu -- une
+    saison "vue" mais pas eligible au regroupement bloque quand meme
+    INTEGRALE, elle n'est simplement pas dans le run)."""
+    all_seasons_by_series: dict[int, set[int]] = {}
+    eligible_by_series: dict[int, list[LibraryItem]] = {}
+    for item in items:
+        if item.media_type != "series" or item.sonarr_series_id is None or item.season_number is None:
+            continue
+        all_seasons_by_series.setdefault(item.sonarr_series_id, set()).add(item.season_number)
+        if item.team and item.path_resolved and item.local_paths:
+            eligible_by_series.setdefault(item.sonarr_series_id, []).append(item)
+
+    suggestions: list[SeasonPackSuggestion] = []
+    for series_id, series_items in eligible_by_series.items():
+        series_items.sort(key=lambda i: i.season_number)  # type: ignore[arg-type,return-value]
+        all_seasons = all_seasons_by_series.get(series_id, set())
+
+        def flush(run: list[LibraryItem]) -> None:
+            if len(run) < 2:
+                return
+            season_numbers = [i.season_number for i in run]  # type: ignore[misc]
+            suggestions.append(
+                SeasonPackSuggestion(
+                    sonarr_series_id=series_id,
+                    title=run[0].title,
+                    year=run[0].year,
+                    team=run[0].team,  # type: ignore[arg-type]
+                    season_numbers=season_numbers,
+                    is_full_series=set(season_numbers) == all_seasons,
+                    item_keys=[i.key for i in run],
+                )
+            )
+
+        run: list[LibraryItem] = []
+        for item in series_items:
+            if run and item.team == run[-1].team and item.season_number == (run[-1].season_number or 0) + 1:
+                run.append(item)
+            else:
+                flush(run)
+                run = [item]
+        flush(run)
+
+    return suggestions
+
+
 def _previous_key(r: GapResult) -> str:
     """Meme calcul que gapscan._result_key (prive), duplique ici en chaine
     (voir upload_history_store.key_str) pour matcher directement

@@ -6,6 +6,7 @@ import pytest
 
 from nfogen import gapscan_library, upload_history_store
 from nfogen.gapscan import GapResult, GapStatus, movie_key, series_key
+from nfogen.gapscan_library import detect_season_packs
 from nfogen.quality import ReleaseQuality
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.sonarr_client import SonarrSeasonFile
@@ -222,3 +223,62 @@ def test_list_library_computes_tracker_genre_from_matched_result(monkeypatch):
     )
 
     assert items[0].tracker_genre == "anime"
+
+
+# --------------------------------------------------------------------------- #
+# detect_season_packs (retour utilisateur, 2026-09-08) : runs de saisons
+# consecutives d'une meme serie partageant la meme equipe.
+# --------------------------------------------------------------------------- #
+def _series_item(
+    season_number, team, sonarr_series_id=7, title="Lucifer", year=2016, path_resolved=True, key=None,
+):
+    return gapscan_library.LibraryItem(
+        media_type="series", title=title, year=year, season_number=season_number,
+        imdb_id=None, tvdb_id=99, tmdb_id=None, genres=[], added_at=None,
+        local_quality=ReleaseQuality(raw=""),
+        radarr_movie_id=None, sonarr_series_id=sonarr_series_id,
+        already_processed=False, last_processed_at=None,
+        key=key or f"key-{sonarr_series_id}-s{season_number}",
+        path_resolved=path_resolved,
+        local_paths=[f"/media/Show/S{season_number:02d}/ep1.mkv"] if path_resolved else [],
+        team=team,
+    )
+
+
+def test_detect_season_packs_groups_consecutive_seasons_same_team():
+    items = [_series_item(5, "Frosties"), _series_item(6, "Frosties")]
+    suggestions = detect_season_packs(items)
+    assert len(suggestions) == 1
+    assert suggestions[0].season_numbers == [5, 6]
+    assert suggestions[0].team == "Frosties"
+    assert suggestions[0].is_full_series is True  # seules saisons connues = 5,6
+
+
+def test_detect_season_packs_breaks_run_on_different_team():
+    items = [_series_item(1, "TeamA"), _series_item(2, "TeamA"), _series_item(3, "TeamB")]
+    suggestions = detect_season_packs(items)
+    assert len(suggestions) == 1
+    assert suggestions[0].season_numbers == [1, 2]
+    assert suggestions[0].is_full_series is False  # saison 3 existe mais TeamB
+
+
+def test_detect_season_packs_never_proposes_a_lone_season():
+    items = [_series_item(1, "TEAM"), _series_item(3, "TEAM")]  # non consecutives
+    suggestions = detect_season_packs(items)
+    assert suggestions == []
+
+
+def test_detect_season_packs_never_merges_different_series():
+    items = [
+        _series_item(1, "TEAM", sonarr_series_id=1, title="A", key="a1"),
+        _series_item(1, "TEAM", sonarr_series_id=2, title="B", key="b1"),
+    ]
+    assert detect_season_packs(items) == []  # une seule saison chacune, jamais fusionnees entre series
+
+
+def test_detect_season_packs_excludes_seasons_without_team_or_unresolved_path():
+    items = [_series_item(1, None), _series_item(2, "TEAM"), _series_item(3, "TEAM")]
+    suggestions = detect_season_packs(items)
+    assert len(suggestions) == 1
+    assert suggestions[0].season_numbers == [2, 3]
+    assert suggestions[0].is_full_series is False  # saison 1 existe (meme sans team), donc pas INTEGRALE
