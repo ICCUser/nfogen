@@ -1037,6 +1037,12 @@ def gapscan_library_endpoint(
     except (RadarrError, SonarrError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Calcule sur le resultat BRUT (avant filtre q/pagination) : sinon un
+    # filtre actif masquerait des saisons pourtant concernees par un pack
+    # (retour utilisateur, 2026-09-08). Pas de nouvel appel Radarr/Sonarr
+    # -- pure fonction sur `items` deja recupere/mis en cache ci-dessus.
+    season_packs = gapscan_library.detect_season_packs(items)
+
     if q:
         needle = q.strip().lower()
         items = [i for i in items if needle in i.title.lower()]
@@ -1060,7 +1066,10 @@ def gapscan_library_endpoint(
     total = len(items)
     start = (page - 1) * page_size
     page_items = items[start : start + page_size]
-    return {"items": [asdict(i) for i in page_items], "total": total}
+    return {
+        "items": [asdict(i) for i in page_items], "total": total,
+        "season_packs": [asdict(p) for p in season_packs],
+    }
 
 
 @app.get("/gapscan/seed-queue", dependencies=[Depends(require_token)])

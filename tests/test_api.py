@@ -2146,6 +2146,58 @@ def test_gapscan_library_filters_by_tracker_genre(reload_api, monkeypatch):
     assert client.get("/gapscan/library", params={"tracker_genre": "anime"}).json()["total"] == 0
 
 
+def test_gapscan_library_exposes_season_packs(reload_api, monkeypatch, tmp_path):
+    """Retour utilisateur, 2026-09-08 : detection de packs multi-saisons/
+    INTEGRALE (voir gapscan_library.detect_season_packs) -- path_resolved
+    exige un VRAI fichier sur disque (voir path_mapping.resolve_and_validate),
+    d'ou les fichiers tmp_path reels ici plutot qu'un chemin factice."""
+    season5_file = tmp_path / "S05E01.mkv"
+    season5_file.write_bytes(b"x")
+    season6_file = tmp_path / "S06E01.mkv"
+    season6_file.write_bytes(b"x")
+
+    class _FakeGapscanSonarrTwoSeasonsSameTeam:
+        def __init__(self, *args, **kwargs):
+            self.closed = False
+
+        def list_season_files(self):
+            return [
+                SonarrSeasonFile(
+                    series_id=7, title="Lucifer", year=2016, tvdb_id=99, imdb_id=None,
+                    season_number=5, episode_file_count=1,
+                    scene_name="Lucifer.S05.MULTI.VFF.1080p.WEB.AAC.2.0.x265-Frosties",
+                    remote_paths=[str(season5_file)],
+                ),
+                SonarrSeasonFile(
+                    series_id=7, title="Lucifer", year=2016, tvdb_id=99, imdb_id=None,
+                    season_number=6, episode_file_count=1,
+                    scene_name="Lucifer.S06.MULTI.VFF.1080p.WEB.AAC.2.0.x265-Frosties",
+                    remote_paths=[str(season6_file)],
+                ),
+            ]
+
+        def close(self):
+            self.closed = True
+
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_C411_API_KEY="x",
+        NFOGEN_SONARR_URL="http://sonarr.local", NFOGEN_SONARR_API_KEY="y",
+    )
+    _patch_gapscan_clients(
+        monkeypatch, mod, radarr_cls=_FakeGapscanRadarr, sonarr_cls=_FakeGapscanSonarrTwoSeasonsSameTeam,
+    )
+    client = TestClient(mod.app)
+
+    client.post("/gapscan/run")
+    _wait_gapscan_done(client)
+
+    body = client.get("/gapscan/library").json()
+    assert len(body["season_packs"]) == 1
+    assert body["season_packs"][0]["team"] == "Frosties"
+    assert body["season_packs"][0]["season_numbers"] == [5, 6]
+    assert body["season_packs"][0]["is_full_series"] is True
+
+
 class _CountingFakeGapscanRadarr(_FakeGapscanRadarr):
     """Comme _FakeGapscanRadarr, mais compte les appels reseau reels
     (list_movie_files) -- verifie le cache en memoire de
