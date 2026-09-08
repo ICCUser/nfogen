@@ -11,6 +11,24 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Ajouté
 
+- **Packs de saisons "INTÉGRALE"** (retour utilisateur, 2026-09-08, suite
+  au tag d'équipe ci-dessous : "si toute les saison provienne de la meme
+  team alors on peut faire un pack INTEGRALE d'une serie") :
+  `detect_season_packs()` (`nfogen/gapscan_library.py`) détecte les runs
+  de saisons consécutives d'une même série partageant la même équipe et
+  un chemin local résolu, exposés par `GET /gapscan/library`
+  (`season_packs`) et affichés dans un nouveau bloc "Packs disponibles"
+  de la Bibliothèque. Le bouton "Préparer le pack" fusionne les saisons
+  concernées et ouvre l'aperçu d'upload habituel (`UploadPrepPanel`,
+  `POST /gapscan/prepare-upload/preview` gagne un champ `season_pack`) —
+  mise en scène en un seul groupe multi-saisons, dossiers `Sxx/` par
+  saison. Nommage `SxxSyy`/`INTÉGRALE` déclaratif via `rules.json`
+  (`video.name_proposal.season_pack`, confirmé par le wiki C411
+  "Nommage de l'upload") — jamais en dur en Python, cohérent avec le
+  principe agnostique du projet. Limitation connue : une saison absente
+  de la page/du filtre Bibliothèque courant désactive le bouton (les
+  chemins locaux de cette saison ne sont pas résolvables sans elle).
+
 - **Tag d'équipe dans la Bibliothèque** (retour utilisateur, 2026-09-08 :
   repérer d'un coup d'œil quelles saisons d'une même série partagent la
   même équipe, en vue d'un futur pack "INTÉGRALE") : `LibraryItem` gagne

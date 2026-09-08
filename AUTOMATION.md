@@ -1282,3 +1282,62 @@ sous-projet, même patron réutilisable plus tard si besoin).
 
 Voir [docs/superpowers/specs/2026-09-06-qbittorrent-seed-integration-design.md](docs/superpowers/specs/2026-09-06-qbittorrent-seed-integration-design.md)
 et [docs/superpowers/plans/2026-09-06-qbittorrent-seed-integration.md](docs/superpowers/plans/2026-09-06-qbittorrent-seed-integration.md).
+
+## Sous-projet 9 : Packs de saisons "INTÉGRALE" (conception et livraison 2026-09-08)
+
+Retour utilisateur (2026-09-08, capture d'écran de la Bibliothèque à
+l'appui) : plusieurs saisons de "Lucifer" (S02, S05, S06) partagent la
+même équipe ("Frosties") — "si toute les saison provienne de la meme
+team alors on peut faire un pack INTEGRALE d'une serie. ca sa serait
+cool". Décomposé en deux livraisons :
+
+1. **Tag d'équipe par ligne** dans la Bibliothèque (voir plus haut,
+   "Ajouté" du CHANGELOG) — prérequis d'affichage.
+2. **Détection et upload de packs multi-saisons**, ci-dessous.
+
+**Toujours agnostique du tracker** (contrainte explicite de
+l'utilisateur pendant le brainstorm : "se sont des regles specifique a
+C411 [...] garde a l'espris le coté agnostique du projet") : la
+convention de nommage `SxxSyy`/`INTEGRALE` (confirmée via le wiki C411
+"Nommage de l'upload") vit entièrement dans `rules.json` du profil, sous
+`video.name_proposal.season_pack` (`range_format`, `integrale_tag`,
+`integrale_single_season_format`) — absente pour un profil, la
+fonctionnalité est simplement désactivée pour ce profil, jamais une
+erreur.
+
+**Détection** (`nfogen/gapscan_library.py:detect_season_packs()`) :
+regroupe les `LibraryItem` d'une même série (`sonarr_series_id`) en
+runs maximaux de saisons **consécutives** partageant la même équipe
+(`team`, voir tag d'équipe ci-dessus) ET un chemin local résolu. Ne
+fusionne jamais deux séries différentes, ne propose jamais une saison
+isolée. `is_full_series` compare le run retenu à **toutes** les saisons
+connues de la série (y compris celles écartées faute d'équipe ou de
+chemin résolu) — une saison sans équipe bloque donc correctement une
+fausse INTÉGRALE. Exposé par `GET /gapscan/library` (champ
+`season_packs` de la réponse), affiché dans un nouveau bloc "Packs
+disponibles" au-dessus du tableau.
+
+**Nommage** (`nfogen/name_proposal.py:propose_season_pack_name()`) :
+volontairement séparé de `propose_video_release_name()` (qui rejette
+explicitement une sélection multi-saisons — comportement correct pour
+son propre usage, pas pour un pack assemblé délibérément).
+
+**Mise en scène** (`nfogen/upload_prep.py`) : `preview_upload()` gagne
+un paramètre `season_pack` optionnel — quand fourni, construit un seul
+`GroupProposal` à partir de TOUTES les saisons du pack, avec un
+`staged_name` préfixé `Sxx/` par fichier (`commit_upload()` n'a nécessité
+**aucune modification** : `file_staging.stage_files()` supportait déjà
+nativement les chemins de mise en scène imbriqués).
+
+**Frontend** : le bouton "Préparer le pack" (bloc "Packs disponibles",
+`LibraryPage.tsx`) résout les chemins locaux par saison depuis les
+lignes **actuellement affichées** (`seasonsForPack()`) et ouvre
+`UploadPrepPanel` avec ce pack fusionné (nouvelle prop `seasonPack`,
+transmise à `POST /gapscan/prepare-upload/preview` via
+`prepareUploadPreview()`). **Limitation connue** : une saison du pack
+absente de la page/du filtre courant (recherche, pagination) ne peut pas
+être résolue — le bouton reste alors désactivé plutôt que de proposer un
+pack incomplet.
+
+Voir [docs/superpowers/specs/2026-09-08-season-pack-integrale-design.md](docs/superpowers/specs/2026-09-08-season-pack-integrale-design.md)
+et [docs/superpowers/plans/2026-09-08-season-pack-integrale.md](docs/superpowers/plans/2026-09-08-season-pack-integrale.md).
