@@ -15,6 +15,8 @@ from nfogen.tmdb_client import TMDBError, TMDBExtraDetails
 from nfogen.upload_prep import (
     CommitResult,
     ProposedFile,
+    SeasonPackRequest,
+    SeasonPackSeasonFiles,
     _language_hint_from_audio_tracks,
     commit_upload,
     group_by_team,
@@ -179,6 +181,67 @@ def test_name_with_no_detectable_codec_is_blocked_by_real_validator():
 
 def test_empty_local_paths_returns_empty_list():
     assert preview_upload([]) == []
+
+
+def test_preview_upload_season_pack_produces_one_group_with_prefixed_staged_names():
+    """Retour utilisateur, 2026-09-08 : pack multi-saisons -- un seul
+    GroupProposal, staged_name prefixe par saison (S05/..., S06/...) pour
+    que file_staging.stage_files() mette en scene la structure imbriquee
+    attendue (aucun changement necessaire a stage_files() lui-meme)."""
+    season_pack = SeasonPackRequest(
+        title="Lucifer", team="Frosties", is_full_series=True,
+        seasons=[
+            SeasonPackSeasonFiles(season_number=5, local_paths=["/media/S05/ep1.mkv", "/media/S05/ep2.mkv"]),
+            SeasonPackSeasonFiles(season_number=6, local_paths=["/media/S06/ep1.mkv"]),
+        ],
+    )
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload([], profile="c411", season_pack=season_pack)
+
+    assert len(proposals) == 1
+    group = proposals[0]
+    assert group.release_name is not None
+    assert "INTEGRALE" in group.release_name
+    assert len(group.files) == 3
+    assert group.files[0].staged_name == "S05/ep1.mkv"
+    assert group.files[1].staged_name == "S05/ep2.mkv"
+    assert group.files[2].staged_name == "S06/ep1.mkv"
+    assert group.blocked is False
+
+
+def test_preview_upload_season_pack_warns_when_season_pack_not_configured(monkeypatch):
+    season_pack = SeasonPackRequest(
+        title="Show", team="TEAM", is_full_series=False,
+        seasons=[
+            SeasonPackSeasonFiles(season_number=1, local_paths=["/media/S01/ep1.mkv"]),
+            SeasonPackSeasonFiles(season_number=2, local_paths=["/media/S02/ep1.mkv"]),
+        ],
+    )
+    # Profil sans video.name_proposal.season_pack declare -- comportement
+    # degrade explicite, jamais une convention devinee.
+    monkeypatch.setattr(
+        "nfogen.upload_prep.read_profile",
+        lambda profile: {"rules": {"video": {"name_proposal": {"template": "{title}.{identifier}-{team}"}}}},
+    )
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload([], profile="c411", season_pack=season_pack)
+
+    assert len(proposals) == 1
+    assert proposals[0].release_name is None
+    assert proposals[0].blocked is True
+
+
+def test_preview_upload_season_pack_extraction_failure_is_a_soft_warning():
+    season_pack = SeasonPackRequest(
+        title="Lucifer", team="Frosties", is_full_series=True,
+        seasons=[SeasonPackSeasonFiles(season_number=5, local_paths=["/media/S05/ep1.mkv"])],
+    )
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", side_effect=Exception("boom")):
+        proposals = preview_upload([], profile="c411", season_pack=season_pack)
+
+    assert len(proposals) == 1
+    assert proposals[0].release_name is not None  # illisible = avertissement, jamais bloquant
+    assert any("Métadonnées illisibles" in w for w in proposals[0].warnings)
 
 
 def test_preview_upload_title_override_replaces_filename_derived_title():

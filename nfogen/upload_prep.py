@@ -28,7 +28,7 @@ from .c411_upload_client import C411UploadClient, C411UploadError
 from .engine import propose_release_name
 from .languages import flagcdn_url, resolve_language
 from .models import RenderContext
-from .name_proposal import extract_team_tag, strip_ext
+from .name_proposal import extract_team_tag, propose_season_pack_name, strip_ext
 from .profile_store import read_profile
 from .qbittorrent_client import QBittorrentClient, QBittorrentError
 from .radarr_client import RadarrClient
@@ -79,6 +79,28 @@ class GroupProposal:
     files: list[ProposedFile] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     blocked: bool = False
+
+
+@dataclass
+class SeasonPackSeasonFiles:
+    """Fichiers d'UNE saison du pack -- garde l'association fichier/saison
+    explicite (jamais devinee depuis le chemin), voir SeasonPackRequest."""
+
+    season_number: int
+    local_paths: list[str]
+
+
+@dataclass
+class SeasonPackRequest:
+    """Pack multi-saisons DEJA VALIDE par l'appelant (retour utilisateur,
+    2026-09-08 -- voir gapscan_library.detect_season_packs : memes equipe
+    garantie, saisons consecutives) -- transmis tel quel par l'API (voir
+    api.py)."""
+
+    title: str
+    team: str
+    is_full_series: bool
+    seasons: list[SeasonPackSeasonFiles]  # ordonne par season_number croissant
 
 
 @dataclass
@@ -169,8 +191,52 @@ def _language_hint_from_audio_tracks(audio_languages: list[str], language_codes:
     return "+".join(codes)
 
 
+def _preview_season_pack(season_pack: SeasonPackRequest, profile: str) -> GroupProposal:
+    """Un pack multi-saisons DEJA VALIDE (voir SeasonPackRequest) donne
+    TOUJOURS un seul GroupProposal -- jamais de group_by_team() ici (les
+    fichiers de plusieurs saisons portent des tokens SxxExx differents,
+    group_by_team n'a pas de sens pour ce cas). Le premier fichier de la
+    premiere saison sert de representant pour extraire langue/resolution/
+    codec/source (memes alias que la proposition standard, voir
+    propose_season_pack_name)."""
+    warnings: list[str] = []
+    files: list[ProposedFile] = []
+    representative_filename: Optional[str] = None
+    for season in season_pack.seasons:
+        for source_path in season.local_paths:
+            filename = Path(source_path).name
+            if representative_filename is None:
+                representative_filename = filename
+            try:
+                extract.extract_video_metadata(Path(source_path))
+            except Exception:
+                warnings.append(_extraction_warning(filename))
+            files.append(
+                ProposedFile(source_path=source_path, staged_name=f"S{season.season_number:02d}/{filename}")
+            )
+
+    if not files or representative_filename is None:
+        return GroupProposal(
+            release_name=None, files=[], warnings=["Aucun fichier fourni pour ce pack."], blocked=True
+        )
+
+    config = read_profile(profile)["rules"].get("video", {}).get("name_proposal", {})
+    season_numbers = [s.season_number for s in season_pack.seasons]
+    proposal = propose_season_pack_name(
+        title=season_pack.title, season_numbers=season_numbers, is_full_series=season_pack.is_full_series,
+        team=season_pack.team, representative_filename=representative_filename, config=config,
+    )
+    warnings = warnings + list(proposal.warnings)
+
+    if proposal.name is None:
+        return GroupProposal(release_name=None, files=[], warnings=warnings, blocked=True)
+
+    return GroupProposal(release_name=proposal.name, files=files, warnings=warnings, blocked=False)
+
+
 def preview_upload(
-    local_paths: list[str], profile: str = "c411", title_override: Optional[str] = None
+    local_paths: list[str], profile: str = "c411", title_override: Optional[str] = None,
+    season_pack: Optional[SeasonPackRequest] = None,
 ) -> list[GroupProposal]:
     """Sans aucune ecriture disque : extrait les metadonnees (best-effort --
     une extraction illisible devient un avertissement, jamais un
@@ -181,7 +247,13 @@ def preview_upload(
     sans dupliquer cette logique ici. `title_override` (AUTOMATION.md,
     sous-projet 5) : remplace le titre deduit du nom de fichier pour TOUS
     les groupes de cet appel (ex. titre officiel du tracker different du
-    titre Sonarr/Radarr, "A Guy And A Girl" -> "Un Gars, Une Fille")."""
+    titre Sonarr/Radarr, "A Guy And A Girl" -> "Un Gars, Une Fille").
+    `season_pack` (AUTOMATION.md, retour utilisateur 2026-09-08) :
+    court-circuite tout ce qui precede -- `local_paths` est alors ignore,
+    voir `_preview_season_pack`."""
+    if season_pack is not None:
+        return [_preview_season_pack(season_pack, profile)]
+
     if not local_paths:
         return []
 
