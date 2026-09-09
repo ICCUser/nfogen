@@ -7,6 +7,7 @@ import type {
   GapscanStatus,
   GapStatus,
   GenerateResult,
+  IntegrityJob,
   LibraryResultsPage,
   ManagedProfile,
   NameProposal,
@@ -513,6 +514,27 @@ export function listCommitJobs(): Promise<CommitJob[]> {
 
 export function cancelCommitJob(jobId: string): Promise<{ status: string }> {
   return request<{ status: string }>(`/gapscan/commit-jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+  });
+}
+
+/** Demarre la verification approfondie EN TACHE DE FOND (AUTOMATION.md,
+ * sous-projet 7) -- renvoie un job_id immediatement, suivi via
+ * integrityJobStatus(). Jamais appelee pour un brouillon, uniquement
+ * avant "Uploader directement" (voir UploadPrepPanel.tsx). */
+export function verifyIntegrity(stagedPath: string): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>("/gapscan/verify-integrity", {
+    method: "POST",
+    body: JSON.stringify({ staged_path: stagedPath }),
+  });
+}
+
+export function integrityJobStatus(jobId: string): Promise<IntegrityJob> {
+  return request<IntegrityJob>(`/gapscan/integrity-jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function cancelIntegrityJob(jobId: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/gapscan/integrity-jobs/${encodeURIComponent(jobId)}/cancel`, {
     method: "POST",
   });
 }

@@ -388,6 +388,31 @@ export interface CommitJob {
   result: UploadCommitResult | null;
 }
 
+/** POST /gapscan/verify-integrity + GET /gapscan/integrity-jobs/{id}
+ * (AUTOMATION.md, sous-projet 7 -- verification approfondie du fichier
+ * video). Meme patron que CommitJob : tache de fond suivie en polling,
+ * jamais de blocage de la page sur un gros fichier. */
+export type IntegrityJobState = "verifying" | "done" | "error" | "cancelled";
+
+export interface VideoIntegrityReport {
+  passed: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface IntegrityJob {
+  job_id: string;
+  state: IntegrityJobState;
+  /** 0-100. */
+  percent: number;
+  started_at: number;
+  finished_at: number | null;
+  /** Erreur d'EXECUTION du job (ffmpeg absent, exception) -- distincte
+   * d'un rapport `result.passed = false` (echec de VERIFICATION). */
+  error: string | null;
+  result: VideoIntegrityReport | null;
+}
+
 /** POST /gapscan/prepare-upload/send : cree/met a jour un BROUILLON C411
  * -- n'entre jamais en file de moderation tout seul (voir AUTOMATION.md,
  * sous-projet 5, decision 6). */
