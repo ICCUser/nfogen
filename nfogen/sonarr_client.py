@@ -72,6 +72,12 @@ class SonarrSeasonFile:
     # de CETTE saison -- pas la date d'ajout de la serie entiere, qui ne
     # distinguerait pas les saisons (voir _parse_sonarr_date).
     added_at: Optional[float] = None
+    # Somme des tailles (octets) de TOUS les fichiers episode de cette
+    # saison, telles que rapportees par Sonarr (episodeFile.size) -- utilise
+    # par gapscan_library._compute_seed_match pour comparer a la taille
+    # d'un pack C411, SANS jamais faire de os.path.getsize() sur les
+    # fichiers locaux (voir RadarrMovieFile.size_bytes, meme incident reel).
+    size_bytes: Optional[int] = None
 
 
 @dataclass
@@ -220,6 +226,7 @@ class SonarrClient:
                         remote_paths=[f.get("path") for f in season_files if f.get("path")],
                         genres=series.get("genres") or [],
                         added_at=max(added_dates) if added_dates else None,
+                        size_bytes=sum(f.get("size") or 0 for f in season_files) or None,
                     )
                 )
         return seasons

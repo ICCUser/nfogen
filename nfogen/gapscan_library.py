@@ -21,7 +21,6 @@ tracker DEJA CONNU pour lui, retrouve via la MEME cle que la selection
 (movie_key/series_key) -- jamais une nouvelle interrogation de C411 ici."""
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -171,17 +170,23 @@ def find_result_by_key(key: str, results: list[GapResult]) -> Optional[GapResult
 
 def _compute_seed_match(
     previous: Optional[GapResult], local_quality: ReleaseQuality, team: Optional[str],
-    local_paths: list[str], path_resolved: bool,
+    local_paths: list[str], path_resolved: bool, local_size_bytes: Optional[int],
 ) -> Optional[dict[str, str]]:
+    """`local_size_bytes` : taille rapportee directement par Radarr/Sonarr
+    (RadarrMovieFile.size_bytes / SonarrSeasonFile.size_bytes) -- jamais un
+    `os.path.getsize()` sur le fichier local ici : incident reel de
+    performance (retour utilisateur, 2026-09-09) sur une bibliotheque dont
+    les fichiers sont sur un NAS distant, chaque `stat()` bloquant coutait
+    plusieurs dizaines de ms, multiplie par le nombre d'items COVERED a
+    CHAQUE affichage de la Bibliotheque. `path_resolved`/`local_paths`
+    restent verifies (aucun cout I/O, deja calcules par un scan precedent) :
+    inutile de proposer un seed sur un chemin local qu'on n'a jamais pu
+    resoudre."""
     if previous is None or previous.status != GapStatus.COVERED:
         return None
-    if not path_resolved or not local_paths:
+    if not path_resolved or not local_paths or local_size_bytes is None:
         return None
-    try:
-        local_size = os.path.getsize(local_paths[0])
-    except OSError:
-        return None
-    candidate = find_seed_match(local_quality, team, local_size, previous.c411_matches)
+    candidate = find_seed_match(local_quality, team, local_size_bytes, previous.c411_matches)
     if candidate is None:
         return None
     return {"guid": candidate.guid, "release_name": candidate.release_name}
@@ -246,6 +251,7 @@ def list_library(
                     team=movie_team,
                     seed_match=_compute_seed_match(
                         previous, movie_quality, movie_team, movie_local_paths, movie_path_resolved,
+                        movie.size_bytes,
                     ),
                 )
             )
@@ -290,6 +296,7 @@ def list_library(
                     team=season_team,
                     seed_match=_compute_seed_match(
                         previous, season_quality, season_team, season_local_paths, season_path_resolved,
+                        season.size_bytes,
                     ),
                 )
             )

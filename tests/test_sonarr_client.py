@@ -14,18 +14,21 @@ EPISODE_FILES = [
         "sceneName": "Breaking.Bad.S01.MULTI.VFF.2160p.WEBRip.EAC3.5.1.x265-SQUEEZE",
         "quality": {"quality": {"name": "WEBRip-2160p", "resolution": 2160}},
         "languages": [{"name": "French"}],
+        "size": 3_000_000_000,
     },
     {
         "seasonNumber": 1,
         "sceneName": "Breaking.Bad.S01.MULTI.VFF.1080p.WEBRip.EAC3.5.1.x265-SQUEEZE",
         "quality": {"quality": {"name": "WEBRip-1080p", "resolution": 1080}},
         "languages": [{"name": "French"}],
+        "size": 1_500_000_000,
     },
     {
         "seasonNumber": 2,
         "sceneName": "Breaking.Bad.S02.MULTI.VFF.1080p.WEBRip.EAC3.5.1.x265-SQUEEZE",
         "quality": {"quality": {"name": "WEBRip-1080p", "resolution": 1080}},
         "languages": [{"name": "French"}],
+        "size": 1_800_000_000,
     },
 ]
 
@@ -58,6 +61,25 @@ def test_list_season_files_aggregates_by_season_and_keeps_best_resolution():
     season2 = next(s for s in seasons if s.season_number == 2)
     assert season2.episode_file_count == 1
     assert season2.best_resolution == 1080
+
+
+def test_list_season_files_size_bytes_sums_all_episode_files_of_the_season():
+    """Performance (retour utilisateur, 2026-09-09) : la taille vient de
+    la somme des `episodeFile.size` deja renvoyes par Sonarr, jamais d'un
+    os.path.getsize() local -- voir gapscan_library._compute_seed_match.
+    Une saison est multi-fichiers : contrairement a un film, la taille a
+    comparer a un pack C411 est bien la somme, pas la taille d'un seul
+    episode."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=SERIES)
+        return httpx.Response(200, json=EPISODE_FILES)
+
+    seasons = _client(handler).list_season_files()
+    season1 = next(s for s in seasons if s.season_number == 1)
+    assert season1.size_bytes == 3_000_000_000 + 1_500_000_000
+    season2 = next(s for s in seasons if s.season_number == 2)
+    assert season2.size_bytes == 1_800_000_000
 
 
 def test_list_season_files_keeps_files_matched_to_the_right_series_when_parallelized():

@@ -303,9 +303,11 @@ def _covered_movie_previous(c411_matches):
     )
 
 
-def test_gapscan_library_exposes_seed_match_when_exact_candidate_found(tmp_path, monkeypatch):
-    local_file = tmp_path / "Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM.mkv"
-    local_file.write_bytes(b"x" * 1_000_000)
+def test_gapscan_library_exposes_seed_match_when_exact_candidate_found():
+    """La taille locale vient de RadarrMovieFile.size_bytes (rapportee par
+    Radarr), JAMAIS d'un os.path.getsize() sur le fichier -- incident reel
+    de performance (retour utilisateur, 2026-09-09), voir _compute_seed_match.
+    Ce test ne cree donc plus aucun fichier reel sur disque."""
     previous = _covered_movie_previous(
         c411_matches=[
             TorznabRelease(
@@ -314,11 +316,10 @@ def test_gapscan_library_exposes_seed_match_when_exact_candidate_found(tmp_path,
             )
         ],
     )
-    previous.local_paths = [str(local_file)]
 
     movie = RadarrMovieFile(
         movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
-        scene_name="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM",
+        scene_name="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM", size_bytes=1_000_000,
     )
     items = gapscan_library.list_library(
         radarr=_FakeRadarr([movie]), sonarr=None, previous_results=[previous],
@@ -377,6 +378,30 @@ def test_gapscan_library_seed_match_none_when_no_exact_candidate():
         ],
     )
     previous.local_paths = local_paths
+
+    movie = RadarrMovieFile(
+        movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
+        scene_name="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM", size_bytes=1_000_000,
+    )
+    items = gapscan_library.list_library(
+        radarr=_FakeRadarr([movie]), sonarr=None, previous_results=[previous],
+    )
+
+    assert items[0].seed_match is None
+
+
+def test_gapscan_library_seed_match_none_when_size_unknown():
+    """Radarr n'a pas rapporte de taille (`size_bytes` absent) : jamais de
+    proposition de seed, meme si tout le reste correspondrait -- pas de
+    fallback vers un stat() disque (voir _compute_seed_match)."""
+    previous = _covered_movie_previous(
+        c411_matches=[
+            TorznabRelease(
+                title="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM", guid="guid-1",
+                link="https://c411.org/torrents/x", size=1_000_000,
+            )
+        ],
+    )
 
     movie = RadarrMovieFile(
         movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,

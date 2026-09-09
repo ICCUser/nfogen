@@ -53,6 +53,14 @@ class RadarrMovieFile:
     # Horodatage (epoch secondes) d'ajout a Radarr -- `None` si absent ou
     # illisible (jamais une exception, voir _parse_radarr_date).
     added_at: Optional[float] = None
+    # Taille en octets telle que rapportee par Radarr (movieFile.size) --
+    # utilise par gapscan_library._compute_seed_match pour comparer a la
+    # taille d'une release C411, SANS jamais faire de os.path.getsize() sur
+    # le fichier local (io disque bloquant, potentiellement sur un NAS
+    # distant : incident reel de performance, retour utilisateur 2026-09-09,
+    # la Bibliotheque perdait plusieurs secondes a "stat" chaque fichier
+    # COVERED a chaque affichage).
+    size_bytes: Optional[int] = None
 
 
 @dataclass
@@ -163,6 +171,7 @@ class RadarrClient:
                     remote_path=movie_file.get("path"),
                     genres=movie.get("genres") or [],
                     added_at=_parse_radarr_date(movie.get("added")),
+                    size_bytes=movie_file.get("size"),
                 )
             )
         return movies

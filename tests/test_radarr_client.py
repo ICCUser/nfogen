@@ -18,6 +18,7 @@ MOVIES = [
             "sceneName": "Matrix.1999.MULTI.VFF.2160p.BluRay.4KLight.HDR.DTS.5.1.x265-QTZ",
             "quality": {"quality": {"name": "Bluray-2160p", "resolution": 2160}},
             "languages": [{"name": "French"}],
+            "size": 25_000_000_000,
         },
     },
     {
@@ -51,6 +52,17 @@ def test_list_movie_files_skips_movies_without_a_file():
     assert movies[0].title == "Matrix"
     assert movies[0].best_resolution == 2160
     assert movies[0].language_names == ["French"]
+
+
+def test_list_movie_files_exposes_size_bytes_from_radarr_without_a_disk_stat():
+    """Performance (retour utilisateur, 2026-09-09) : la taille vient
+    directement de movieFile.size (deja renvoye par Radarr), jamais d'un
+    os.path.getsize() local -- voir gapscan_library._compute_seed_match."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=MOVIES)
+
+    movies = _client(handler).list_movie_files()
+    assert movies[0].size_bytes == 25_000_000_000
 
 
 def test_list_movie_files_exposes_alternate_titles():
