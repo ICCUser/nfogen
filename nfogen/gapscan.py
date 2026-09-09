@@ -391,14 +391,20 @@ def run_gapscan(
     results: list[GapResult] = []
     for index, (kind, item) in enumerate(items, start=1):
         key = _item_key(kind, item)
+        # Un item explicitement selectionne (`selection`) doit TOUJOURS etre
+        # reinterroge sur C411 -- c'est le sens meme du bouton "Verifier sur
+        # le tracker" cote frontend, jamais une reprise silencieuse de son
+        # ancien statut (voir `_can_reuse`). `previous_by_key` reste utilise
+        # plus haut pour `carried_over` (les items NON selectionnes).
+        item_previous = previous_by_key.get(key) if selection is None else None
         if kind == "movie":
             result = scan_movie(
-                item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
+                item, c411, previous=item_previous, max_age_seconds=max_age_seconds,
                 path_mappings=radarr_path_mappings,
             )  # type: ignore[arg-type]
         else:
             result = scan_series_season(
-                item, c411, previous=previous_by_key.get(key), max_age_seconds=max_age_seconds,
+                item, c411, previous=item_previous, max_age_seconds=max_age_seconds,
                 path_mappings=sonarr_path_mappings,
             )  # type: ignore[arg-type]
         results.append(result)

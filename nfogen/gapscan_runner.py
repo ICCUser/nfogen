@@ -224,7 +224,16 @@ def start(
     with _lock:
         if _progress.state == ScanState.RUNNING:
             return False
-        previous_results = list(_results) if incremental else None
+        # `selection` : les items NON selectionnes doivent TOUJOURS etre
+        # repris tels quels depuis le dernier scan connu (voir run_gapscan),
+        # jamais disparaitre des resultats -- independant de `incremental`,
+        # qui ne controle que la reutilisation (sans reinterroger C411) des
+        # items REELLEMENT scannes cette passe. Bug reel signale par
+        # l'utilisateur (2026-09-09) : un scan cible (`selection`, toujours
+        # lance avec `incremental=False` cote frontend) effacait tout le
+        # reste de la bibliotheque de `_results` jusqu'au prochain scan
+        # complet.
+        previous_results = list(_results) if (incremental or selection is not None) else None
         _progress.state = ScanState.RUNNING
         _progress.started_at = time.time()
         _progress.finished_at = None

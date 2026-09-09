@@ -15,6 +15,7 @@ from typing import Optional
 import pytest
 
 from nfogen import gapscan_runner
+from nfogen.gapscan import GapResult, GapStatus, ReleaseQuality
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.sonarr_client import SonarrSeasonFile
 from nfogen.torznab_client import TorznabRelease
@@ -105,6 +106,37 @@ def test_start_relays_selection_to_run_gapscan(monkeypatch):
     _wait_until_not_running()
 
     assert captured["selection"] == selection
+
+
+def test_start_carries_previous_results_for_selection_even_without_incremental(monkeypatch):
+    """Bug reel signale par l'utilisateur (2026-09-09) : le bouton "Verifier
+    sur le tracker" (selection manuelle) appelle toujours `start(...,
+    incremental=False, selection=...)` cote frontend -- sans ce carry-over,
+    `run_gapscan` n'a aucun `previous_results` pour reprendre les items HORS
+    selection, qui disparaissent alors purement et simplement de
+    `gapscan_runner.results()` jusqu'au prochain scan complet."""
+    captured: dict = {}
+
+    def fake_run_gapscan(*args, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(gapscan_runner, "run_gapscan", fake_run_gapscan)
+    untouched = GapResult(
+        media_type="movie", title="Autre film", year=2010, season_number=None,
+        imdb_id="tt999", tmdb_id="999", tvdb_id=None, status=GapStatus.COVERED,
+        local_quality=ReleaseQuality(raw=""),
+    )
+    gapscan_runner._results = [untouched]
+    selection = {("movie", "tt001", 2020)}
+
+    started = gapscan_runner.start(
+        FakeC411(), radarr=FakeRadarr(movies=[_movie()]), incremental=False, selection=selection,
+    )
+    assert started is True
+    _wait_until_not_running()
+
+    assert captured["previous_results"] == [untouched]
 
 
 def _wait_until_not_running(timeout: float = 5.0) -> None:

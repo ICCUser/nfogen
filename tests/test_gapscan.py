@@ -763,6 +763,32 @@ def test_run_gapscan_selection_restricts_c411_calls_to_selected_item():
     assert any(r.title == "A" for r in results)
 
 
+def test_run_gapscan_selection_always_requeries_selected_item_even_if_previously_covered():
+    """Bug reel signale par l'utilisateur (2026-09-09) : un scan cible
+    (`selection`, ex. bouton "Verifier sur le tracker" apres une selection
+    manuelle en Bibliotheque) doit TOUJOURS reinterroger C411 pour l'item
+    selectionne -- jamais une reprise silencieuse via `_can_reuse` (reservee
+    au mode incremental d'un scan complet), meme si le dernier statut connu
+    etait deja COVERED et la qualite locale inchangee. Sinon "Verifier" peut
+    ne rien verifier du tout."""
+    movie = _movie()
+    c411_first = FakeC411(movie_results=[_release("Matrix.1999.MULTI.VFF.2160p.BluRay.x265-QTZ")])
+    first_pass = run_gapscan(c411_first, radarr=_FakeRadarrNamedMovies([movie]))
+    previous_movie = next(r for r in first_pass if r.media_type == "movie")
+    assert previous_movie.status == GapStatus.COVERED
+
+    c411_second = FakeC411(movie_results=[])  # si reinterroge : plus aucun match -> ABSENT
+    selection = {movie_key("tt0133093", "603", "Matrix", 1999)}
+    second_pass = run_gapscan(
+        c411_second, radarr=_FakeRadarrNamedMovies([movie]),
+        previous_results=[previous_movie], selection=selection,
+    )
+
+    assert ("movie", None, "tt0133093", "603") in c411_second.calls  # bien reinterroge, pas repris
+    result = next(r for r in second_pass if r.media_type == "movie")
+    assert result.status == GapStatus.ABSENT
+
+
 def test_run_gapscan_selection_excludes_unselected_items_without_previous_result():
     """Un item local hors selection ET sans resultat precedent connu :
     simplement absent du resultat (jamais recalcule a vide, jamais une
