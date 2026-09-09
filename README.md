@@ -96,7 +96,7 @@ docker logs -f nfogen                       # logs en direct
 ### En développement (manuel)
 
 ```bash
-apt-get install libmediainfo0v5 mediainfo   # Debian/Ubuntu
+apt-get install libmediainfo0v5 mediainfo ffmpeg   # Debian/Ubuntu
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[api]"
 nfogen serve

@@ -1341,3 +1341,48 @@ pack incomplet.
 
 Voir [docs/superpowers/specs/2026-09-08-season-pack-integrale-design.md](docs/superpowers/specs/2026-09-08-season-pack-integrale-design.md)
 et [docs/superpowers/plans/2026-09-08-season-pack-integrale.md](docs/superpowers/plans/2026-09-08-season-pack-integrale.md).
+
+## Sous-projet 7a : Vérification approfondie du fichier vidéo (conception et livraison 2026-09-09)
+
+Reprise du sous-projet 7 original ("À concevoir" depuis 2026-08-27) —
+brainstorm du 2026-09-08/09 a révélé qu'il regroupait en fait 4
+sous-systèmes indépendants (vérification approfondie, règles de
+résolution automatique, file d'attente un-par-un, email) : chacun son
+cycle spec → plan → implémentation. Celui-ci est le premier, prérequis
+de sécurité des trois autres.
+
+**Prérequis avant tout upload direct** (manuel aujourd'hui, futur
+pipeline automatique demain) : `nfogen/video_integrity.py` décode
+réellement le fichier vidéo (`ffmpeg -v error -xerror -f null -`,
+détecte la corruption qu'un en-tête de conteneur valide peut masquer),
+compare la durée réellement décodée à celle annoncée par le conteneur
+(`ffprobe`, tolérance 5s — détecte un fichier tronqué/téléchargement
+incomplet) et l'offset de démarrage audio vs vidéo (tolérance 0.5s —
+détecte une désynchronisation). Complémentaire, jamais un doublon, des
+vérifications de conformité tracker déjà existantes
+(`name_proposal.py`, `GroupProposal.blocked`).
+
+Tourne en tâche de fond (`nfogen/integrity_job_runner.py`, même patron
+que la mise en scène/génération de `.torrent`, sous-projet 4c) —
+`ffmpeg -progress pipe:1` alimente une barre de progression réelle,
+jamais un blocage de la page sur un gros fichier. Un échec (corruption,
+troncature, désync) bloque **complètement** l'upload direct — ni
+brouillon ni envoi, signalé pour action manuelle (le fichier source
+reste probablement à re-télécharger via Sonarr/Radarr) — jamais de
+dégradation silencieuse en brouillon comme pour une métadonnée TMDB
+manquante (cas différent, déjà géré par ailleurs).
+
+S'applique aussi bien à un upload direct manuel (bouton "Uploader
+directement" existant) qu'au futur pipeline automatique — jamais à
+"Créer un brouillon", qui reste privé tant que l'utilisateur ne le
+finalise pas lui-même sur le site.
+
+Nouvelle dépendance système : `ffmpeg` (fournit aussi `ffprobe`),
+ajouté au `Dockerfile` et au README — déjà présent sur les runners
+GitHub Actions (`ubuntu-latest`), déjà utilisé comme outil de *test*
+dans le projet (`tests/test_c411.py`, génération de clips synthétiques
+via `ffmpeg -f lavfi`) avant d'être promu ici en dépendance
+d'exécution réelle.
+
+Voir [docs/superpowers/specs/2026-09-09-video-integrity-verification-design.md](docs/superpowers/specs/2026-09-09-video-integrity-verification-design.md)
+et [docs/superpowers/plans/2026-09-09-video-integrity-verification.md](docs/superpowers/plans/2026-09-09-video-integrity-verification.md).

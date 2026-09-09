@@ -13,8 +13,11 @@ FROM python:3.12-slim
 
 # libmediainfo0v5 : dependance systeme requise par pymediainfo pour
 # l'extraction video/audio (cf. README.md, section Installation).
+# ffmpeg : verification approfondie du fichier avant un upload direct
+# (nfogen/video_integrity.py, AUTOMATION.md sous-projet 7) -- decodage
+# reel du flux, pas seulement les metadonnees du conteneur.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libmediainfo0v5 \
+    && apt-get install -y --no-install-recommends libmediainfo0v5 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

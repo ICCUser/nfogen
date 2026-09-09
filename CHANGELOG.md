@@ -24,6 +24,21 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Ajouté
 
+- **Vérification approfondie du fichier vidéo avant un upload direct**
+  (AUTOMATION.md, sous-projet 7, brainstorm 2026-09-08/09 : "il faut que
+  le média soit sûr de respecter les règles du profil/tracker [...]
+  meme si il ny a rien de marqué faut trouvé a la limite declanché une
+  verifi hardcore") : nouveau `nfogen/video_integrity.py` — décode
+  réellement le fichier (`ffmpeg -v error -f null -`), compare durée
+  réelle/annoncée (troncature) et offsets audio/vidéo (désync), en plus
+  des métadonnées déjà fournies par MediaInfo. Tourne en tâche de fond
+  (`nfogen/integrity_job_runner.py`, même patron que la mise en scène)
+  avant **tout** clic "Uploader directement" — jamais pour "Créer un
+  brouillon". Échec ⇒ bloqué complètement (ni brouillon ni upload),
+  signalé pour action manuelle — jamais de dégradation silencieuse.
+  Nouvelle dépendance système : `ffmpeg` (déjà utilisé comme outil de
+  test dans le projet, promu ici en dépendance d'exécution réelle).
+
 - **Packs de saisons "INTÉGRALE"** (retour utilisateur, 2026-09-08, suite
   au tag d'équipe ci-dessous : "si toute les saison provienne de la meme
   team alors on peut faire un pack INTEGRALE d'une serie") :
