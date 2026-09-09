@@ -102,10 +102,10 @@ else
     UVICORN_HOST="0.0.0.0"
 fi
 
-echo "==> Paquets systeme (Python, libmediainfo, rsync, openssl...)"
+echo "==> Paquets systeme (Python, libmediainfo, ffmpeg, rsync, openssl...)"
 apt-get update
 apt-get install -y --no-install-recommends \
-    python3 python3-venv python3-pip libmediainfo0v5 rsync openssl ca-certificates curl gnupg
+    python3 python3-venv python3-pip libmediainfo0v5 ffmpeg rsync openssl ca-certificates curl gnupg
 
 # Les depots Debian/Ubuntu fournissent souvent un Node.js trop ancien pour
 # le frontend (Vite 8 / React 19 exigent Node >= 20). On utilise le depot

@@ -1,6 +1,7 @@
 # nfogen
 
 [![CI](https://github.com/ICCUser/nfogen/actions/workflows/ci.yml/badge.svg)](https://github.com/ICCUser/nfogen/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ICCUser/nfogen)](https://github.com/ICCUser/nfogen/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Générateur de fichiers **NFO** générique, piloté par des **profils** : un
@@ -259,6 +260,11 @@ uvicorn nfogen.api:app --host 0.0.0.0 --port 8000
 **"oui"** = `NFOGEN_API_TOKEN` (`Authorization: Bearer <token>`) ou compte
 nommé valide (`NFOGEN_ACCOUNTS_FILE`, `POST /login` -> cookie de session).
 
+Le profil C411 ajoute des dizaines d'endpoints `/gapscan/*` (protégés
+comme `/profiles/store*`) pour tout le pipeline décrit plus bas —
+Bibliothèque, scan, préparation d'upload, seed. Non listés ici (trop
+nombreux) : voir [GAPSCAN.md](GAPSCAN.md) et [AUTOMATION.md](AUTOMATION.md).
+
 ### Comptes administrateurs nommés (alternative au token unique)
 
 Définir `NFOGEN_ACCOUNTS_FILE` pour distinguer/révoquer un accès individuel
@@ -288,42 +294,35 @@ sans changer le secret partagé. Un seul rôle : mêmes droits que le token.
 | `NFOGEN_FRONTEND_DIST` | Si définie, l'API sert aussi le frontend build (même processus/port). |
 
 ```bash
-# Generation : ouverte par defaut.
+# Generation : ouverte par defaut -- jeu, metadonnees seules.
 curl -H 'Content-Type: application/json' \
      -d '{"category":"game","data":{"title":"X","platform":"PC"}}' \
      http://localhost:8000/generate/json
 
-# Avec NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1 :
+# Avec NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1, le meme appel exige le token :
 export NFOGEN_API_TOKEN=change-moi
 export NFOGEN_REQUIRE_AUTH_FOR_GENERATE=1
 curl -H "Authorization: Bearer change-moi" \
      -H 'Content-Type: application/json' \
      -d '{"category":"game","data":{"title":"X","platform":"PC"}}' \
      http://localhost:8000/generate/json
-```
 
-Erreurs : `400` (entrée invalide, message explicite) vs `500` (erreur
-serveur, journalisée, message générique côté client).
-
-```bash
-# Upload d'un fichier vidéo -> NFO en text/plain
+# Upload d'un fichier video -> NFO en text/plain
 curl -F category=video -F files=@film.mkv http://localhost:8000/generate
 
 # Album : plusieurs fichiers audio
 curl -F category=audio -F files=@01.flac -F files=@02.flac \
      http://localhost:8000/generate
 
-# Jeu : métadonnées seules
-curl -H 'Content-Type: application/json' \
-     -d '{"category":"game","data":{"title":"X","platform":"PC"}}' \
-     http://localhost:8000/generate/json
-
-# Vidéo sans uploader : extraction locale du texte MediaInfo
+# Video sans uploader : extraction locale du texte MediaInfo
 RAW=$(mediainfo film.mkv)
 jq -n --arg r "$RAW" '{category:"video",data:{raw_text:$r}}' \
   | curl -d @- -H 'Content-Type: application/json' \
          http://localhost:8000/generate/json
 ```
+
+Erreurs : `400` (entrée invalide, message explicite) vs `500` (erreur
+serveur, journalisée, message générique côté client).
 
 `?download=1` renvoie le NFO en pièce jointe (`Content-Disposition`).
 
@@ -455,26 +454,60 @@ préférez la gestion déclarative ci-dessus : voir
 Pour une catégorie hors de ces cinq, réutilisez le renderer d'une catégorie
 proche (comme fait le profil C411 fourni).
 
-## GapScan (optionnel)
+## Pipeline d'automatisation GapScan (optionnel, profil C411)
 
-Compare ta bibliothèque Sonarr/Radarr au catalogue C411 pour repérer les
-films/séries que tu possèdes mais qui ne sont pas (ou pas dans ta qualité)
-sur le tracker — candidats à uploader avec `nfogen`. Installé par défaut
-sur le déploiement natif (`scripts/install.sh` installe l'extra `gapscan`
-et configure `NFOGEN_GAPSCAN_CONFIG_FILE`/`NFOGEN_GAPSCAN_RESULTS_FILE` sous
-`/var/lib/nfogen/`) ; **absent de l'image Docker** (`Dockerfile` n'installe
-que l'extra `api`) — `pip install -e ".[api,gapscan]"` pour l'activer
-ailleurs. `501` sur `/gapscan/*` si l'extra n'est pas installé (`httpx`
-manquant) ; `400` si l'extra est bien là mais qu'aucune clé C411/aucune
-instance Sonarr-Radarr n'est encore configurée (deux causes distinctes,
-pas le même message). Configuration (URLs + clés Sonarr/Radarr/C411)
-modifiable à chaud depuis la page « Scan C411 » du frontend
-(`NFOGEN_GAPSCAN_CONFIG_FILE` requis, déjà réglé par `install.sh`), ou par
-variables d'environnement en lecture seule sinon (`NFOGEN_C411_API_KEY`,
-`NFOGEN_SONARR_URL`/`_API_KEY`, `NFOGEN_RADARR_URL`/`_API_KEY` — voir
-`.env.example`). Endpoints `/gapscan/*` protégés comme `/profiles/store*`.
-Détail complet (API Torznab C411, politique anti-doublon, architecture,
-persistance/scan incrémental) : [GAPSCAN.md](GAPSCAN.md).
+Au-delà de la génération de `.nfo`, le profil C411 fourni pilote un
+pipeline complet — de "je remarque qu'un média me manque sur le
+tracker" jusqu'à "il est en seed" — accessible depuis la page
+**Bibliothèque** du frontend :
+
+- **Bibliothèque** — inventaire Sonarr/Radarr local, zéro appel tracker
+  par défaut (rechargement quasi instantané), annoté du statut du
+  dernier scan connu dès qu'il existe. Recherche, filtres (type, genre,
+  statut, ajouté depuis N jours, déjà traité), sélection multiple.
+- **Scan** (bulk ou restreint à une sélection) — compare chaque titre
+  possédé au catalogue C411 (API Torznab) : absent, qualité
+  supérieure disponible, langue manquante, ou déjà couvert. Mode
+  incrémental (ne réinterroge que ce qui a changé), respecte le
+  débit limite du tracker.
+- **Proposition de nom + mise en scène + `.torrent`** — depuis un
+  gap détecté (ou un pack de saisons complet, `SxxSyy`/`INTÉGRALE`
+  détecté automatiquement quand plusieurs saisons consécutives
+  partagent la même équipe), génère le nom de release, met en scène
+  le fichier (hardlink si même volume, copie sinon) et construit le
+  `.torrent`, en tâche de fond avec suivi de progression.
+- **Vérification approfondie avant un upload direct** — décodage
+  réel du fichier (détecte la corruption qu'un en-tête de conteneur
+  valide peut masquer), durée réelle vs annoncée, synchronisation
+  audio/vidéo — jamais pour un simple brouillon.
+- **Envoi au tracker** — brouillon (reste privé, à finaliser
+  manuellement) ou upload direct (`POST /api/torrents`, part
+  réellement en modération), description enrichie automatiquement
+  (TMDB, pistes audio/sous-titres, container/HDR).
+- **Seed** — un upload direct ajoute automatiquement le `.torrent` à
+  qBittorrent. Pour un titre déjà présent sur C411 mais identique à
+  ton fichier local (même taille/équipe/qualité), récupère et vérifie
+  le `.torrent` existant au lieu de re-uploader.
+
+Installé par défaut sur le déploiement natif (`scripts/install.sh`
+installe les extras `gapscan`+`automation` et configure
+`NFOGEN_GAPSCAN_CONFIG_FILE`/`NFOGEN_GAPSCAN_RESULTS_FILE` sous
+`/var/lib/nfogen/`) ; **absent de l'image Docker** (`Dockerfile`
+n'installe que l'extra `api`) — `pip install -e ".[api,gapscan,automation]"`
+pour l'activer ailleurs (ajoute aussi `ffmpeg`, requis pour la
+vérification d'intégrité vidéo). `501` sur `/gapscan/*` si l'extra n'est
+pas installé ; `400` si l'extra est bien là mais qu'aucune clé C411 /
+instance Sonarr-Radarr n'est encore configurée. Configuration (URLs +
+clés Sonarr/Radarr/C411/qBittorrent/TMDB) modifiable à chaud depuis la
+page **Réglages** du frontend (`NFOGEN_GAPSCAN_CONFIG_FILE` requis, déjà
+réglé par `install.sh`), ou par variables d'environnement en lecture
+seule sinon (voir [`.env.example`](.env.example)). Endpoints
+`/gapscan/*` protégés comme `/profiles/store*`.
+
+Historique de conception détaillé (API Torznab C411, politique
+anti-doublon, décisions d'architecture) : [GAPSCAN.md](GAPSCAN.md) pour
+la détection de gap, [AUTOMATION.md](AUTOMATION.md) pour tout ce qui
+vient après (mise en scène, upload, seed).
 
 ## Tests
 
