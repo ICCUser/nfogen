@@ -60,6 +60,63 @@ def test_list_season_files_aggregates_by_season_and_keeps_best_resolution():
     assert season2.best_resolution == 1080
 
 
+def test_list_season_files_keeps_files_matched_to_the_right_series_when_parallelized():
+    """Performance (retour utilisateur, 2026-09-09 : 14.6s pour ~200 series
+    en sequentiel sur une petite instance Sonarr distante) : les appels
+    `episodefile?seriesId=...` sont desormais paralleles (voir
+    `_list_episode_files_concurrently`). Ce test verifie que la
+    parallelisation ne mélange jamais les fichiers d'une serie avec ceux
+    d'une autre, meme avec plusieurs series traitees "en meme temps"."""
+    series = [
+        {"id": 1, "title": "Serie A", "year": 2001, "tvdbId": 1, "imdbId": "tt001"},
+        {"id": 2, "title": "Serie B", "year": 2002, "tvdbId": 2, "imdbId": "tt002"},
+        {"id": 3, "title": "Serie C", "year": 2003, "tvdbId": 3, "imdbId": "tt003"},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=series)
+        assert request.url.path == "/api/v3/episodefile"
+        series_id = request.url.params["seriesId"]
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "seasonNumber": 1,
+                    "sceneName": f"Serie.{series_id}.S01",
+                    "quality": {"quality": {"name": "WEB-1080p", "resolution": 1080}},
+                    "languages": [],
+                }
+            ],
+        )
+
+    seasons = _client(handler).list_season_files()
+    assert len(seasons) == 3
+    by_series_id = {s.series_id: s for s in seasons}
+    for series_id in (1, 2, 3):
+        assert by_series_id[series_id].scene_name == f"Serie.{series_id}.S01"
+
+
+def test_list_season_files_propagates_error_from_any_series():
+    """Une erreur sur UNE serie (parmi plusieurs, appelees en parallele)
+    doit toujours remonter comme SonarrError -- pas silencieusement
+    avalee/perdue par le pool de threads."""
+    series = [
+        {"id": 1, "title": "OK", "year": 2001, "tvdbId": 1, "imdbId": "tt001"},
+        {"id": 2, "title": "En echec", "year": 2002, "tvdbId": 2, "imdbId": "tt002"},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=series)
+        if request.url.params["seriesId"] == "2":
+            return httpx.Response(500, json={"message": "boom"})
+        return httpx.Response(200, json=[])
+
+    with pytest.raises(SonarrError):
+        _client(handler).list_season_files()
+
+
 def test_list_season_files_exposes_tmdb_id():
     """Sonarr identifie une serie par TVDB, mais expose AUSSI un `tmdbId`
     (cross-reference qu'il maintient lui-meme) -- confirme en conditions

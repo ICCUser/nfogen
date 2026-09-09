@@ -8,10 +8,21 @@ bibliotheque Sonarr.
 from __future__ import annotations
 
 import datetime
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import httpx
+
+# list_season_files() fait un appel HTTP PAR SERIE (pas de bulk fiable cote
+# Sonarr -- une tentative avec `?seriesIds=1&seriesIds=2&...` a casse en
+# prod avec un 400 Bad Request, voir historique de sonarr_client.py). En
+# parallelisant ces appels (httpx.Client est thread-safe, pool de connexions
+# partage) plutot qu'en changeant leur format, on reduit le temps mur sans
+# reprendre le risque de deviner un format d'API non confirme -- mesure
+# reelle (retour utilisateur, 2026-09-09) : 14.6s pour ~200 series en
+# sequentiel sur une petite instance Sonarr distante.
+_MAX_CONCURRENT_SERIES_REQUESTS = 8
 
 
 class SonarrError(RuntimeError):
@@ -144,6 +155,18 @@ class SonarrClient:
         """`GET /api/v3/episodefile?seriesId=...` brut."""
         return self._get("/api/v3/episodefile", params={"seriesId": series_id})
 
+    def _list_episode_files_concurrently(self, series_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+        """`list_episode_files()` pour chaque serie, en parallele (pool
+        borne, voir `_MAX_CONCURRENT_SERIES_REQUESTS`) -- meme appel HTTP
+        que la version sequentielle, uniquement le temps mur qui change.
+        Une seule instance de `httpx.Client` est partagee entre les threads
+        (documente thread-safe par httpx : pool de connexions interne)."""
+        if not series_ids:
+            return {}
+        with ThreadPoolExecutor(max_workers=min(_MAX_CONCURRENT_SERIES_REQUESTS, len(series_ids))) as pool:
+            futures = {sid: pool.submit(self.list_episode_files, sid) for sid in series_ids}
+            return {sid: future.result() for sid, future in futures.items()}
+
     def list_season_files(self) -> list[SonarrSeasonFile]:
         """Bibliotheque locale agregee par saison.
 
@@ -154,9 +177,12 @@ class SonarrClient:
         de pack C411 standard (incident reel corrige le 2026-08-26,
         "Misfits S00" remontait a tort dans les resultats).
         """
+        all_series = self.list_series()
+        files_by_series_id = self._list_episode_files_concurrently([s["id"] for s in all_series])
+
         seasons: list[SonarrSeasonFile] = []
-        for series in self.list_series():
-            files = self.list_episode_files(series["id"])
+        for series in all_series:
+            files = files_by_series_id[series["id"]]
             by_season: dict[int, list[dict[str, Any]]] = {}
             for episode_file in files:
                 season_number = episode_file["seasonNumber"]
