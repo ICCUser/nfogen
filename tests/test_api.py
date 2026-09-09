@@ -1412,12 +1412,13 @@ def test_prepare_upload_preview_empty_paths_returns_empty_list(reload_api):
     assert resp.json() == []
 
 
-def test_prepare_upload_preview_real_c411_profile(reload_api):
+def test_prepare_upload_preview_real_c411_profile(reload_api, monkeypatch):
     """Bout-en-bout via l'API : pas de fichier reel necessaire, MediaInfo
     echouera sur un chemin inexistant (extraction best-effort, voir
     upload_prep.preview_upload) mais le nommage/groupement fonctionnent
     quand meme sur le nom de fichier seul."""
     mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod.upload_prep, "_validate_known_source_paths", lambda paths: None)
     client = TestClient(mod.app)
     resp = client.post(
         "/gapscan/prepare-upload/preview",
@@ -1430,11 +1431,12 @@ def test_prepare_upload_preview_real_c411_profile(reload_api):
     assert body[0]["files"][0]["source_path"] == "/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"
 
 
-def test_prepare_upload_preview_season_pack(reload_api):
+def test_prepare_upload_preview_season_pack(reload_api, monkeypatch):
     """Retour utilisateur, 2026-09-08 : pack multi-saisons -- pas de fichier
     reel necessaire (extraction MediaInfo best-effort sur un chemin
     inexistant, meme comportement que test_prepare_upload_preview_real_c411_profile)."""
     mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod.upload_prep, "_validate_known_source_paths", lambda paths: None)
     client = TestClient(mod.app)
     resp = client.post(
         "/gapscan/prepare-upload/preview",
@@ -1457,10 +1459,11 @@ def test_prepare_upload_preview_season_pack(reload_api):
     assert body[0]["files"][1]["staged_name"] == "S06/ep1.mkv"
 
 
-def test_prepare_upload_preview_title_override(reload_api):
+def test_prepare_upload_preview_title_override(reload_api, monkeypatch):
     """Cas reel (2026-08-28) : le titre Sonarr/Radarr ne correspond pas au
     titre officiel attendu par C411 -- override manuel."""
     mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod.upload_prep, "_validate_known_source_paths", lambda paths: None)
     client = TestClient(mod.app)
     resp = client.post(
         "/gapscan/prepare-upload/preview",
@@ -1487,7 +1490,7 @@ def test_prepare_upload_commit_without_staging_dir_is_400(reload_api, tmp_path):
     assert "scène" in resp.json()["detail"] or "scene" in resp.json()["detail"].lower()
 
 
-def test_prepare_upload_commit_real_flow(reload_api, tmp_path):
+def test_prepare_upload_commit_real_flow(reload_api, tmp_path, monkeypatch):
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
     source = tmp_path / "source.mkv"
@@ -1496,6 +1499,7 @@ def test_prepare_upload_commit_real_flow(reload_api, tmp_path):
     mod = reload_api(
         NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
     )
+    monkeypatch.setattr(mod.upload_prep, "_validate_known_source_paths", lambda paths: None)
     client = TestClient(mod.app)
     put = client.put(
         "/gapscan/config",
@@ -1532,6 +1536,89 @@ def test_prepare_upload_commit_real_flow(reload_api, tmp_path):
     assert body["torrent_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.torrent")
     assert body["nfo_path"] == str(staging_dir / "Movie.2020.1080p.x264-TEAM.nfo")
     assert (staging_dir / "Movie.2020.1080p.x264-TEAM.nfo").is_file()
+
+
+# --------------------------------------------------------------------------- #
+# Audit securite, 2026-09-09 : /gapscan/prepare-upload/preview et /commit
+# rejettent desormais un source_path jamais retourne par un scan connu, et
+# /commit + /verify-integrity + /prepare-upload/send rejettent un chemin qui
+# sortirait du dossier de mise en scene (voir upload_prep.py).
+# --------------------------------------------------------------------------- #
+def test_prepare_upload_preview_400_for_unknown_source_path(reload_api):
+    """Sans mock : gapscan_runner n'a jamais eu de resultat de scan pour
+    ce chemin -- /prepare-upload/preview doit refuser de le traiter."""
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post(
+        "/gapscan/prepare-upload/preview",
+        json={"local_paths": ["/nas/forged.mkv"]},
+    )
+    assert resp.status_code == 400
+    assert "non reconnu" in resp.json()["detail"]
+
+
+def test_prepare_upload_commit_400_for_a_staged_name_escaping_staging_dir(reload_api, tmp_path, monkeypatch):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    source = tmp_path / "source.mkv"
+    source.write_bytes(b"contenu")
+
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
+    )
+    monkeypatch.setattr(mod.upload_prep, "_validate_known_source_paths", lambda paths: None)
+    client = TestClient(mod.app)
+    client.put(
+        "/gapscan/config",
+        json={
+            "tracker_announce_url": "https://c411.example/announce/abc123",
+            "staging_dir": str(staging_dir),
+        },
+    )
+
+    resp = client.post(
+        "/gapscan/prepare-upload/commit",
+        json={
+            "release_name": "X",
+            "files": [{"source_path": str(source), "staged_name": str(tmp_path / "outside" / "evil.mkv")}],
+        },
+    )
+    assert resp.status_code == 200
+    job_id = resp.json()["job_id"]
+
+    deadline = time.monotonic() + 5.0
+    status = None
+    while time.monotonic() < deadline:
+        status = client.get(f"/gapscan/commit-jobs/{job_id}").json()
+        if status["state"] in ("done", "error", "cancelled"):
+            break
+        time.sleep(0.01)
+
+    assert status["state"] == "error"
+    assert "dossier de mise en scène" in status["error"]
+    assert not (tmp_path / "outside" / "evil.mkv").exists()
+
+
+def test_verify_integrity_400_for_a_staged_path_outside_staging_dir(reload_api, tmp_path, monkeypatch):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None, NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json")
+    )
+    client = TestClient(mod.app)
+    client.put(
+        "/gapscan/config",
+        json={
+            "tracker_announce_url": "https://c411.example/announce/abc123",
+            "staging_dir": str(staging_dir),
+        },
+    )
+
+    resp = client.post(
+        "/gapscan/verify-integrity", json={"staged_path": str(tmp_path / "outside.mkv")},
+    )
+    assert resp.status_code == 400
+    assert "dossier de mise en scène" in resp.json()["detail"]
 
 
 def test_prepare_upload_commit_relays_identifiers(reload_api, monkeypatch):

@@ -9,6 +9,25 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ## [Non publié]
 
+### Corrigé
+
+- **Sécurité — lecture/écriture de fichier arbitraire via les chemins
+  d'upload** (audit sécurité 2026-09-09) : `staged_name`/`source_path`
+  (`POST /gapscan/prepare-upload/preview` et `/commit`) et `staged_path`
+  (`/prepare-upload/send`, `/verify-integrity`) étaient des chaînes
+  libres fournies par le client, jamais revalidées côté serveur — un
+  `staged_name` absolu ou avec `..` pouvait faire écrire hors du dossier
+  de mise en scène (l'opérateur `/` de `pathlib` ignore silencieusement
+  le préfixe quand l'opérande droit est absolu), et un `source_path`
+  arbitraire pouvait faire lire n'importe quel fichier lisible par le
+  processus. Corrigé : `source_path` doit désormais avoir été
+  effectivement retourné par un scan GapScan connu
+  (`upload_prep._validate_known_source_paths`, contre
+  `gapscan_runner.results()`) ; tout chemin dérivé de `staging_dir`
+  (`staged_path`, `.nfo`, `.torrent`) est vérifié rester sous ce dossier
+  via `upload_prep.validate_staged_path()` (résolution réelle du
+  chemin, pas une simple concaténation).
+
 ### Modifié
 
 - **Bannières de section en `.webp` (au lieu de `.png`)** (retour

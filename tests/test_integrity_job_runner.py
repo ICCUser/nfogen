@@ -10,6 +10,7 @@ import pytest
 
 from nfogen import integrity_job_runner
 from nfogen.cancellation import OperationCancelled
+from nfogen.upload_prep import validate_staged_path as _real_validate_staged_path
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +18,16 @@ def _reset_runner():
     importlib.reload(integrity_job_runner)
     yield
     importlib.reload(integrity_job_runner)
+
+
+@pytest.fixture(autouse=True)
+def _allow_all_staged_paths_by_default(monkeypatch):
+    """Neutralise par defaut le controle staged_path/staging_dir ajoute
+    lors de l'audit securite du 2026-09-09 (voir
+    upload_prep.validate_staged_path) -- ce fichier teste le
+    COMPORTEMENT du job, pas ce controle specifiquement, deja couvert par
+    test_start_rejects_a_staged_path_outside_staging_dir ci-dessous."""
+    monkeypatch.setattr("nfogen.integrity_job_runner.upload_prep.validate_staged_path", lambda path: None)
 
 
 def _wait_until_terminal(job_id: str, timeout: float = 5.0) -> dict:
@@ -142,3 +153,22 @@ def test_error_during_verification_sets_error_state(monkeypatch):
 
 def test_status_of_unknown_job_is_none():
     assert integrity_job_runner.status("does-not-exist") is None
+
+
+def test_start_rejects_a_staged_path_outside_staging_dir(tmp_path, monkeypatch):
+    """Audit securite, 2026-09-09 : sans ce controle, un staged_path
+    arbitraire pouvait faire decoder n'importe quel fichier du serveur
+    par ffmpeg (verify-integrity accepte staged_path directement)."""
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.integrity_job_runner.upload_prep.validate_staged_path", _real_validate_staged_path
+    )
+    monkeypatch.setattr(
+        "nfogen.integrity_job_runner.upload_prep.gapscan_config_store.effective_staging_dir",
+        lambda: str(staging_dir),
+    )
+    monkeypatch.setattr("nfogen.integrity_job_runner.video_integrity.has_ffmpeg", lambda: True)
+
+    with pytest.raises(ValueError, match="dossier de mise en scène"):
+        integrity_job_runner.start(str(tmp_path / "outside.mkv"))

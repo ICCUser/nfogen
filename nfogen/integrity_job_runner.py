@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
-from . import video_integrity
+from . import upload_prep, video_integrity
 from .cancellation import OperationCancelled
 
 
@@ -46,7 +46,12 @@ _cancel_events: dict[str, threading.Event] = {}
 def start(staged_path: str) -> str:
     """Leve RuntimeError IMMEDIATEMENT (avant meme de creer une tache) si
     ffmpeg/ffprobe sont absents du serveur -- jamais de tache qui echoue
-    silencieusement plus tard pour cette seule raison."""
+    silencieusement plus tard pour cette seule raison. Leve ValueError si
+    `staged_path` sort du dossier de mise en scene configure (voir
+    upload_prep.validate_staged_path, audit securite 2026-09-09) --
+    empeche un `staged_path` arbitraire de faire decoder n'importe quel
+    fichier du serveur par ffmpeg."""
+    upload_prep.validate_staged_path(staged_path)
     if not video_integrity.has_ffmpeg():
         raise RuntimeError("ffmpeg/ffprobe requis pour la vérification — non trouvés sur le serveur nfogen.")
 

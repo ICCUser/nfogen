@@ -21,6 +21,7 @@ from . import (
     extract,
     file_staging,
     gapscan_config_store,
+    gapscan_runner,
     tracker_profile,
     upload_history_store,
 )
@@ -191,6 +192,57 @@ def _language_hint_from_audio_tracks(audio_languages: list[str], language_codes:
     return "+".join(codes)
 
 
+def _known_local_paths() -> set[str]:
+    """Union des `local_paths` des derniers resultats de scan connus
+    (`gapscan_runner.results()`) -- l'UNIQUE source dont
+    `gapscan_library.list_library()` tire les `local_paths` exposes au
+    frontend (`GET /gapscan/library`) : un `source_path` absent de cet
+    ensemble n'a jamais ete legitimement communique par nfogen lui-meme
+    (voir audit securite 2026-09-09 -- sans ce controle, un appelant
+    authentifie pouvait forger n'importe quel `source_path` pour faire
+    lire/copier un fichier arbitraire du serveur)."""
+    known: set[str] = set()
+    for result in gapscan_runner.results():
+        known.update(result.local_paths)
+    return known
+
+
+def _validate_known_source_paths(paths: list[str]) -> None:
+    """Leve ValueError si un des `paths` n'a jamais figure dans un scan
+    GapScan connu (voir `_known_local_paths`)."""
+    unknown = sorted({p for p in paths if p not in _known_local_paths()})
+    if unknown:
+        raise ValueError(
+            "Chemin(s) source non reconnu(s) (jamais retourné par un scan de la "
+            f"Bibliothèque) : {', '.join(unknown)}"
+        )
+
+
+def _path_within(path: str, root: str) -> bool:
+    """Vrai si `path`, une fois resolu, reste sous `root` (resolu aussi).
+    `Path.resolve()` neutralise a la fois les composants '..' ET le cas
+    ou `path` est absolu -- `Path(root) / path` ignorerait sinon
+    silencieusement `root` quand `path` est deja absolu (comportement de
+    l'operateur `/` de pathlib, voir audit securite 2026-09-09)."""
+    try:
+        resolved = Path(path).resolve()
+        resolved_root = Path(root).resolve()
+    except OSError:
+        return False
+    return resolved == resolved_root or resolved_root in resolved.parents
+
+
+def validate_staged_path(path: str) -> None:
+    """Leve ValueError si `path` ne reste pas sous le dossier de mise en
+    scene configure -- protege `send_to_tracker()`/`verify-integrity`
+    contre un `staged_path` arbitraire fourni par le client (voir audit
+    securite 2026-09-09). Les valeurs LEGITIMES de `staged_path` sont
+    TOUJOURS produites par `commit_upload()` sous ce meme dossier."""
+    staging_dir = gapscan_config_store.effective_staging_dir()
+    if not staging_dir or not _path_within(path, staging_dir):
+        raise ValueError(f"Chemin hors du dossier de mise en scène : {path}")
+
+
 def _preview_season_pack(season_pack: SeasonPackRequest, profile: str) -> GroupProposal:
     """Un pack multi-saisons DEJA VALIDE (voir SeasonPackRequest) donne
     TOUJOURS un seul GroupProposal -- jamais de group_by_team() ici (les
@@ -199,6 +251,10 @@ def _preview_season_pack(season_pack: SeasonPackRequest, profile: str) -> GroupP
     premiere saison sert de representant pour extraire langue/resolution/
     codec/source (memes alias que la proposition standard, voir
     propose_season_pack_name)."""
+    _validate_known_source_paths(
+        [source_path for season in season_pack.seasons for source_path in season.local_paths]
+    )
+
     warnings: list[str] = []
     files: list[ProposedFile] = []
     representative_filename: Optional[str] = None
@@ -256,6 +312,8 @@ def preview_upload(
 
     if not local_paths:
         return []
+
+    _validate_known_source_paths(local_paths)
 
     filenames = [Path(p).name for p in local_paths]
     metas: list[dict] = []
@@ -388,6 +446,7 @@ def commit_upload(
     Transmission, sous-projet 6, n'existe pas encore pour verifier
     reellement l'etat de seed)."""
     staging_dir, announce_url = resolve_staging_config(profile)
+    _validate_known_source_paths([f.source_path for f in files])
 
     history_key = upload_history_store.processed_key(
         media_type, radarr_movie_id, sonarr_series_id, season_number
@@ -403,6 +462,7 @@ def commit_upload(
     try:
         if len(files) == 1:
             staged_path = str(Path(staging_dir) / files[0].staged_name)
+            validate_staged_path(staged_path)
             file_staging.stage_file(
                 files[0].source_path, staged_path,
                 on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
@@ -411,6 +471,9 @@ def commit_upload(
             raw_text = extract.extract_video_text(Path(staged_path))
         else:
             target_dir = str(Path(staging_dir) / release_name)
+            validate_staged_path(target_dir)
+            for f in files:
+                validate_staged_path(str(Path(target_dir) / f.staged_name))
             file_staging.stage_files(
                 [f.source_path for f in files], target_dir, [f.staged_name for f in files],
                 on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
@@ -434,6 +497,7 @@ def commit_upload(
             filename=nfo_filename,
         )
         nfo_path = str(Path(staging_dir) / (nfo_filename[0] if nfo_filename else f"{release_name}.nfo"))
+        validate_staged_path(nfo_path)
         # Un titre DEJA traite dont le .nfo existe encore n'est jamais
         # retouche (meme prudence que le fichier mis en scene/le .torrent) --
         # un titre pas encore traite (ou sans .nfo existant) est toujours
@@ -444,6 +508,7 @@ def commit_upload(
             on_progress("generating_nfo", 100.0)
 
         torrent_path = str(Path(staging_dir) / f"{release_name}.torrent")
+        validate_staged_path(torrent_path)
         piece_sizes = tracker_profile.torrent_piece_sizes(profile)
 
         def _torrent_progress(pieces_done: int, pieces_total: int) -> None:
@@ -501,6 +566,8 @@ def send_to_tracker(
     rend la description BBCode, calcule categorie/sous-categorie/options
     depuis le release_name deja confirme, verifie les doublons (best
     effort, jamais bloquant), puis appelle l'API."""
+    for path in (staged_path, torrent_path, nfo_path):
+        validate_staged_path(path)
     tracker_config = gapscan_config_store.effective_tracker(profile)
     if tracker_config is None:
         raise ValueError(

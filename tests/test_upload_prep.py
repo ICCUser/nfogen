@@ -24,6 +24,26 @@ from nfogen.upload_prep import (
     resolve_staging_config,
     send_to_tracker,
 )
+from nfogen.upload_prep import (
+    _validate_known_source_paths as _real_validate_known_source_paths,
+)
+from nfogen.upload_prep import (
+    validate_staged_path as _real_validate_staged_path,
+)
+
+
+@pytest.fixture(autouse=True)
+def _allow_all_paths_by_default(monkeypatch):
+    """Neutralise par defaut les deux controles ajoutes lors de l'audit
+    securite du 2026-09-09 (source_path doit avoir ete vu par un scan
+    GapScan connu ; staged_path/nfo_path/torrent_path doivent rester sous
+    staging_dir) -- ce fichier teste le COMPORTEMENT FONCTIONNEL de
+    preview_upload()/commit_upload()/send_to_tracker(), pas ces deux
+    controles specifiquement, deja couverts par des tests dedies plus bas
+    (voir test_commit_upload_rejects_unknown_source_path et consorts, qui
+    reactivent la VRAIE fonction en la re-importants avant patch)."""
+    monkeypatch.setattr("nfogen.upload_prep._validate_known_source_paths", lambda paths: None)
+    monkeypatch.setattr("nfogen.upload_prep.validate_staged_path", lambda path: None)
 
 
 def test_files_with_same_team_form_one_group():
@@ -1608,5 +1628,152 @@ def test_send_to_tracker_requires_tracker_credentials(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="[Cc]l[eé]"):
         send_to_tracker(
             release_name="X", staged_path="/x.mkv", torrent_path="/x.torrent", nfo_path="/x.nfo",
+            profile="c411", media_type="movie",
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Audit securite, 2026-09-09 : source_path/staged_path/staged_name doivent
+# etre valides -- avant ce correctif, un appelant authentifie pouvait forger
+# n'importe quel chemin pour faire lire/copier/decoder un fichier arbitraire
+# du serveur (voir AUTOMATION.md). Les tests ci-dessus restent inchanges
+# (neutralises par la fixture autouse _allow_all_paths_by_default) ; ceux-ci
+# reactivent les VRAIES fonctions pour prouver l'application reelle du
+# controle.
+# --------------------------------------------------------------------------- #
+class _FakeGapResult:
+    def __init__(self, local_paths):
+        self.local_paths = local_paths
+
+
+def test_path_within_accepts_a_path_under_root(tmp_path):
+    from nfogen.upload_prep import _path_within
+
+    root = tmp_path / "staging"
+    root.mkdir()
+    child = root / "sub" / "file.mkv"
+    assert _path_within(str(child), str(root)) is True
+
+
+def test_path_within_rejects_dot_dot_traversal(tmp_path):
+    from nfogen.upload_prep import _path_within
+
+    root = tmp_path / "staging"
+    root.mkdir()
+    escaped = root / ".." / "outside.mkv"
+    assert _path_within(str(escaped), str(root)) is False
+
+
+def test_path_within_rejects_absolute_override(tmp_path):
+    """Cas reel de l'audit : pathlib.Path(root) / '/etc/x' renvoie
+    directement Path('/etc/x') -- _path_within doit quand meme le
+    detecter via .resolve(), pas via l'operateur '/' seul."""
+    from nfogen.upload_prep import _path_within
+
+    root = tmp_path / "staging"
+    root.mkdir()
+    outside = tmp_path / "elsewhere" / "evil.mkv"
+    assert _path_within(str(outside), str(root)) is False
+
+
+def test_validate_staged_path_raises_when_staging_dir_not_configured(monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: None)
+    with pytest.raises(ValueError, match="dossier de mise en scène"):
+        _real_validate_staged_path("/anything.mkv")
+
+
+def test_validate_staged_path_accepts_a_path_under_staging_dir(tmp_path, monkeypatch):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    _real_validate_staged_path(str(staging_dir / "Movie.2020.mkv"))  # ne leve pas
+
+
+def test_validate_staged_path_rejects_a_path_outside_staging_dir(tmp_path, monkeypatch):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    with pytest.raises(ValueError, match="dossier de mise en scène"):
+        _real_validate_staged_path(str(tmp_path / "outside.mkv"))
+
+
+def test_validate_known_source_paths_accepts_a_path_seen_in_a_scan(monkeypatch):
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_runner.results", lambda **k: [_FakeGapResult(["/nas/movie.mkv"])]
+    )
+    _real_validate_known_source_paths(["/nas/movie.mkv"])  # ne leve pas
+
+
+def test_validate_known_source_paths_rejects_a_path_never_seen_in_a_scan(monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep.gapscan_runner.results", lambda **k: [])
+    with pytest.raises(ValueError, match="non reconnu"):
+        _real_validate_known_source_paths(["/etc/shadow"])
+
+
+def test_commit_upload_rejects_a_source_path_never_seen_in_a_scan(tmp_path, monkeypatch):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    _configure_staging(monkeypatch, staging_dir)
+    monkeypatch.setattr("nfogen.upload_prep._validate_known_source_paths", _real_validate_known_source_paths)
+    monkeypatch.setattr("nfogen.upload_prep.gapscan_runner.results", lambda **k: [])
+    files = [ProposedFile(source_path=str(tmp_path / "forged.mkv"), staged_name="X.mkv")]
+
+    with pytest.raises(ValueError, match="non reconnu"):
+        commit_upload("X", files)
+
+
+def test_commit_upload_rejects_a_staged_name_escaping_staging_dir(tmp_path, monkeypatch):
+    """Cas de l'audit : staged_name='/etc/cron.d/evil' (ou '../../evil')
+    ne doit jamais aboutir a une ecriture hors de staging_dir."""
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    _configure_staging(monkeypatch, staging_dir)
+    monkeypatch.setattr("nfogen.upload_prep.validate_staged_path", _real_validate_staged_path)
+    source = _make_source(tmp_path, "source.mkv")
+    files = [ProposedFile(source_path=source, staged_name=str(tmp_path / "outside" / "evil.mkv"))]
+
+    with pytest.raises(ValueError, match="dossier de mise en scène"):
+        commit_upload("X", files)
+    assert not (tmp_path / "outside" / "evil.mkv").exists()
+
+
+def test_preview_upload_rejects_local_paths_never_seen_in_a_scan(monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep._validate_known_source_paths", _real_validate_known_source_paths)
+    monkeypatch.setattr("nfogen.upload_prep.gapscan_runner.results", lambda **k: [])
+
+    with pytest.raises(ValueError, match="non reconnu"):
+        preview_upload(["/nas/forged.mkv"])
+
+
+def test_preview_upload_season_pack_rejects_local_paths_never_seen_in_a_scan(monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep._validate_known_source_paths", _real_validate_known_source_paths)
+    monkeypatch.setattr("nfogen.upload_prep.gapscan_runner.results", lambda **k: [])
+    season_pack = SeasonPackRequest(
+        title="Lucifer", team="Frosties", is_full_series=True,
+        seasons=[SeasonPackSeasonFiles(season_number=5, local_paths=["/nas/forged.mkv"])],
+    )
+
+    with pytest.raises(ValueError, match="non reconnu"):
+        preview_upload([], season_pack=season_pack)
+
+
+def test_send_to_tracker_rejects_a_staged_path_outside_staging_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep.validate_staged_path", _real_validate_staged_path)
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+
+    with pytest.raises(ValueError, match="dossier de mise en scène"):
+        send_to_tracker(
+            release_name="X",
+            staged_path=str(tmp_path / "etc" / "shadow"),
+            torrent_path=str(staging_dir / "X.torrent"),
+            nfo_path=str(staging_dir / "X.nfo"),
             profile="c411", media_type="movie",
         )
