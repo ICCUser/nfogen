@@ -97,6 +97,51 @@ const LIBRARY_COLUMNS: ColumnDef<LibraryItem>[] = [
 
 const PAGE_SIZE = 50;
 
+/** Barre de pagination -- rendue au-dessus ET en dessous du tableau
+ * (retour utilisateur, 2026-09-09 : "les tableaux sont trop longs [...]
+ * ne permettent pas un retour a la premiere page directement"). */
+function PaginationBar({
+  page, total, pageSize, onFirst, onPrev, onNext,
+}: {
+  page: number; total: number; pageSize: number;
+  onFirst: () => void; onPrev: () => void; onNext: () => void;
+}) {
+  if (total <= pageSize) return null;
+  return (
+    <div className="flex items-center justify-between text-sm text-ink-dim">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onFirst}
+          disabled={page <= 1}
+          className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
+        >
+          Première page
+        </button>
+        <button
+          type="button"
+          onClick={onPrev}
+          disabled={page <= 1}
+          className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
+        >
+          Précédent
+        </button>
+      </div>
+      <span>
+        Page {page} / {Math.max(1, Math.ceil(total / pageSize))} — {total} résultats
+      </span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={page * pageSize >= total}
+        className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
+      >
+        Suivant
+      </button>
+    </div>
+  );
+}
+
 /** Page "Bibliothèque" (AUTOMATION.md, sous-projet 8) : inventaire brut
  * Radarr/Sonarr, ZERO appel tracker par defaut, annote du statut du
  * DERNIER scan connu (bulk ou cible) des qu'il existe. Fusionne l'ancienne
@@ -818,6 +863,15 @@ export default function LibraryPage() {
       {items !== null && items.length === 0 && <p className="text-sm text-ink-faint">Aucun résultat.</p>}
 
       {items !== null && items.length > 0 && (
+        <PaginationBar
+          page={page} total={total} pageSize={PAGE_SIZE}
+          onFirst={() => setPage(1)}
+          onPrev={() => setPage((p) => Math.max(1, p - 1))}
+          onNext={() => setPage((p) => (p * PAGE_SIZE < total ? p + 1 : p))}
+        />
+      )}
+
+      {items !== null && items.length > 0 && (
         <table className="w-full overflow-hidden rounded-md border border-line bg-surface text-sm">
           <thead className="bg-surface-2 text-left text-ink-dim">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -957,28 +1011,13 @@ export default function LibraryPage() {
         </table>
       )}
 
-      {total > PAGE_SIZE && (
-        <div className="flex items-center justify-between text-sm text-ink-dim">
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
-          >
-            Précédent
-          </button>
-          <span>
-            Page {page} / {Math.max(1, Math.ceil(total / PAGE_SIZE))} — {total} résultats
-          </span>
-          <button
-            type="button"
-            onClick={() => setPage((p) => (p * PAGE_SIZE < total ? p + 1 : p))}
-            disabled={page * PAGE_SIZE >= total}
-            className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
-          >
-            Suivant
-          </button>
-        </div>
+      {items !== null && items.length > 0 && (
+        <PaginationBar
+          page={page} total={total} pageSize={PAGE_SIZE}
+          onFirst={() => setPage(1)}
+          onPrev={() => setPage((p) => Math.max(1, p - 1))}
+          onNext={() => setPage((p) => (p * PAGE_SIZE < total ? p + 1 : p))}
+        />
       )}
 
       {activeUpload && (

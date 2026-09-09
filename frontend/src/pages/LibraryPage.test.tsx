@@ -675,12 +675,28 @@ describe("LibraryPage", () => {
     vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 120, season_packs: [] });
 
     renderPage();
-    await screen.findByText(/Page 1 \/ 3/);
+    await waitFor(() => expect(screen.getAllByText(/Page 1 \/ 3/).length).toBeGreaterThan(0));
 
-    await user.click(screen.getByRole("button", { name: "Suivant" }));
+    await user.click(screen.getAllByRole("button", { name: "Suivant" })[0]);
 
     await waitFor(() => {
       expect(libraryResults).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+    });
+  });
+
+  it("revient directement a la premiere page au clic sur Première page", async () => {
+    const user = userEvent.setup();
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 120, season_packs: [] });
+
+    renderPage();
+    await waitFor(() => expect(screen.getAllByText(/Page 1 \/ 3/).length).toBeGreaterThan(0));
+    await user.click(screen.getAllByRole("button", { name: "Suivant" })[0]);
+    await waitFor(() => expect(screen.getAllByText(/Page 2 \/ 3/).length).toBeGreaterThan(0));
+
+    await user.click(screen.getAllByRole("button", { name: "Première page" })[0]);
+
+    await waitFor(() => {
+      expect(libraryResults).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }));
     });
   });
 });
