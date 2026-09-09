@@ -978,8 +978,24 @@ def _cached_library_items(
     now = time.time()
     cached = _library_cache.get(cache_key)
     if cached is not None and (now - cached[0]) < _LIBRARY_CACHE_TTL_SECONDS:
+        logger.info(
+            "gapscan_library cache HIT (profile=%s, scan_finished_at=%s, age=%.1fs, %d items)",
+            profile, scan_finished_at, now - cached[0], len(cached[1]),
+        )
         return cached[1]
 
+    # Instrumentation temporaire (retour utilisateur 2026-09-09 : Bibliotheque
+    # lente/instable, chaque "page suivante" coute ~10s) -- le cache_key
+    # inclut scan_finished_at : si celui-ci change entre deux requetes
+    # (scan en cours/relance frequente), chaque appel est un MISS malgre le
+    # TTL de 30s. Ce log permet de confirmer/infirmer cette hypothese sans
+    # deviner (voir CHANGELOG / discussion en cours).
+    logger.info(
+        "gapscan_library cache MISS (profile=%s, scan_finished_at=%s, previous_key=%s) -- "
+        "interrogation Radarr/Sonarr en cours",
+        profile, scan_finished_at, list(_library_cache.keys()),
+    )
+    started = time.time()
     sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
     radarr = RadarrClient(*radarr_config) if radarr_config else None
     try:
@@ -992,6 +1008,10 @@ def _cached_library_items(
         if radarr is not None:
             radarr.close()
 
+    logger.info(
+        "gapscan_library cache MISS resolved in %.1fs (%d items, profile=%s)",
+        time.time() - started, len(items), profile,
+    )
     _library_cache.clear()
     _library_cache[cache_key] = (now, items)
     return items
