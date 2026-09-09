@@ -948,13 +948,13 @@ def gapscan_results_export_csv(
 # Retour utilisateur, 2026-09-08 : "5 a 10 secondes" de chargement, puis
 # "5 a 10 secondes de plus" apres chaque frappe dans la recherche --
 # gapscan_library.list_library() recalcule TOUT depuis Radarr/Sonarr a
-# chaque appel (aucun cache), et SonarrClient.list_season_files() faisait
-# un appel HTTP PAR SERIE (N+1) -- couteux sur une grosse bibliotheque,
-# repete a chaque frappe cote frontend (avant meme le debounce ajoute ce
-# jour-la sur LibraryPage.tsx). Cache en memoire, courte duree, EN PLUS du
-# N+1 lui-meme elimine depuis (audit performance, 2026-09-09 -- voir
-# SonarrClient.list_episode_files_bulk(), un seul appel groupe
-# seriesIds=1&seriesIds=2&...).
+# chaque appel (aucun cache), et SonarrClient.list_season_files() fait un
+# appel HTTP PAR SERIE (list_episode_files, N+1) -- couteux sur une grosse
+# bibliotheque, repete a chaque frappe cote frontend (avant meme le
+# debounce ajoute ce jour-la sur LibraryPage.tsx). Cache en memoire, courte
+# duree, en attendant une eventuelle elimination du N+1 cote Sonarr (a
+# verifier : /api/v3/episodefile sans `seriesId` renvoie-t-il tout en un
+# seul appel ?).
 _LIBRARY_CACHE_TTL_SECONDS = 30.0
 _library_cache: dict[tuple[str, Any], tuple[float, list[Any]]] = {}
 

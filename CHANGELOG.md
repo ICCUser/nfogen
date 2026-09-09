@@ -9,28 +9,6 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ## [Non publié]
 
-### Performance
-
-- **Bibliothèque : fin du N+1 Sonarr** (audit performance 2026-09-09,
-  suite au retour utilisateur du 2026-09-08 sur la lenteur de la page) :
-  `SonarrClient.list_season_files()` faisait un appel HTTP **par série**
-  (`GET /api/v3/episodefile?seriesId=...`). Remplacé par un seul appel
-  groupé (`list_episode_files_bulk()`,
-  `?seriesIds=1&seriesIds=2&...`), les fichiers étant ensuite répartis
-  par série via leur propre `seriesId`. Le cache 30s déjà en place
-  (2026-09-08) reste utile pour les rechargements rapprochés ; ce
-  correctif élimine le coût réel du premier chargement/d'une expiration
-  de cache sur une grosse bibliothèque. **À vérifier en conditions
-  réelles** (`seriesIds` en paramètres répétés, convention standard
-  ASP.NET Core côté Sonarr — non testé contre une instance Sonarr réelle
-  dans ce correctif).
-- **Décodage parallèle des packs de saisons** (audit performance
-  2026-09-09) : `video_integrity.verify_staged_media()` décodait chaque
-  fichier d'un pack séquentiellement — un pack de 20+ épisodes pouvait
-  prendre des dizaines de minutes. Décode désormais jusqu'à 4 fichiers en
-  parallèle (`ffmpeg` tourne dans un vrai sous-processus par fichier,
-  aucun frein du GIL Python).
-
 ### Corrigé
 
 - **Sécurité — lecture/écriture de fichier arbitraire via les chemins
