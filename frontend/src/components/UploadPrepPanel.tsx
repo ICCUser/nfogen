@@ -318,7 +318,7 @@ export default function UploadPrepPanel({
         aria-modal="true"
         aria-label={`Préparer l'upload — ${title}`}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl space-y-3 rounded-md border border-line bg-surface p-4 shadow-lg"
+        className="max-h-[90vh] w-full max-w-2xl space-y-3 overflow-y-auto rounded-md border border-line bg-surface p-4 shadow-lg"
       >
         <div className="flex items-center justify-between">
           <h2 className="font-display text-sm font-semibold text-ink">Préparer l'upload — {title}</h2>

@@ -105,6 +105,21 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
+it("la boite de dialogue reste bornee en hauteur, defilable en interne (incident reel, gros pack)", async () => {
+  /* Retour utilisateur (2026-09-09, screenshot) : un gros pack (beaucoup
+   * de fichiers listes) faisait grandir la boite de dialogue sans limite,
+   * bien plus haut que l'ecran -- impossible de voir l'en-tete/le bouton
+   * Fermer une fois scrolle au milieu de la liste. La boite doit rester
+   * bornee (max-h) et defiler EN INTERNE (overflow-y-auto), pas grandir
+   * indefiniment. */
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  const dialog = await screen.findByRole("dialog");
+  expect(dialog.className).toContain("max-h-");
+  expect(dialog.className).toContain("overflow-y-auto");
+});
+
 it("charge et affiche l'apercu au montage avec le titre deja connu (GapResult) comme override par defaut", async () => {
   /* Cas reel signale par l'utilisateur (2026-08-28, "Les Fils du vent") :
    * le titre Radarr/Sonarr est deja affiche dans l'en-tete du panneau --
