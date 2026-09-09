@@ -36,6 +36,12 @@ export default function SeedQueuePage() {
   useEffect(() => {
     load();
     loadSeedStatus();
+    // Suivi live (retour utilisateur 2026-09-09 : "il faut rafraichir la
+    // page pour avoir un apercus [...] avoir en live la colonne envoi") --
+    // rafraichit uniquement le statut du client de seed, pas la file
+    // d'attente (load()), qui ne change que sur action utilisateur.
+    const interval = window.setInterval(loadSeedStatus, 4000);
+    return () => window.clearInterval(interval);
   }, []);
 
   async function load() {

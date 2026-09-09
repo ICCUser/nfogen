@@ -116,4 +116,22 @@ describe("SeedQueuePage -- section « En cours de seed » (retour utilisateur, 2
     expect(await screen.findByText(/qBittorrent non configuré/i)).toBeInTheDocument();
     expect(screen.getByText(/Movie\.2020\.1080p\.x264-TEAM/)).toBeInTheDocument();
   });
+
+  it("rafraîchit l'état du seed automatiquement sans recharger la page", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(seedQueue).mockResolvedValue([]);
+    vi.mocked(seedStatus)
+      .mockResolvedValueOnce([{ ...TORRENT, progress: 0.1 }])
+      .mockResolvedValueOnce([{ ...TORRENT, progress: 0.5 }]);
+
+    renderPage();
+    await screen.findByText("10%");
+
+    await vi.advanceTimersByTimeAsync(4000);
+
+    await screen.findByText("50%");
+    expect(seedStatus).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
 });
