@@ -14,6 +14,9 @@ vi.mock("../api/client", () => ({
   libraryResults: vi.fn(),
   listAllProfiles: vi.fn(),
   readManagedProfile: vi.fn(),
+  startSeedMatch: vi.fn(),
+  seedMatchJobStatus: vi.fn(),
+  cancelSeedMatchJob: vi.fn(),
 }));
 
 vi.mock("../components/UploadPrepPanel", () => ({
@@ -43,6 +46,7 @@ vi.mock("../components/ActiveTransfersTray", () => ({
 }));
 
 import {
+  cancelSeedMatchJob,
   clearGapscanLog,
   gapscanConfig,
   gapscanConfigWrite,
@@ -51,6 +55,8 @@ import {
   libraryResults,
   listAllProfiles,
   readManagedProfile,
+  seedMatchJobStatus,
+  startSeedMatch,
 } from "../api/client";
 import LibraryPage from "./LibraryPage";
 import { ProfileProvider } from "../ProfileContext";
@@ -187,6 +193,85 @@ describe("LibraryPage", () => {
     renderPage();
     await screen.findByText(/Matrix \(1999\)/);
     expect(screen.queryByText("Packs disponibles")).not.toBeInTheDocument();
+  });
+
+  it("affiche le bouton 'Seed possible' quand seed_match est present", async () => {
+    const matrixWithSeedMatch: LibraryItem = {
+      ...MATRIX_ITEM, status: "covered",
+      seed_match: { guid: "guid-1", release_name: "Matrix.1999.1080p.BluRay.x264-TEAM" },
+    };
+    vi.mocked(libraryResults).mockResolvedValue({ items: [matrixWithSeedMatch], total: 1, season_packs: [] });
+    renderPage();
+    await screen.findByText(/Matrix \(1999\)/);
+    expect(screen.getByRole("button", { name: "Seed possible" })).toBeInTheDocument();
+  });
+
+  it("n'affiche pas le bouton 'Seed possible' quand seed_match est absent", async () => {
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 1, season_packs: [] });
+    renderPage();
+    await screen.findByText(/Matrix \(1999\)/);
+    expect(screen.queryByRole("button", { name: "Seed possible" })).not.toBeInTheDocument();
+  });
+
+  it("'Seed possible' lance le job, affiche le resultat DONE", async () => {
+    const user = userEvent.setup();
+    const matrixWithSeedMatch: LibraryItem = {
+      ...MATRIX_ITEM, status: "covered",
+      seed_match: { guid: "guid-1", release_name: "Matrix.1999.1080p.BluRay.x264-TEAM" },
+    };
+    vi.mocked(libraryResults).mockResolvedValue({ items: [matrixWithSeedMatch], total: 1, season_packs: [] });
+    vi.mocked(startSeedMatch).mockResolvedValue({ job_id: "job-1" });
+    vi.mocked(seedMatchJobStatus).mockResolvedValue({
+      job_id: "job-1", state: "done", started_at: 1, finished_at: 2, error: null, result: { warning: null },
+    });
+    renderPage();
+    await screen.findByText(/Matrix \(1999\)/);
+
+    await user.click(screen.getByRole("button", { name: "Seed possible" }));
+
+    expect(startSeedMatch).toHaveBeenCalledWith(matrixWithSeedMatch.key, "guid-1", "Matrix.1999.1080p.BluRay.x264-TEAM");
+    expect(await screen.findByText(/En seed/)).toBeInTheDocument();
+  });
+
+  it("'Seed possible' affiche l'avertissement quand le job finit en MISMATCH", async () => {
+    const user = userEvent.setup();
+    const matrixWithSeedMatch: LibraryItem = {
+      ...MATRIX_ITEM, status: "covered",
+      seed_match: { guid: "guid-1", release_name: "Matrix.1999.1080p.BluRay.x264-TEAM" },
+    };
+    vi.mocked(libraryResults).mockResolvedValue({ items: [matrixWithSeedMatch], total: 1, season_packs: [] });
+    vi.mocked(startSeedMatch).mockResolvedValue({ job_id: "job-1" });
+    vi.mocked(seedMatchJobStatus).mockResolvedValue({
+      job_id: "job-1", state: "mismatch", started_at: 1, finished_at: 2, error: null,
+      result: { warning: "Le fichier téléchargé ne correspond pas exactement — resté en pause dans qBittorrent." },
+    });
+    renderPage();
+    await screen.findByText(/Matrix \(1999\)/);
+
+    await user.click(screen.getByRole("button", { name: "Seed possible" }));
+
+    expect(await screen.findByText(/ne correspond pas exactement/)).toBeInTheDocument();
+  });
+
+  it("'Annuler' pendant la verification du seed appelle cancelSeedMatchJob", async () => {
+    const user = userEvent.setup();
+    const matrixWithSeedMatch: LibraryItem = {
+      ...MATRIX_ITEM, status: "covered",
+      seed_match: { guid: "guid-1", release_name: "Matrix.1999.1080p.BluRay.x264-TEAM" },
+    };
+    vi.mocked(libraryResults).mockResolvedValue({ items: [matrixWithSeedMatch], total: 1, season_packs: [] });
+    vi.mocked(startSeedMatch).mockResolvedValue({ job_id: "job-1" });
+    vi.mocked(seedMatchJobStatus).mockResolvedValue({
+      job_id: "job-1", state: "checking", started_at: 1, finished_at: null, error: null, result: null,
+    });
+    vi.mocked(cancelSeedMatchJob).mockResolvedValue({ status: "cancelling" });
+    renderPage();
+    await screen.findByText(/Matrix \(1999\)/);
+
+    await user.click(screen.getByRole("button", { name: "Seed possible" }));
+    await user.click(await screen.findByRole("button", { name: "Annuler" }));
+
+    expect(cancelSeedMatchJob).toHaveBeenCalledWith("job-1");
   });
 
   it("'Preparer le pack' ouvre UploadPrepPanel avec les saisons fusionnees", async () => {

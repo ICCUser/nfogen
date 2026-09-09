@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import ActiveTransfersTray from "../components/ActiveTransfersTray";
 import UploadPrepPanel from "../components/UploadPrepPanel";
 import {
+  cancelSeedMatchJob,
   clearGapscanLog,
   downloadBlob,
   gapscanConfig,
@@ -11,6 +12,8 @@ import {
   gapscanRun,
   gapscanStatus,
   libraryResults,
+  seedMatchJobStatus,
+  startSeedMatch,
 } from "../api/client";
 import { ApiError } from "../api/types";
 import type {
@@ -21,6 +24,7 @@ import type {
   LibraryItem,
   SeasonPackRequest,
   SeasonPackSuggestion,
+  SeedMatchJob,
 } from "../api/types";
 import { useProfile } from "../ProfileContext";
 
@@ -83,6 +87,10 @@ export default function LibraryPage() {
   const [items, setItems] = useState<LibraryItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [seasonPacks, setSeasonPacks] = useState<SeasonPackSuggestion[]>([]);
+  // Seed d'une release C411 deja possedee, sans re-upload (retour
+  // utilisateur, 2026-09-09) -- cle : LibraryItem.key, comme les autres
+  // etats indexes par ligne de ce composant.
+  const [seedMatchJobs, setSeedMatchJobs] = useState<Record<string, SeedMatchJob>>({});
   const [q, setQ] = useState("");
   // Recherche texte debouncee (retour utilisateur, 2026-09-08 : "5 a 10
   // secondes apres chaque frappe" -- sans ca, chaque caractere tape
@@ -241,6 +249,35 @@ export default function LibraryPage() {
       seasons.push({ season_number: seasonNumber, local_paths: match.local_paths });
     }
     return seasons;
+  }
+
+  async function pollSeedMatchUntilTerminal(key: string, jobId: string) {
+    for (;;) {
+      const job = await seedMatchJobStatus(jobId);
+      setSeedMatchJobs((prev) => ({ ...prev, [key]: job }));
+      if (["done", "mismatch", "error", "cancelled"].includes(job.state)) return;
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    }
+  }
+
+  async function handleStartSeedMatch(item: LibraryItem) {
+    if (!item.seed_match) return;
+    try {
+      const { job_id } = await startSeedMatch(item.key, item.seed_match.guid, item.seed_match.release_name);
+      await pollSeedMatchUntilTerminal(item.key, job_id);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Impossible de démarrer le seed.");
+    }
+  }
+
+  async function handleCancelSeedMatch(key: string) {
+    const job = seedMatchJobs[key];
+    if (!job) return;
+    try {
+      await cancelSeedMatchJob(job.job_id);
+    } catch {
+      // best effort -- le prochain poll reflete l'etat reel de toute facon
+    }
   }
 
   function toggleOne(key: string) {
@@ -804,6 +841,44 @@ export default function LibraryPage() {
                     >
                       Préparer l'upload
                     </button>
+                  )}
+                  {item.seed_match && !seedMatchJobs[item.key] && (
+                    <button
+                      type="button"
+                      onClick={() => handleStartSeedMatch(item)}
+                      className="ml-3 text-sm text-accent-ink underline"
+                    >
+                      Seed possible
+                    </button>
+                  )}
+                  {seedMatchJobs[item.key]
+                    && seedMatchJobs[item.key].state !== "done"
+                    && seedMatchJobs[item.key].state !== "mismatch"
+                    && seedMatchJobs[item.key].state !== "error" && (
+                    <span className="ml-3 text-xs text-ink-dim">
+                      Vérification…
+                      <button
+                        type="button"
+                        onClick={() => handleCancelSeedMatch(item.key)}
+                        className="ml-1 text-crit underline"
+                      >
+                        Annuler
+                      </button>
+                    </span>
+                  )}
+                  {seedMatchJobs[item.key]?.state === "done" && (
+                    <span className="ml-3 text-xs text-good">✅ En seed</span>
+                  )}
+                  {seedMatchJobs[item.key]?.state === "mismatch" && (
+                    <span
+                      className="ml-3 text-xs text-warn"
+                      title={seedMatchJobs[item.key].result?.warning ?? undefined}
+                    >
+                      ⚠ {seedMatchJobs[item.key].result?.warning}
+                    </span>
+                  )}
+                  {seedMatchJobs[item.key]?.state === "error" && (
+                    <span className="ml-3 text-xs text-crit">⚠ {seedMatchJobs[item.key].error}</span>
                   )}
                 </td>
               </tr>
