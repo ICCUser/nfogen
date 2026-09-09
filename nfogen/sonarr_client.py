@@ -22,7 +22,18 @@ import httpx
 # reprendre le risque de deviner un format d'API non confirme -- mesure
 # reelle (retour utilisateur, 2026-09-09) : 14.6s pour ~200 series en
 # sequentiel sur une petite instance Sonarr distante.
-_MAX_CONCURRENT_SERIES_REQUESTS = 8
+#
+# Cette instance Sonarr est jointe via WireGuard (VPN vers une machine
+# hebergee ailleurs, retour utilisateur 2026-09-09) : mesure reelle,
+# `curl` isole vers /api/v3/episodefile = 117ms, contre 1-5ms attendus sur
+# un LAN local -- le temps mur est donc domine par la latence reseau par
+# appel (le thread attend, il ne calcule pas), pas par la charge de Sonarr
+# lui-meme. Le parallelisme peut donc etre pousse nettement au-dela d'un
+# nombre de coeurs CPU typique sans solliciter davantage Sonarr -- 24
+# choisi comme compromis (gain important sans saturer le tunnel VPN ni la
+# capacite de traitement de Sonarr avec un nombre trop agressif), a
+# ajuster si les logs de production le justifient.
+_MAX_CONCURRENT_SERIES_REQUESTS = 24
 
 
 class SonarrError(RuntimeError):
