@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { cancelCommitJob, commitJobStatus, prepareUploadCommit, prepareUploadPreview, sendToTracker } from "../api/client";
+import {
+  cancelCommitJob,
+  cancelIntegrityJob,
+  commitJobStatus,
+  integrityJobStatus,
+  prepareUploadCommit,
+  prepareUploadPreview,
+  sendToTracker,
+  verifyIntegrity,
+} from "../api/client";
 import { ApiError } from "../api/types";
 import type {
   CommitJob,
+  IntegrityJob,
   SeasonPackRequest,
   SendToTrackerResult,
   UploadCommitResult,
@@ -73,6 +83,11 @@ export default function UploadPrepPanel({
   const [sentDirect, setSentDirect] = useState<Record<number, boolean>>({});
   const [sendResults, setSendResults] = useState<Record<number, SendToTrackerResult>>({});
   const [sendErrors, setSendErrors] = useState<Record<number, string>>({});
+  // Verification d'integrite AVANT un upload direct (AUTOMATION.md,
+  // sous-projet 7) -- jamais pour un brouillon. Cle : par index de
+  // groupe, comme les autres etats de ce composant.
+  const [integrityJobs, setIntegrityJobs] = useState<Record<number, IntegrityJob>>({});
+  const [integrityErrors, setIntegrityErrors] = useState<Record<number, string>>({});
   const pollRefs = useRef<Record<number, number>>({});
 
   async function loadPreview(override?: string, profileOverride: string = profile) {
@@ -172,6 +187,25 @@ export default function UploadPrepPanel({
     }
   }
 
+  async function pollIntegrityUntilTerminal(index: number, jobId: string): Promise<IntegrityJob> {
+    for (;;) {
+      const job = await integrityJobStatus(jobId);
+      setIntegrityJobs((prev) => ({ ...prev, [index]: job }));
+      if (TERMINAL_STATES.includes(job.state)) return job;
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    }
+  }
+
+  async function handleCancelIntegrity(index: number) {
+    const job = integrityJobs[index];
+    if (!job) return;
+    try {
+      await cancelIntegrityJob(job.job_id);
+    } catch {
+      // best effort -- le prochain poll reflete l'etat reel de toute facon
+    }
+  }
+
   async function handleSend(index: number, direct: boolean) {
     const commit = commitResults[index];
     if (!commit) return;
@@ -183,7 +217,33 @@ export default function UploadPrepPanel({
     }
     setSending({ index, direct });
     setSendErrors((prev) => ({ ...prev, [index]: "" }));
+    setIntegrityErrors((prev) => ({ ...prev, [index]: "" }));
     try {
+      // Verification approfondie (AUTOMATION.md, sous-projet 7) --
+      // UNIQUEMENT pour un upload direct, jamais un brouillon (qui reste
+      // toujours privé tant que l'utilisateur ne le finalise pas
+      // lui-meme sur le site).
+      if (direct) {
+        const { job_id } = await verifyIntegrity(commit.staged_path);
+        const job = await pollIntegrityUntilTerminal(index, job_id);
+        setIntegrityJobs((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+        if (job.state !== "done" || !job.result?.passed) {
+          const message =
+            job.state === "cancelled"
+              ? null
+              : job.state === "error"
+                ? (job.error ?? "Vérification impossible.")
+                : (job.result?.errors.join(" ") ?? "Vérification échouée.");
+          if (message) {
+            setIntegrityErrors((prev) => ({ ...prev, [index]: message }));
+          }
+          return;
+        }
+      }
       const result = await sendToTracker({
         releaseName: commit.release_name,
         stagedPath: commit.staged_path,
@@ -343,6 +403,23 @@ export default function UploadPrepPanel({
               </button>
             </div>
           )}
+          {integrityJobs[index] && (
+            <div className="space-y-1">
+              <div className="h-2 w-full overflow-hidden rounded bg-surface-2">
+                <div
+                  className="h-full bg-accent transition-all"
+                  style={{ width: `${integrityJobs[index].percent}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-xs text-ink-dim">
+                <span>Vérification du fichier… — {Math.round(integrityJobs[index].percent)}%</span>
+                <button type="button" onClick={() => handleCancelIntegrity(index)} className="text-crit underline">
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
+          {integrityErrors[index] && <p className="text-xs text-crit">⚠ {integrityErrors[index]}</p>}
           {sendErrors[index] && <p className="text-xs text-crit">{sendErrors[index]}</p>}
           {sendResults[index] && (
             <div className="space-y-1 text-xs">

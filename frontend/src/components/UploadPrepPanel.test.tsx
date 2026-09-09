@@ -13,16 +13,22 @@ vi.mock("../api/client", () => ({
   sendToTracker: vi.fn(),
   listAllProfiles: vi.fn(),
   readManagedProfile: vi.fn(),
+  verifyIntegrity: vi.fn(),
+  integrityJobStatus: vi.fn(),
+  cancelIntegrityJob: vi.fn(),
 }));
 
 import {
   cancelCommitJob,
+  cancelIntegrityJob,
   commitJobStatus,
+  integrityJobStatus,
   listAllProfiles,
   prepareUploadCommit,
   prepareUploadPreview,
   readManagedProfile,
   sendToTracker,
+  verifyIntegrity,
 } from "../api/client";
 import { ApiError } from "../api/types";
 import type { SeasonPackRequest, UploadGroupProposal } from "../api/types";
@@ -88,6 +94,9 @@ beforeEach(() => {
   vi.mocked(commitJobStatus).mockReset();
   vi.mocked(cancelCommitJob).mockReset();
   vi.mocked(sendToTracker).mockReset();
+  vi.mocked(verifyIntegrity).mockReset();
+  vi.mocked(integrityJobStatus).mockReset();
+  vi.mocked(cancelIntegrityJob).mockReset();
   vi.mocked(listAllProfiles).mockResolvedValue({ c411: ["video"], ygg: ["video"] });
   vi.mocked(readManagedProfile).mockResolvedValue({
     name: "c411", rules: { tracker: { display_name: "C411" } }, templates: {},
@@ -237,6 +246,12 @@ it("Uploader directement demande confirmation, appelle sendToTracker avec direct
   vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.mocked(verifyIntegrity).mockResolvedValue({ job_id: "integrity-1" });
+  vi.mocked(integrityJobStatus).mockResolvedValue({
+    job_id: "integrity-1", state: "done", percent: 100,
+    started_at: 1, finished_at: 2, error: null,
+    result: { passed: true, errors: [], warnings: [] },
+  });
   vi.mocked(sendToTracker).mockResolvedValue({
     draft_id: 777, draft_url: "https://c411.org/torrents/abc123",
     duplicate_warning: null, presentation_warning: null, seed_warning: null,
@@ -278,6 +293,81 @@ it("Uploader directement n'appelle rien si l'utilisateur annule la confirmation"
   expect(sendToTracker).not.toHaveBeenCalled();
 });
 
+it("Uploader directement lance d'abord une verification d'integrite avant sendToTracker", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.mocked(verifyIntegrity).mockResolvedValue({ job_id: "integrity-1" });
+  vi.mocked(integrityJobStatus).mockResolvedValue({
+    job_id: "integrity-1", state: "done", percent: 100,
+    started_at: 1, finished_at: 2, error: null,
+    result: { passed: true, errors: [], warnings: [] },
+  });
+  vi.mocked(sendToTracker).mockResolvedValue({
+    draft_id: 1, draft_url: "https://c411.org/torrents/1", duplicate_warning: null,
+    presentation_warning: null, seed_warning: null,
+  });
+
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+  await user.click(await screen.findByRole("button", { name: "Confirmer" }));
+  await waitFor(() => screen.getByText(/BluRay\.AC3\.x264-TEAM$/));
+
+  await user.click(screen.getByRole("button", { name: "Uploader directement" }));
+
+  await waitFor(() => {
+    expect(verifyIntegrity).toHaveBeenCalledWith(DONE_JOB.result.staged_path);
+  });
+  await waitFor(() => {
+    expect(sendToTracker).toHaveBeenCalled();
+  });
+  expect(await screen.findByText(/Uploadé directement/)).toBeInTheDocument();
+});
+
+it("bloque l'upload direct si la verification d'integrite echoue, n'appelle jamais sendToTracker", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.mocked(verifyIntegrity).mockResolvedValue({ job_id: "integrity-1" });
+  vi.mocked(integrityJobStatus).mockResolvedValue({
+    job_id: "integrity-1", state: "done", percent: 100,
+    started_at: 1, finished_at: 2, error: null,
+    result: { passed: false, errors: ["Fichier probablement tronqué."], warnings: [] },
+  });
+
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+  await user.click(await screen.findByRole("button", { name: "Confirmer" }));
+  await waitFor(() => screen.getByText(/BluRay\.AC3\.x264-TEAM$/));
+
+  await user.click(screen.getByRole("button", { name: "Uploader directement" }));
+
+  expect(await screen.findByText(/Fichier probablement tronqué/)).toBeInTheDocument();
+  expect(sendToTracker).not.toHaveBeenCalled();
+});
+
+it("Creer un brouillon n'appelle jamais verifyIntegrity", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.mocked(sendToTracker).mockResolvedValue({
+    draft_id: "d1", draft_url: "https://c411.org/drafts/1", duplicate_warning: null,
+    presentation_warning: null, seed_warning: null,
+  });
+
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+  await user.click(await screen.findByRole("button", { name: "Confirmer" }));
+  await waitFor(() => screen.getByText(/BluRay\.AC3\.x264-TEAM$/));
+
+  await user.click(screen.getByRole("button", { name: "Créer un brouillon" }));
+
+  await waitFor(() => expect(sendToTracker).toHaveBeenCalled());
+  expect(verifyIntegrity).not.toHaveBeenCalled();
+});
+
 it("affiche l'avertissement d'ajout qBittorrent quand present (upload direct)", async () => {
   /* Retour utilisateur, 2026-09-07 : "le torrent n'est jamais envoye a
    * qbit !!!!" -- ajout auto a qBittorrent en mode direct, best-effort. */
@@ -285,6 +375,12 @@ it("affiche l'avertissement d'ajout qBittorrent quand present (upload direct)", 
   vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.mocked(verifyIntegrity).mockResolvedValue({ job_id: "integrity-1" });
+  vi.mocked(integrityJobStatus).mockResolvedValue({
+    job_id: "integrity-1", state: "done", percent: 100,
+    started_at: 1, finished_at: 2, error: null,
+    result: { passed: true, errors: [], warnings: [] },
+  });
   vi.mocked(sendToTracker).mockResolvedValue({
     draft_id: 777, draft_url: "https://c411.org/torrents/abc123",
     duplicate_warning: null, presentation_warning: null,
