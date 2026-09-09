@@ -1827,6 +1827,103 @@ def test_verify_integrity_endpoints_401_without_token(reload_api):
     assert client.post("/gapscan/integrity-jobs/x/cancel").status_code == 401
 
 
+# --------------------------------------------------------------------------- #
+# Seed d'une release C411 existante deja possedee (retour utilisateur,
+# 2026-09-09) -- /gapscan/seed-match/start + /gapscan/seed-match-jobs/*
+# --------------------------------------------------------------------------- #
+def test_seed_match_start_returns_job_id(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    fake_result = type("R", (), {
+        "c411_matches": [type("Rel", (), {"guid": "guid-1"})()],
+        "local_paths": ["/staging/Movie/Movie.2020-TEAM.mkv"],
+    })()
+    monkeypatch.setattr(mod.gapscan_runner, "results", lambda **k: [fake_result])
+    monkeypatch.setattr(mod.gapscan_library, "find_result_by_key", lambda key, results: fake_result)
+    monkeypatch.setattr(
+        mod.gapscan_config_store, "effective_tracker",
+        lambda profile: ("api-key", "https://c411.example"),
+    )
+    monkeypatch.setattr(
+        mod.gapscan_config_store, "effective_qbittorrent",
+        lambda: ("http://qb.local", "admin", "pw", True),
+    )
+    monkeypatch.setattr(mod.seed_match_job_runner, "start", lambda *a, **k: "job-1")
+    client = TestClient(mod.app)
+
+    resp = client.post(
+        "/gapscan/seed-match/start",
+        json={"key": "some-key", "guid": "guid-1", "release_name": "Movie.2020-TEAM"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"job_id": "job-1"}
+
+
+def test_seed_match_start_400_when_key_not_found(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod.gapscan_runner, "results", lambda **k: [])
+    monkeypatch.setattr(mod.gapscan_library, "find_result_by_key", lambda key, results: None)
+    client = TestClient(mod.app)
+
+    resp = client.post(
+        "/gapscan/seed-match/start",
+        json={"key": "unknown", "guid": "guid-1", "release_name": "X"},
+    )
+    assert resp.status_code == 400
+
+
+def test_seed_match_start_400_when_guid_not_in_matches(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    fake_result = type("R", (), {"c411_matches": []})()
+    monkeypatch.setattr(mod.gapscan_runner, "results", lambda **k: [fake_result])
+    monkeypatch.setattr(mod.gapscan_library, "find_result_by_key", lambda key, results: fake_result)
+    client = TestClient(mod.app)
+
+    resp = client.post(
+        "/gapscan/seed-match/start",
+        json={"key": "some-key", "guid": "guid-inconnu", "release_name": "X"},
+    )
+    assert resp.status_code == 400
+
+
+def test_seed_match_job_status_404_for_unknown_job(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.get("/gapscan/seed-match-jobs/does-not-exist")
+    assert resp.status_code == 404
+
+
+def test_seed_match_job_status_returns_job(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    fake_status = {
+        "job_id": "job-1", "state": "done", "started_at": 1.0, "finished_at": 2.0,
+        "error": None, "result": {"warning": None},
+    }
+    monkeypatch.setattr(mod.seed_match_job_runner, "status", lambda job_id: fake_status)
+    client = TestClient(mod.app)
+
+    resp = client.get("/gapscan/seed-match-jobs/job-1")
+    assert resp.status_code == 200
+    assert resp.json() == fake_status
+
+
+def test_seed_match_cancel_unknown_is_404(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post("/gapscan/seed-match-jobs/does-not-exist/cancel")
+    assert resp.status_code == 404
+
+
+def test_seed_match_endpoints_401_without_token(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN="secret")
+    client = TestClient(mod.app)
+
+    assert client.post(
+        "/gapscan/seed-match/start", json={"key": "x", "guid": "y", "release_name": "z"},
+    ).status_code == 401
+    assert client.get("/gapscan/seed-match-jobs/x").status_code == 401
+    assert client.post("/gapscan/seed-match-jobs/x/cancel").status_code == 401
+
+
 def test_prepare_upload_send_creates_a_draft(reload_api, tmp_path, monkeypatch):
     staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
     staged.write_bytes(b"video")

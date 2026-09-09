@@ -61,6 +61,7 @@ try:
         gapscan_library,
         gapscan_runner,
         integrity_job_runner,
+        seed_match_job_runner,
         tracker_profile,
         upload_history_store,
         upload_prep,
@@ -1298,6 +1299,63 @@ def gapscan_integrity_job_cancel(job_id: str) -> dict[str, str]:
     if status["state"] in ("done", "error", "cancelled"):
         raise HTTPException(status_code=409, detail="Cette tâche est déjà terminée.")
     integrity_job_runner.cancel(job_id)
+    return {"status": "cancelling"}
+
+
+class SeedMatchStartRequest(BaseModel):
+    key: str
+    guid: str
+    release_name: str
+
+
+@app.post("/gapscan/seed-match/start", dependencies=[Depends(require_token)])
+def gapscan_seed_match_start(req: SeedMatchStartRequest, profile: str = Query("c411")) -> dict[str, str]:
+    """Demarre le telechargement + verification EN TACHE DE FOND -- `key`
+    ET `guid` doivent correspondre a un scan GapScan reellement connu
+    (voir gapscan_library.find_result_by_key, audit securite
+    2026-09-09) : jamais de telechargement sur la seule foi d'un guid
+    fourni tel quel par le client."""
+    _require_gapscan_available()
+    result = gapscan_library.find_result_by_key(req.key, gapscan_runner.results())
+    if result is None:
+        raise HTTPException(status_code=400, detail="Titre inconnu (aucun scan récent ne le connaît).")
+    if not any(m.guid == req.guid for m in result.c411_matches):
+        raise HTTPException(status_code=400, detail="Release C411 inconnue pour ce titre.")
+
+    qbittorrent_config = gapscan_config_store.effective_qbittorrent()
+    if qbittorrent_config is None:
+        raise HTTPException(status_code=400, detail="qBittorrent non configuré (voir Réglages).")
+
+    tracker_config = gapscan_config_store.effective_tracker(profile)
+    if tracker_config is None:
+        raise HTTPException(status_code=400, detail=f"Clé API du tracker '{profile}' non configurée.")
+    tracker_key, tracker_base_url = tracker_config
+    tracker_client = TorznabClient(tracker_key, base_url=tracker_base_url.rstrip("/") + "/api")
+    qb_client = QBittorrentClient(*qbittorrent_config)
+
+    local_dir = str(Path(result.local_paths[0]).parent) if result.local_paths else ""
+    job_id = seed_match_job_runner.start(tracker_client, qb_client, req.guid, local_dir, req.release_name)
+    return {"job_id": job_id}
+
+
+@app.get("/gapscan/seed-match-jobs/{job_id}", dependencies=[Depends(require_token)])
+def gapscan_seed_match_job_status(job_id: str) -> dict[str, Any]:
+    _require_gapscan_available()
+    status = seed_match_job_runner.status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Tâche inconnue.")
+    return status
+
+
+@app.post("/gapscan/seed-match-jobs/{job_id}/cancel", dependencies=[Depends(require_token)])
+def gapscan_seed_match_job_cancel(job_id: str) -> dict[str, str]:
+    _require_gapscan_available()
+    status = seed_match_job_runner.status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Tâche inconnue.")
+    if status["state"] in ("done", "mismatch", "error", "cancelled"):
+        raise HTTPException(status_code=409, detail="Cette tâche est déjà terminée.")
+    seed_match_job_runner.cancel(job_id)
     return {"status": "cancelling"}
 
 
