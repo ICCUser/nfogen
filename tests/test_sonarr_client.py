@@ -10,18 +10,21 @@ SERIES = [{"id": 1, "title": "Breaking Bad", "year": 2008, "tvdbId": 81189, "imd
 
 EPISODE_FILES = [
     {
+        "seriesId": 1,
         "seasonNumber": 1,
         "sceneName": "Breaking.Bad.S01.MULTI.VFF.2160p.WEBRip.EAC3.5.1.x265-SQUEEZE",
         "quality": {"quality": {"name": "WEBRip-2160p", "resolution": 2160}},
         "languages": [{"name": "French"}],
     },
     {
+        "seriesId": 1,
         "seasonNumber": 1,
         "sceneName": "Breaking.Bad.S01.MULTI.VFF.1080p.WEBRip.EAC3.5.1.x265-SQUEEZE",
         "quality": {"quality": {"name": "WEBRip-1080p", "resolution": 1080}},
         "languages": [{"name": "French"}],
     },
     {
+        "seriesId": 1,
         "seasonNumber": 2,
         "sceneName": "Breaking.Bad.S02.MULTI.VFF.1080p.WEBRip.EAC3.5.1.x265-SQUEEZE",
         "quality": {"quality": {"name": "WEBRip-1080p", "resolution": 1080}},
@@ -44,7 +47,7 @@ def test_list_season_files_aggregates_by_season_and_keeps_best_resolution():
         if request.url.path == "/api/v3/series":
             return httpx.Response(200, json=SERIES)
         assert request.url.path == "/api/v3/episodefile"
-        assert request.url.params["seriesId"] == "1"
+        assert request.url.params.get_list("seriesIds") == ["1"]
         return httpx.Response(200, json=EPISODE_FILES)
 
     seasons = _client(handler).list_season_files()
@@ -102,6 +105,7 @@ def test_season_zero_specials_are_excluded():
             200,
             json=[
                 {
+                    "seriesId": 1,
                     "seasonNumber": 0,
                     "sceneName": "Breaking.Bad.S00.Special.1080p.WEB-TEAM",
                     "quality": {"quality": {"name": "WEB-1080p", "resolution": 1080}},
@@ -326,3 +330,55 @@ def test_wraps_http_errors():
 
     with pytest.raises(SonarrError, match="echoue"):
         _client(handler).list_series()
+
+
+# --------------------------------------------------------------------------- #
+# Audit performance, 2026-09-09 : list_season_files() ne fait plus UN appel
+# HTTP par serie (N+1) -- un seul appel groupe (seriesIds=1&seriesIds=2&...),
+# les fichiers sont ensuite repartis par serie via leur propre `seriesId`.
+# --------------------------------------------------------------------------- #
+def test_list_season_files_makes_a_single_bulk_call_for_multiple_series():
+    series = [
+        {"id": 1, "title": "Breaking Bad", "year": 2008, "tvdbId": 81189, "imdbId": "tt0903747"},
+        {"id": 2, "title": "Better Call Saul", "year": 2015, "tvdbId": 273181, "imdbId": "tt3032476"},
+    ]
+    files = [
+        {
+            "seriesId": 1, "seasonNumber": 1, "sceneName": "Breaking.Bad.S01-TEAM",
+            "quality": {"quality": {"name": "WEB-1080p", "resolution": 1080}}, "languages": [],
+        },
+        {
+            "seriesId": 2, "seasonNumber": 1, "sceneName": "Better.Call.Saul.S01-TEAM",
+            "quality": {"quality": {"name": "WEB-1080p", "resolution": 1080}}, "languages": [],
+        },
+    ]
+    episodefile_calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=series)
+        assert request.url.path == "/api/v3/episodefile"
+        episodefile_calls.append(request.url.params.get_list("seriesIds"))
+        return httpx.Response(200, json=files)
+
+    seasons = _client(handler).list_season_files()
+
+    assert episodefile_calls == [["1", "2"]]  # UN seul appel, pas un par serie
+    assert {s.series_id for s in seasons} == {1, 2}
+    breaking_bad = next(s for s in seasons if s.series_id == 1)
+    assert breaking_bad.episode_file_count == 1
+    saul = next(s for s in seasons if s.series_id == 2)
+    assert saul.title == "Better Call Saul"
+
+
+def test_list_season_files_skips_episodefile_call_when_no_series():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path == "/api/v3/series":
+            return httpx.Response(200, json=[])
+        return httpx.Response(200, json=[])
+
+    assert _client(handler).list_season_files() == []
+    assert calls == ["/api/v3/series"]  # jamais d'appel /api/v3/episodefile a vide

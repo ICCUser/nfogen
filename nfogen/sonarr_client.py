@@ -141,8 +141,23 @@ class SonarrClient:
         return self._get("/api/v3/series")
 
     def list_episode_files(self, series_id: int) -> list[dict[str, Any]]:
-        """`GET /api/v3/episodefile?seriesId=...` brut."""
+        """`GET /api/v3/episodefile?seriesId=...` brut -- UNE seule serie.
+        Conserve pour un usage cible ; `list_season_files()` utilise
+        desormais `list_episode_files_bulk()` (voir plus bas)."""
         return self._get("/api/v3/episodefile", params={"seriesId": series_id})
+
+    def list_episode_files_bulk(self, series_ids: list[int]) -> list[dict[str, Any]]:
+        """`GET /api/v3/episodefile?seriesIds=1&seriesIds=2&...` brut --
+        UN seul appel HTTP pour toute la bibliotheque, au lieu d'un appel
+        par serie (audit performance, 2026-09-09 -- voir AUTOMATION.md).
+        Chaque fichier renvoye porte son propre `seriesId` (absent quand
+        on interroge une seule serie a la fois via `list_episode_files`,
+        jamais utile dans ce cas). Liste vide -> aucun appel HTTP (evite
+        une requete sans `seriesIds`, dont le comportement Sonarr n'est
+        pas garanti -- absent de la documentation)."""
+        if not series_ids:
+            return []
+        return self._get("/api/v3/episodefile", params={"seriesIds": series_ids})
 
     def list_season_files(self) -> list[SonarrSeasonFile]:
         """Bibliotheque locale agregee par saison.
@@ -154,9 +169,15 @@ class SonarrClient:
         de pack C411 standard (incident reel corrige le 2026-08-26,
         "Misfits S00" remontait a tort dans les resultats).
         """
+        series_by_id = {series["id"]: series for series in self.list_series()}
+        all_files = self.list_episode_files_bulk(list(series_by_id))
+        files_by_series: dict[int, list[dict[str, Any]]] = {}
+        for episode_file in all_files:
+            files_by_series.setdefault(episode_file["seriesId"], []).append(episode_file)
+
         seasons: list[SonarrSeasonFile] = []
-        for series in self.list_series():
-            files = self.list_episode_files(series["id"])
+        for series_id, series in series_by_id.items():
+            files = files_by_series.get(series_id, [])
             by_season: dict[int, list[dict[str, Any]]] = {}
             for episode_file in files:
                 season_number = episode_file["seasonNumber"]
@@ -174,7 +195,7 @@ class SonarrClient:
                 ]
                 seasons.append(
                     SonarrSeasonFile(
-                        series_id=series["id"],
+                        series_id=series_id,
                         title=series.get("title", ""),
                         year=series.get("year"),
                         tvdb_id=series.get("tvdbId"),
