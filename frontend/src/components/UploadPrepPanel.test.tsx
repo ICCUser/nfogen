@@ -536,3 +536,89 @@ it("transmet seasonPack a prepareUploadPreview quand fourni (bouton 'Preparer le
     );
   });
 });
+
+// --------------------------------------------------------------------------- //
+// Modale (retour utilisateur, 2026-09-09 : "c'est etonnamant pas logique de
+// tous mettre en bas de la page") -- toujours au meme endroit a l'ecran,
+// quelle que soit la ligne cliquee ou le defilement de la page.
+// --------------------------------------------------------------------------- //
+it("s'affiche comme une fenetre modale (role dialog)", async () => {
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  expect(await screen.findByRole("dialog")).toBeInTheDocument();
+});
+
+it("Fermer appelle onClose directement quand rien n'est confirme-mais-pas-envoye", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  const confirmSpy = vi.spyOn(window, "confirm");
+  const onClose = vi.fn();
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
+
+  await user.click(await screen.findByRole("button", { name: "Fermer" }));
+
+  expect(onClose).toHaveBeenCalled();
+  expect(confirmSpy).not.toHaveBeenCalled();
+});
+
+it("Echap appelle onClose directement quand rien n'est confirme-mais-pas-envoye", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  const onClose = vi.fn();
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
+  await screen.findByRole("dialog");
+
+  await user.keyboard("{Escape}");
+
+  expect(onClose).toHaveBeenCalled();
+});
+
+it("le clic sur le fond assombri appelle onClose directement quand rien n'est confirme-mais-pas-envoye", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  const onClose = vi.fn();
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
+  const dialog = await screen.findByRole("dialog");
+
+  // Le fond est le PARENT direct de la boite de dialogue -- clique juste a
+  // cote (coordonnee hors de la boite elle-meme, jamais interceptee par
+  // stopPropagation()).
+  await user.click(dialog.parentElement as HTMLElement);
+
+  expect(onClose).toHaveBeenCalled();
+});
+
+it("un clic A L'INTERIEUR de la boite de dialogue n'appelle jamais onClose", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  const onClose = vi.fn();
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
+  const dialog = await screen.findByRole("dialog");
+
+  await user.click(dialog);
+
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+it("Fermer demande confirmation quand un groupe est confirme mais pas encore envoye, respecte l'annulation", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  const onClose = vi.fn();
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
+
+  await user.click(await screen.findByRole("button", { name: "Confirmer" }));
+  await waitFor(() => screen.getByText(/BluRay\.AC3\.x264-TEAM$/));
+
+  await user.click(screen.getByRole("button", { name: "Fermer" }));
+
+  expect(confirmSpy).toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled(); // annule -> le panneau reste ouvert
+
+  confirmSpy.mockReturnValue(true);
+  await user.click(screen.getByRole("button", { name: "Fermer" }));
+  expect(onClose).toHaveBeenCalled();
+});

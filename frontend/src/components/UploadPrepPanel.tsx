@@ -206,6 +206,36 @@ export default function UploadPrepPanel({
     }
   }
 
+  // Un groupe deja "Confirmer" (fichier/torrent/nfo ecrits) mais pas
+  // encore envoye (brouillon ou direct) -- fermer sans avertir perdrait
+  // l'acces au bouton d'envoi (rien n'est supprime cote serveur, voir
+  // handleRequestClose, mais il faudrait rouvrir le panneau pour le
+  // retrouver).
+  const hasUnsentProgress = Boolean(groups?.some((_, index) => commitResults[index] && !sendResults[index]));
+
+  function handleRequestClose() {
+    if (
+      hasUnsentProgress &&
+      !confirm(
+        "Un groupe est prêt (mise en scène + .torrent faits) mais pas encore envoyé — " +
+          "fermer maintenant ? Rien n'est perdu côté serveur, mais il faudra rouvrir ce " +
+          "panneau pour créer le brouillon ou uploader.",
+      )
+    ) {
+      return;
+    }
+    onClose();
+  }
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") handleRequestClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasUnsentProgress]);
+
   async function handleSend(index: number, direct: boolean) {
     const commit = commitResults[index];
     if (!commit) return;
@@ -273,13 +303,29 @@ export default function UploadPrepPanel({
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-line bg-surface p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="font-display text-sm font-semibold text-ink">Préparer l'upload — {title}</h2>
-        <button type="button" onClick={onClose} className="text-sm text-ink-faint hover:text-ink">
-          Fermer
-        </button>
-      </div>
+    // Modale (retour utilisateur, 2026-09-09 : "c'est etonnamant pas
+    // logique de tous mettre en bas de la page") -- toujours au meme
+    // endroit a l'ecran, quelle que soit la ligne cliquee ou le
+    // defilement de la Bibliotheque. Le clic sur le fond ferme (avec le
+    // meme garde-fou que le bouton Fermer/Echap) ; un clic a l'interieur
+    // de la boite ne doit jamais se propager jusqu'au fond.
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 p-4 sm:items-center"
+      onClick={handleRequestClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Préparer l'upload — ${title}`}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-2xl space-y-3 rounded-md border border-line bg-surface p-4 shadow-lg"
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-sm font-semibold text-ink">Préparer l'upload — {title}</h2>
+          <button type="button" onClick={handleRequestClose} className="text-sm text-ink-faint hover:text-ink">
+            Fermer
+          </button>
+        </div>
 
       <div className="flex items-end gap-2">
         <label className="block text-xs font-medium text-ink-dim">
@@ -451,6 +497,7 @@ export default function UploadPrepPanel({
           )}
         </div>
       ))}
+      </div>
     </div>
   );
 }

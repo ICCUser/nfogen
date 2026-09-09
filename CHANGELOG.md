@@ -9,6 +9,21 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ## [Non publié]
 
+### Modifié
+
+- **"Préparer l'upload"/"Préparer le pack" en fenêtre modale** (retour
+  utilisateur, 2026-09-09 : "c'est étonnamant pas logique de tous mettre
+  en bas de la page") : `UploadPrepPanel` s'affiche désormais en overlay
+  centré (fond assombri), toujours au même endroit à l'écran quelle que
+  soit la ligne cliquée ou le défilement de la Bibliothèque — plus
+  besoin de scroller pour le trouver. Ferme au clic sur le fond, `Échap`,
+  ou le bouton "Fermer" existant ; si un groupe est déjà mis en scène
+  (`.torrent`/`.nfo` écrits) mais pas encore envoyé, une confirmation
+  est demandée avant de fermer (rien n'est perdu côté serveur — le
+  fichier reste mis en scène, réutilisé sans recopie si le panneau est
+  rouvert — mais il faudrait sinon rouvrir pour retrouver le bouton
+  d'envoi).
+
 ### Corrigé
 
 - **Sécurité — lecture/écriture de fichier arbitraire via les chemins
