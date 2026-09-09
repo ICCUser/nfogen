@@ -9,6 +9,8 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ## [Non publié]
 
+## [2.1.0] - 2026-09-09
+
 ### Modifié
 
 - **"Préparer l'upload"/"Préparer le pack" en fenêtre modale** (retour
