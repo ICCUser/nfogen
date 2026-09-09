@@ -94,6 +94,40 @@ docker stop nfogen && docker start nfogen   # arreter / redemarrer
 docker logs -f nfogen                       # logs en direct
 ```
 
+#### Sous Windows
+
+Les mêmes commandes fonctionnent telles quelles, dans un terminal PowerShell,
+à condition d'avoir [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+installé avec le **backend WSL2** (activé par défaut sur une installation
+récente — vérifiable dans Docker Desktop via *Settings → General → Use the
+WSL 2 based engine*). Sans WSL2 (backend Hyper-V, obsolète), les performances
+disque du conteneur sont nettement dégradées.
+
+```powershell
+docker build -t nfogen .
+docker run -d --name nfogen -p 8000:8000 -e NFOGEN_API_TOKEN=change-moi nfogen
+# Interface + API sur http://localhost:8000
+```
+
+Par défaut, tout ce que le conteneur écrit (profils, config/résultats
+GapScan si l'extra est ajouté — voir plus bas) est perdu à sa suppression
+(`docker rm`). Pour persister ces données sur l'hôte Windows, montez un
+volume avec `-v` (chemin Windows à gauche, chemin dans le conteneur à
+droite) :
+
+```powershell
+docker run -d --name nfogen -p 8000:8000 `
+  -e NFOGEN_API_TOKEN=change-moi `
+  -v C:\nfogen-data:/data `
+  -e NFOGEN_PROFILES_DIR=/data/profiles `
+  nfogen
+```
+
+L'image Docker n'installe que l'extra `api` (voir plus bas, section
+« Pipeline d'automatisation GapScan ») : le pipeline C411/Sonarr/Radarr n'y
+est pas disponible sans reconstruire l'image avec `pip install -e
+".[api,gapscan,automation]"` dans le `Dockerfile`.
+
 ### En développement (manuel)
 
 ```bash
