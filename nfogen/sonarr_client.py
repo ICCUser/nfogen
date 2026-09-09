@@ -26,14 +26,15 @@ import httpx
 # Cette instance Sonarr est jointe via WireGuard (VPN vers une machine
 # hebergee ailleurs, retour utilisateur 2026-09-09) : mesure reelle,
 # `curl` isole vers /api/v3/episodefile = 117ms, contre 1-5ms attendus sur
-# un LAN local -- le temps mur est donc domine par la latence reseau par
-# appel (le thread attend, il ne calcule pas), pas par la charge de Sonarr
-# lui-meme. Le parallelisme peut donc etre pousse nettement au-dela d'un
-# nombre de coeurs CPU typique sans solliciter davantage Sonarr -- 24
-# choisi comme compromis (gain important sans saturer le tunnel VPN ni la
-# capacite de traitement de Sonarr avec un nombre trop agressif), a
-# ajuster si les logs de production le justifient.
-_MAX_CONCURRENT_SERIES_REQUESTS = 24
+# un LAN local. Hypothese testee en prod : passer de 8 a 24 en parallele
+# --> AUCUN gain mesure (6.1s puis 6.2s, mesures reelles utilisateur) --
+# le facteur limitant n'est donc PAS le nombre de requetes qu'on envoie
+# (sinon 24 aurait ete nettement plus rapide que 8), mais tres probablement
+# la capacite de Sonarr lui-meme a traiter des requetes concurrentes (son
+# propre pool de threads / verrouillage SQLite en lecture) -- hors de notre
+# controle cote client. Redescendu a 12 : aucune raison de continuer a
+# solliciter une machine distante qui n'est pas la notre pour un gain nul.
+_MAX_CONCURRENT_SERIES_REQUESTS = 12
 
 
 class SonarrError(RuntimeError):
