@@ -64,6 +64,20 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
 
 ### Ajouté
 
+- **Seed d'une release C411 déjà possédée, sans re-upload** (retour
+  utilisateur, 2026-09-09 : "est-ce pas possible de recuperer le
+  torrent [...] afin de seed ce meme fichier ?") : pour un titre déjà
+  couvert sur C411, si le fichier local correspond EXACTEMENT (taille +
+  team + résolution/source/codec/langues) à une release existante,
+  bouton "Seed possible" dans la Bibliothèque — télécharge son
+  `.torrent` (`GET /api?t=get&id={guid}`, confirmé fonctionnel avec la
+  seule clé API), l'ajoute à qBittorrent **en pause** pointé sur le
+  fichier local, attend la vérification réelle des pièces par
+  qBittorrent avant de reprendre le seed. Aucune correspondance
+  ambiguë (zéro ou plusieurs candidats) n'est jamais proposée. Tout
+  torrent ajouté par nfogen (celui-ci et l'auto-seed existant après
+  upload direct) porte désormais le tag qBittorrent `NFOGEN`.
+
 - **Vérification approfondie du fichier vidéo avant un upload direct**
   (AUTOMATION.md, sous-projet 7, brainstorm 2026-09-08/09 : "il faut que
   le média soit sûr de respecter les règles du profil/tracker [...]

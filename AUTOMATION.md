@@ -1386,3 +1386,43 @@ d'exécution réelle.
 
 Voir [docs/superpowers/specs/2026-09-09-video-integrity-verification-design.md](docs/superpowers/specs/2026-09-09-video-integrity-verification-design.md)
 et [docs/superpowers/plans/2026-09-09-video-integrity-verification.md](docs/superpowers/plans/2026-09-09-video-integrity-verification.md).
+
+## Sous-projet 10 : Seed d'une release C411 déjà possédée (conception et livraison 2026-09-09)
+
+Retour utilisateur (2026-09-09) : pour un titre `COVERED` (déjà présent
+sur C411), rien ne permettait de profiter d'une correspondance
+EXACTE avec le fichier déjà possédé — l'utilisateur devait soit
+renoncer, soit récupérer le `.torrent` manuellement sur le site.
+
+**Téléchargement programmatique confirmé** : `GET
+/api?t=get&id={guid}&apikey=...` (Torznab standard) renvoie le
+`.torrent` directement, confirmé en conditions réelles — DISTINCT du
+téléchargement du torrent re-signé de son propre upload (qui lui exige
+une session navigateur, voir sous-projet 6). `TorznabClient.download()`
+l'expose.
+
+**Détection de correspondance** (`nfogen/seed_match.py`) : comparaison
+stricte sur ce qui est parsable depuis le nom de release
+(résolution/source/codec vidéo/langues, `quality.parse_release_name`)
++ tag d'équipe + taille exacte en octets — jamais le codec audio (non
+parsable depuis un nom de fichier). Zéro ou plusieurs candidats ⇒
+aucune correspondance proposée.
+
+**Vérification réelle avant tout seed** (`nfogen/seed_match_job_runner.py`,
+même patron de tâche de fond que la vérification d'intégrité vidéo,
+sous-projet 7) : le torrent est ajouté à qBittorrent **en pause**,
+pointé sur le fichier local déjà en place — qBittorrent vérifie
+lui-même les pièces. Reprise automatique du seed uniquement si la
+vérification confirme un fichier complet ; sinon, le torrent reste en
+pause (jamais supprimé), avec un avertissement clair. Tag qBittorrent
+`NFOGEN` sur tout torrent ajouté par nfogen (celui-ci et l'auto-seed
+existant du sous-projet 6).
+
+**⚠ Chaînes d'état qBittorrent non vérifiées contre une instance
+réelle** (`pausedUP`/`queuedUP`/`checkedUP`/`missingFiles`) — même
+prudence que le N+1 Sonarr du 2026-09-09, qui avait cassé la production
+faute de ce test. À confirmer par l'utilisateur avant de considérer ce
+sous-projet définitivement acquis.
+
+Voir [docs/superpowers/specs/2026-09-09-seed-match-design.md](docs/superpowers/specs/2026-09-09-seed-match-design.md)
+et [docs/superpowers/plans/2026-09-09-seed-match.md](docs/superpowers/plans/2026-09-09-seed-match.md).
