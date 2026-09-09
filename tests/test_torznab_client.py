@@ -236,3 +236,39 @@ def test_min_interval_sleeps_between_consecutive_calls():
     client.search_movie(query="x")  # 0.1s ecoule depuis, il en manque 0.4
 
     assert sleeps == [pytest.approx(0.4)]
+
+
+def test_download_returns_raw_bytes():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["t"] == "get"
+        assert request.url.params["id"] == "guid-1"
+        assert request.url.params["apikey"] == "test-key"
+        return httpx.Response(200, content=b"d8:announce...")
+
+    client = TorznabClient("test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert client.download("guid-1") == b"d8:announce..."
+
+
+def test_download_retries_once_after_429():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"retry-after": "0"})
+        return httpx.Response(200, content=b"torrent-bytes")
+
+    client = TorznabClient("test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    client._sleep = lambda seconds: None
+    assert client.download("guid-1") == b"torrent-bytes"
+    assert len(calls) == 2
+
+
+def test_download_wraps_http_errors_and_redacts_key():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="boom")
+
+    client = TorznabClient("secret-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(TorznabError) as exc_info:
+        client.download("guid-1")
+    assert "secret-key" not in str(exc_info.value)

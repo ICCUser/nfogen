@@ -6,9 +6,12 @@ pas d'API maison. Voir `GAPSCAN.md` pour le detail des endpoints/attributs
 observes (`downloadvolumefactor`/`uploadvolumefactor` pour les badges
 FL/50%/2x, `imdbid`/`tmdbid` pas systematiquement presents).
 
-Ce client ne telecharge, n'heberge et ne distribue aucun contenu : il ne
-fait que lister des metadonnees de releases deja presentes sur le tracker,
-pour comparaison avec la bibliotheque locale (voir `gapscan.py`).
+Ce client liste des metadonnees de releases deja presentes sur le
+tracker (recherche), et peut desormais TELECHARGER le .torrent d'une
+release existante via `download()` (`t=get`, retour utilisateur
+2026-09-09 -- seed d'un fichier local deja identique, sans re-upload).
+Toujours en lecture seule cote tracker : aucune ecriture, aucune
+modification d'un torrent existant.
 """
 from __future__ import annotations
 
@@ -234,3 +237,30 @@ class TorznabClient:
                 "ep": str(ep) if ep is not None else None,
             }
         )
+
+    def download(self, guid: str) -> bytes:
+        """`t=get&id={guid}` -- telecharge le .torrent d'une release
+        EXISTANTE sur C411 (pas necessairement uploadee par
+        l'utilisateur) : confirme fonctionnel en conditions reelles
+        (2026-09-09) avec la seule cle API. DISTINCT du telechargement
+        du torrent RE-SIGNE de son propre upload apres moderation, qui
+        lui exige une session navigateur (voir docstring de module de
+        qbittorrent_client.py) -- deux endpoints differents. Meme
+        throttle/retry-apres-429 que _search()."""
+        for attempt in range(2):
+            self._throttle()
+            query = {"t": "get", "id": guid, "apikey": self._api_key}
+            try:
+                response = self._client.get(self._base_url, params=query)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 429 and attempt == 0:
+                    self._sleep(self._parse_retry_after(exc.response))
+                    continue
+                raise TorznabError(
+                    f"Téléchargement C411 échoué ({guid}) : {self._redact(exc)}"
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise TorznabError(f"Téléchargement C411 échoué ({guid}) : {self._redact(exc)}") from exc
+            return response.content
+        raise AssertionError("unreachable")  # la boucle retourne ou leve dans tous les cas
