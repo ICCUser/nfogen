@@ -35,7 +35,7 @@ Issues = "https://github.com/ICCUser/nfogen/issues"
 api = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
-    "python-multipart>=0.0.9",  # upload de fichiers via HTTP
+    "python-multipart>=0.0.32",  # upload de fichiers via HTTP
 ]
 gapscan = [
     "httpx>=0.27",  # c411_client.py / sonarr_client.py / radarr_client.py (voir GAPSCAN.md)
