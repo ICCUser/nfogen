@@ -22,8 +22,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # Incident reel (2026-09-09) : "Process completed with exit code 100"
+      # sur cette etape, identique et repete sur plusieurs commits de suite
+      # (mirroir apt temporairement instable cote runner GitHub, hors de
+      # notre controle) -- un seul reessai apres une courte pause absorbe ce
+      # genre de flake sans masquer une vraie erreur de paquet.
       - name: Installer la dependance systeme (libmediainfo)
-        run: sudo apt-get update && sudo apt-get install -y libmediainfo0v5
+        run: |
+          sudo apt-get update && sudo apt-get install -y libmediainfo0v5 \
+            || (sleep 10 && sudo apt-get update && sudo apt-get install -y libmediainfo0v5)
 
       # gapscan explicite (pas seulement api+dev) : les tests gapscan_*
       # passaient jusqu'ici par coincidence (dev depend aussi de httpx),
