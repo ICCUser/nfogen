@@ -232,13 +232,14 @@ def test_list_library_computes_tracker_genre_from_matched_result(monkeypatch):
 # --------------------------------------------------------------------------- #
 def _series_item(
     season_number, team, sonarr_series_id=7, title="Lucifer", year=2016, path_resolved=True, key=None,
+    already_processed=False,
 ):
     return gapscan_library.LibraryItem(
         media_type="series", title=title, year=year, season_number=season_number,
         imdb_id=None, tvdb_id=99, tmdb_id=None, genres=[], added_at=None,
         local_quality=ReleaseQuality(raw=""),
         radarr_movie_id=None, sonarr_series_id=sonarr_series_id,
-        already_processed=False, last_processed_at=None,
+        already_processed=already_processed, last_processed_at=None,
         key=key or f"key-{sonarr_series_id}-s{season_number}",
         path_resolved=path_resolved,
         local_paths=[f"/media/Show/S{season_number:02d}/ep1.mkv"] if path_resolved else [],
@@ -283,6 +284,33 @@ def test_detect_season_packs_excludes_seasons_without_team_or_unresolved_path():
     assert len(suggestions) == 1
     assert suggestions[0].season_numbers == [2, 3]
     assert suggestions[0].is_full_series is False  # saison 1 existe (meme sans team), donc pas INTEGRALE
+
+
+def test_detect_season_packs_excludes_already_processed_seasons():
+    """Bug reel signale par l'utilisateur (2026-09-09) : un pack deja
+    envoye au tracker (already_processed=True sur ses saisons) restait
+    suggere indefiniment dans "Packs disponibles", sans jamais pouvoir
+    disparaitre une fois traite."""
+    items = [
+        _series_item(1, "TEAM", already_processed=True),
+        _series_item(2, "TEAM", already_processed=True),
+    ]
+    assert detect_season_packs(items) == []
+
+
+def test_detect_season_packs_still_proposes_the_not_yet_processed_remainder():
+    """Un pack partiellement traite (ex. S01-S02 deja envoyes) doit
+    continuer a proposer les saisons RESTANTES (S03-S05), pas disparaitre
+    entierement ni les regrouper avec les saisons deja traitees."""
+    items = [
+        _series_item(1, "TEAM", already_processed=True),
+        _series_item(2, "TEAM", already_processed=True),
+        _series_item(3, "TEAM", already_processed=False),
+        _series_item(4, "TEAM", already_processed=False),
+    ]
+    suggestions = detect_season_packs(items)
+    assert len(suggestions) == 1
+    assert suggestions[0].season_numbers == [3, 4]
 
 
 # --------------------------------------------------------------------------- #

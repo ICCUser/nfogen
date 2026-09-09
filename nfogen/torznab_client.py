@@ -174,12 +174,27 @@ class TorznabClient:
                 pass  # ex. une date HTTP plutot qu'un nombre de secondes -- non geree, repli prudent
         return self._DEFAULT_RETRY_AFTER_SECONDS
 
+    def _retry_delay(self, exc: httpx.HTTPError, attempt: int) -> Optional[float]:
+        """Delai avant reessai si `exc` est transitoire et qu'il reste un
+        essai (`attempt == 0`), sinon `None` (abandonner). Incident reel
+        (2026-08-25) : seul le 429 etait reessaye -- retour utilisateur
+        (2026-09-09) : des titres marques "erreur c411" se re-verifiaient
+        sans probleme juste apres, symptome d'un 5xx ou d'une erreur
+        reseau (timeout/connexion coupee) transitoire, jamais reessaye
+        jusqu'ici. Un seul reessai, comme pour le 429 -- gapscan.py
+        continue de toute facon le scan sur les titres suivants si ce
+        reessai echoue aussi."""
+        if attempt != 0:
+            return None
+        if isinstance(exc, httpx.HTTPStatusError):
+            if exc.response.status_code == 429:
+                return self._parse_retry_after(exc.response)
+            if exc.response.status_code >= 500:
+                return self._DEFAULT_RETRY_AFTER_SECONDS
+            return None
+        return self._DEFAULT_RETRY_AFTER_SECONDS  # erreur reseau (timeout, connexion...), pas de reponse HTTP
+
     def _search(self, params: dict[str, str]) -> list[TorznabRelease]:
-        # Incident reel (2026-08-25) : un intervalle trop agressif entre
-        # requetes a declenche un 429. Un seul reessai apres Retry-After
-        # (ou une valeur prudente par defaut) plutot que d'abandonner ce
-        # titre immediatement -- gapscan.py continue de toute facon le
-        # scan sur les titres suivants si ce reessai echoue aussi.
         for attempt in range(2):
             self._throttle()
             query = {k: v for k, v in params.items() if v is not None}
@@ -187,14 +202,11 @@ class TorznabClient:
             try:
                 response = self._client.get(self._base_url, params=query)
                 response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 429 and attempt == 0:
-                    self._sleep(self._parse_retry_after(exc.response))
-                    continue
-                raise TorznabError(
-                    f"Appel a l'API C411 echoue ({params.get('t')}) : {self._redact(exc)}"
-                ) from exc
             except httpx.HTTPError as exc:
+                delay = self._retry_delay(exc, attempt)
+                if delay is not None:
+                    self._sleep(delay)
+                    continue
                 raise TorznabError(
                     f"Appel a l'API C411 echoue ({params.get('t')}) : {self._redact(exc)}"
                 ) from exc
@@ -246,21 +258,18 @@ class TorznabClient:
         du torrent RE-SIGNE de son propre upload apres moderation, qui
         lui exige une session navigateur (voir docstring de module de
         qbittorrent_client.py) -- deux endpoints differents. Meme
-        throttle/retry-apres-429 que _search()."""
+        throttle/reessai transitoire que _search() (voir _retry_delay)."""
         for attempt in range(2):
             self._throttle()
             query = {"t": "get", "id": guid, "apikey": self._api_key}
             try:
                 response = self._client.get(self._base_url, params=query)
                 response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 429 and attempt == 0:
-                    self._sleep(self._parse_retry_after(exc.response))
-                    continue
-                raise TorznabError(
-                    f"Téléchargement C411 échoué ({guid}) : {self._redact(exc)}"
-                ) from exc
             except httpx.HTTPError as exc:
+                delay = self._retry_delay(exc, attempt)
+                if delay is not None:
+                    self._sleep(delay)
+                    continue
                 raise TorznabError(f"Téléchargement C411 échoué ({guid}) : {self._redact(exc)}") from exc
             return response.content
         raise AssertionError("unreachable")  # la boucle retourne ou leve dans tous les cas

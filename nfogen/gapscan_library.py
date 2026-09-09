@@ -104,14 +104,21 @@ def detect_season_packs(items: list[LibraryItem]) -> list[SeasonPackSuggestion]:
     le run couvre TOUTES les saisons CONNUES LOCALEMENT pour cette serie
     (y compris celles sans equipe detectee/chemin non resolu -- une
     saison "vue" mais pas eligible au regroupement bloque quand meme
-    INTEGRALE, elle n'est simplement pas dans le run)."""
+    INTEGRALE, elle n'est simplement pas dans le run).
+
+    Une saison deja `already_processed` (deja envoyee au tracker) n'est
+    JAMAIS eligible -- bug reel signale par l'utilisateur (2026-09-09) :
+    sans cette exclusion, un pack deja traite restait suggere
+    indefiniment dans "Packs disponibles", incapable de jamais
+    disparaitre. Un pack partiellement traite continue de proposer
+    seulement les saisons RESTANTES."""
     all_seasons_by_series: dict[int, set[int]] = {}
     eligible_by_series: dict[int, list[LibraryItem]] = {}
     for item in items:
         if item.media_type != "series" or item.sonarr_series_id is None or item.season_number is None:
             continue
         all_seasons_by_series.setdefault(item.sonarr_series_id, set()).add(item.season_number)
-        if item.team and item.path_resolved and item.local_paths:
+        if item.team and item.path_resolved and item.local_paths and not item.already_processed:
             eligible_by_series.setdefault(item.sonarr_series_id, []).append(item)
 
     suggestions: list[SeasonPackSuggestion] = []

@@ -183,6 +183,79 @@ def test_gives_up_after_a_second_429():
         client.search_movie(query="x")
 
 
+def test_retries_once_after_a_5xx_then_succeeds():
+    """Bug reel signale par l'utilisateur (2026-09-09) : des titres
+    marques 'erreur c411' se re-verifiaient sans probleme juste apres --
+    symptome d'une erreur serveur transitoire (5xx) sans aucun reessai,
+    contrairement au 429 deja gere."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(503)
+        return httpx.Response(200, text=_read("c411_movie_search.xml"))
+
+    client = TorznabClient(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    client._sleep = lambda _seconds: None  # type: ignore[attr-defined]
+
+    releases = client.search_movie(query="x")
+
+    assert len(releases) == 3
+    assert len(calls) == 2
+
+
+def test_gives_up_after_a_second_5xx():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(502)
+
+    client = TorznabClient(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    client._sleep = lambda _seconds: None  # type: ignore[attr-defined]
+
+    with pytest.raises(TorznabError, match="echoue"):
+        client.search_movie(query="x")
+
+
+def test_retries_once_after_a_connection_error_then_succeeds():
+    """Meme incident que le 5xx ci-dessus, mais pour une erreur reseau
+    (timeout/connexion coupee) -- httpx.HTTPError sans reponse HTTP du
+    tout, jusqu'ici jamais reessaye."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            raise httpx.ConnectError("connexion refusee", request=request)
+        return httpx.Response(200, text=_read("c411_movie_search.xml"))
+
+    client = TorznabClient(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    client._sleep = lambda _seconds: None  # type: ignore[attr-defined]
+
+    releases = client.search_movie(query="x")
+
+    assert len(releases) == 3
+    assert len(calls) == 2
+
+
+def test_gives_up_after_a_second_connection_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connexion refusee", request=request)
+
+    client = TorznabClient(
+        api_key="test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    client._sleep = lambda _seconds: None  # type: ignore[attr-defined]
+
+    with pytest.raises(TorznabError, match="echoue"):
+        client.search_movie(query="x")
+
+
 def test_retry_after_defaults_when_header_absent_or_invalid():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429)  # pas d'en-tete Retry-After
@@ -256,6 +329,36 @@ def test_download_retries_once_after_429():
         calls.append(1)
         if len(calls) == 1:
             return httpx.Response(429, headers={"retry-after": "0"})
+        return httpx.Response(200, content=b"torrent-bytes")
+
+    client = TorznabClient("test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    client._sleep = lambda seconds: None
+    assert client.download("guid-1") == b"torrent-bytes"
+    assert len(calls) == 2
+
+
+def test_download_retries_once_after_a_5xx():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(500)
+        return httpx.Response(200, content=b"torrent-bytes")
+
+    client = TorznabClient("test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    client._sleep = lambda seconds: None
+    assert client.download("guid-1") == b"torrent-bytes"
+    assert len(calls) == 2
+
+
+def test_download_retries_once_after_a_connection_error():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            raise httpx.ConnectError("connexion refusee", request=request)
         return httpx.Response(200, content=b"torrent-bytes")
 
     client = TorznabClient("test-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
