@@ -226,8 +226,9 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div className="space-y-4">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="space-y-6">
+      <div className="max-w-md space-y-4">
         <h1 className="font-display text-xl font-semibold text-ink">Réglages de connexion</h1>
         <label className="block text-sm font-medium text-ink-dim">
           URL de base de l'API
@@ -248,7 +249,7 @@ export default function SettingsPage() {
         {baseUrlSaved && <span className="ml-3 text-sm text-good">Enregistré.</span>}
       </div>
 
-      <div className="space-y-3 border-t border-line pt-4">
+      <div className="max-w-md space-y-3 border-t border-line pt-4">
         <h2 className="font-display text-lg font-semibold text-ink">Authentification</h2>
 
         {!authRequired && (
@@ -367,9 +368,11 @@ export default function SettingsPage() {
 
         {error && <p className="text-sm text-crit">{error}</p>}
       </div>
+      </div>
 
+      <div className="space-y-6">
       {authenticated && accountsLoginEnabled && (
-        <div className="space-y-3 border-t border-line pt-4">
+        <div className="max-w-md space-y-3 border-t border-line pt-4 lg:border-t-0 lg:pt-0">
           <h2 className="font-display text-lg font-semibold text-ink">Comptes administrateurs</h2>
           <p className="text-sm text-ink-dim">
             Tous les comptes ont les mêmes droits — l'intérêt est de pouvoir révoquer un accès
@@ -586,6 +589,7 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

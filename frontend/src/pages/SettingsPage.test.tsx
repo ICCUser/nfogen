@@ -74,6 +74,15 @@ beforeEach(() => {
 
 afterEach(() => vi.resetAllMocks());
 
+it("organise les sections en grille 2 colonnes, sans conteneur max-w-lg racine", async () => {
+  renderPage();
+  await screen.findByText("Réglages de connexion");
+
+  const root = screen.getByText("Réglages de connexion").closest("div.grid");
+  expect(root).not.toBeNull();
+  expect(root?.className).not.toContain("max-w-lg");
+});
+
 describe("SettingsPage - connexion par token", () => {
   it("chemin heureux : token valide -> login() appele, statut 'Connecte' affiche", async () => {
     vi.mocked(getAuthStatus)

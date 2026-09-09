@@ -40,7 +40,7 @@ function AppShell() {
   return (
     <div className="min-h-screen bg-bg font-sans text-ink">
       <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-3">
           <span className="font-display text-lg font-bold text-ink">
             nfogen<span className="font-mono text-sm text-accent">.nfo</span>
           </span>
@@ -64,7 +64,7 @@ function AppShell() {
           <ProfileSelect />
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main className="mx-auto max-w-[1600px] px-4 py-6">
         {/* key=pathname : une erreur de rendu sur une page ne doit pas rester
             affichee apres avoir navigue ailleurs -- remonte la limite
             d'erreur (et donc reessaie le rendu) a chaque changement de route. */}
