@@ -28,6 +28,12 @@ vrai début du suivi de version, pas une continuité directe de `0.1.0`.
   via `upload_prep.validate_staged_path()` (résolution réelle du
   chemin, pas une simple concaténation).
 
+- **Sécurité — itérations PBKDF2 sous la recommandation OWASP actuelle**
+  (audit sécurité 2026-09-09) : `260 000` → `600 000` itérations pour le
+  hachage des mots de passe de compte (`nfogen/accounts.py`). Rétro-
+  compatible — le nombre d'itérations est stocké dans chaque hash, les
+  comptes déjà créés continuent de se vérifier normalement.
+
 ### Modifié
 
 - **Bannières de section en `.webp` (au lieu de `.png`)** (retour

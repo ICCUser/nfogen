@@ -21,7 +21,14 @@ from pathlib import Path
 
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _ALGO = "pbkdf2_sha256"
-_ITERATIONS = 260_000
+# Recommandation OWASP 2023 pour PBKDF2-HMAC-SHA256 (audit securite,
+# 2026-09-09 -- l'ancienne valeur, 260_000, restait au-dessus du plancher
+# historique mais sous l'etat de l'art courant). Le nombre d'iterations
+# est stocke DANS chaque hash (voir hash_password()/verify_password()) :
+# relever cette constante ne casse jamais les comptes deja crees, chacun
+# continue a se verifier avec les iterations utilisees lors de sa
+# creation.
+_ITERATIONS = 600_000
 _MIN_PASSWORD_LENGTH = 8
 
 # Hash syntaxiquement valide mais qui ne correspond a aucun mot de passe reel :
