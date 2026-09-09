@@ -87,6 +87,7 @@ const MATRIX_ITEM: LibraryItem = {
   key: '["movie","tt0133093",1999]',
   status: "absent", checked_at: 1700000000, has_freeleech_alternative: false, has_double_upload_window: false,
   error: null, local_paths: [], path_resolved: true, path_error: null, tracker_genre: null, team: "TEAM",
+  seed_match: null,
 };
 
 /** Titre jamais scanne (statut inconnu) -- comportement d'origine de la
@@ -99,6 +100,7 @@ const SHOW_ITEM: LibraryItem = {
   key: '["series",99,1]',
   status: null, checked_at: null, has_freeleech_alternative: false, has_double_upload_window: false,
   error: null, local_paths: [], path_resolved: false, path_error: null, tracker_genre: null, team: null,
+  seed_match: null,
 };
 
 /** Deux saisons de "Lucifer", meme serie/equipe -- source pour le test du
@@ -111,7 +113,7 @@ const LUCIFER_S05: LibraryItem = {
   key: '["series",305288,5]',
   status: "absent", checked_at: 1700000000, has_freeleech_alternative: false, has_double_upload_window: false,
   error: null, local_paths: ["/media/lucifer/s05.mkv"], path_resolved: true, path_error: null,
-  tracker_genre: null, team: "Frosties",
+  tracker_genre: null, team: "Frosties", seed_match: null,
 };
 
 const LUCIFER_S06: LibraryItem = {

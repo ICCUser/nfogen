@@ -274,6 +274,11 @@ export interface LibraryItem {
   /** Tag d'equipe (retour utilisateur, 2026-09-08) -- extrait du
    * scene_name Radarr/Sonarr, `null` si aucun tag detecte. */
   team: string | null;
+  /** Present uniquement si status == "covered" ET une SEULE release
+   * C411 correspond exactement (taille + team + resolution/source/
+   * codec/langues) -- permet de proposer un seed sans re-upload
+   * (retour utilisateur, 2026-09-09). */
+  seed_match: { guid: string; release_name: string } | null;
 }
 
 /** Groupe de saisons consecutives d'une meme serie, meme equipe, propose
@@ -411,6 +416,20 @@ export interface IntegrityJob {
    * d'un rapport `result.passed = false` (echec de VERIFICATION). */
   error: string | null;
   result: VideoIntegrityReport | null;
+}
+
+/** POST /gapscan/seed-match/start + GET /gapscan/seed-match-jobs/{id}
+ * (retour utilisateur, 2026-09-09 -- seed d'une release C411 deja
+ * possedee, sans re-upload). Meme patron que IntegrityJob. */
+export type SeedMatchJobState = "downloading" | "checking" | "done" | "mismatch" | "error" | "cancelled";
+
+export interface SeedMatchJob {
+  job_id: string;
+  state: SeedMatchJobState;
+  started_at: number;
+  finished_at: number | null;
+  error: string | null;
+  result: { warning: string | null } | null;
 }
 
 /** POST /gapscan/prepare-upload/send : cree/met a jour un BROUILLON C411

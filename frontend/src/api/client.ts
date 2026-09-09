@@ -15,6 +15,7 @@ import type {
   RulesDocument,
   SeasonPackRequest,
   SeedingTorrent,
+  SeedMatchJob,
   SeedQueueEntry,
   SendToTrackerResult,
   TemplatesDocument,
@@ -535,6 +536,25 @@ export function integrityJobStatus(jobId: string): Promise<IntegrityJob> {
 
 export function cancelIntegrityJob(jobId: string): Promise<{ status: string }> {
   return request<{ status: string }>(`/gapscan/integrity-jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+  });
+}
+
+export function startSeedMatch(
+  key: string, guid: string, releaseName: string, profile = "c411",
+): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>(`/gapscan/seed-match/start?profile=${encodeURIComponent(profile)}`, {
+    method: "POST",
+    body: JSON.stringify({ key, guid, release_name: releaseName }),
+  });
+}
+
+export function seedMatchJobStatus(jobId: string): Promise<SeedMatchJob> {
+  return request<SeedMatchJob>(`/gapscan/seed-match-jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function cancelSeedMatchJob(jobId: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/gapscan/seed-match-jobs/${encodeURIComponent(jobId)}/cancel`, {
     method: "POST",
   });
 }
