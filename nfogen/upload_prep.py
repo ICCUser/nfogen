@@ -816,6 +816,7 @@ def send_to_tracker(
             try:
                 qb.add_torrent(
                     torrent_bytes, str(Path(staged_path).parent), filename=f"{release_name}.torrent",
+                    tags="NFOGEN",
                 )
             except QBittorrentError as exc:
                 seed_warning = f"Torrent envoyé à C411, mais échec de l'ajout à qBittorrent : {exc}"

@@ -169,3 +169,68 @@ def test_list_torrents_wraps_http_errors():
     client = _client(handler)
     with pytest.raises(QBittorrentError, match="[ée]chou"):
         client.list_torrents()
+
+
+# --------------------------------------------------------------------------- #
+# paused/tags sur add_torrent, resume() (retour utilisateur, 2026-09-09 --
+# seed d'une release C411 deja possedee, sans re-upload)
+# --------------------------------------------------------------------------- #
+def test_add_torrent_sends_paused_and_tags_when_given():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v2/auth/login":
+            return httpx.Response(200, text="Ok.")
+        captured["content"] = request.content
+        return httpx.Response(200, text="Ok.")
+
+    client = _client(handler)
+    client.add_torrent(b"x", "/data/staging", paused=True, tags="NFOGEN")
+
+    assert b"paused" in captured["content"]
+    assert b"true" in captured["content"]
+    assert b"NFOGEN" in captured["content"]
+
+
+def test_add_torrent_omits_paused_and_tags_by_default():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v2/auth/login":
+            return httpx.Response(200, text="Ok.")
+        captured["content"] = request.content
+        return httpx.Response(200, text="Ok.")
+
+    client = _client(handler)
+    client.add_torrent(b"x", "/data/staging")
+
+    assert b"paused" not in captured["content"]
+    assert b"tags" not in captured["content"]
+
+
+def test_resume_logs_in_then_posts_hash():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.url.path, request.content))
+        if request.url.path == "/api/v2/auth/login":
+            return httpx.Response(200, text="Ok.")
+        return httpx.Response(200, text="")
+
+    client = _client(handler)
+    client.resume("abc123")
+
+    assert calls[0][0] == "/api/v2/auth/login"
+    assert calls[1][0] == "/api/v2/torrents/resume"
+    assert b"abc123" in calls[1][1]
+
+
+def test_resume_wraps_http_errors():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v2/auth/login":
+            return httpx.Response(200, text="Ok.")
+        return httpx.Response(500, text="boom")
+
+    client = _client(handler)
+    with pytest.raises(QBittorrentError, match="[Rr]eprise"):
+        client.resume("abc123")

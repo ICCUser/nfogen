@@ -71,24 +71,53 @@ class QBittorrentClient:
             raise QBittorrentError("Authentification qBittorrent refusée (identifiants incorrects ?).")
         self._logged_in = True
 
-    def add_torrent(self, torrent_bytes: bytes, save_path: str, filename: str = "release.torrent") -> None:
+    def add_torrent(
+        self, torrent_bytes: bytes, save_path: str, filename: str = "release.torrent",
+        *, paused: bool = False, tags: Optional[str] = None,
+    ) -> None:
         """Ajoute un .torrent DEJA telecharge (voir docstring du module),
-        pointe sur `save_path` -- le contenu doit deja s'y trouver. Leve
-        `QBittorrentError` en cas d'echec (connexion, authentification,
-        ou refus par qBittorrent)."""
+        pointe sur `save_path` -- le contenu doit deja s'y trouver.
+        `paused` (retour utilisateur, 2026-09-09 -- seed_match_job_runner.py) :
+        ajoute sans demarrer, pour laisser qBittorrent verifier les
+        pieces avant toute decision de seed reelle. `tags` : etiquette
+        qBittorrent (ex. "NFOGEN") -- distingue les torrents geres par
+        nfogen des autres dans son interface. Leve `QBittorrentError` en
+        cas d'echec (connexion, authentification, ou refus par qBittorrent)."""
         if not self._logged_in:
             self._login()
+        data: dict[str, str] = {"savepath": save_path}
+        if paused:
+            data["paused"] = "true"
+        if tags:
+            data["tags"] = tags
         try:
             response = self._client.post(
                 f"{self._base_url}/api/v2/torrents/add",
                 files={"torrents": (filename, torrent_bytes, "application/x-bittorrent")},
-                data={"savepath": save_path},
+                data=data,
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise QBittorrentError(f"Ajout du torrent à qBittorrent échoué : {exc}") from exc
         if response.text.strip() != "Ok.":
             raise QBittorrentError(f"qBittorrent a refusé le torrent : {response.text.strip()}")
+
+    def resume(self, torrent_hash: str) -> None:
+        """`POST /api/v2/torrents/resume` (hashes=<hash>) -- reprend un
+        torrent ajoute en pause (voir seed_match_job_runner.py). Ne
+        verifie pas le corps de la reponse (qBittorrent renvoie
+        generalement un corps vide sur ce endpoint, contrairement a
+        add_torrent) -- seul un code HTTP non 2xx est traite comme une
+        erreur."""
+        if not self._logged_in:
+            self._login()
+        try:
+            response = self._client.post(
+                f"{self._base_url}/api/v2/torrents/resume", data={"hashes": torrent_hash},
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise QBittorrentError(f"Reprise du torrent {torrent_hash} échouée : {exc}") from exc
 
     def list_torrents(self) -> list[dict[str, Any]]:
         """`GET /api/v2/torrents/info` brut -- lecture seule, pour afficher

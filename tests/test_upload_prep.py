@@ -1370,7 +1370,7 @@ def test_send_to_tracker_direct_adds_torrent_to_qbittorrent_on_success(tmp_path,
         def __init__(self, *args, **kwargs):
             pass
 
-        def add_torrent(self, torrent_bytes, save_path, filename):
+        def add_torrent(self, torrent_bytes, save_path, filename, **kwargs):
             added["torrent_bytes"] = torrent_bytes
             added["save_path"] = save_path
             added["filename"] = filename
@@ -1474,7 +1474,7 @@ def test_send_to_tracker_direct_seed_failure_does_not_block_upload_but_warns(tmp
         def __init__(self, *args, **kwargs):
             pass
 
-        def add_torrent(self, torrent_bytes, save_path, filename):
+        def add_torrent(self, torrent_bytes, save_path, filename, **kwargs):
             raise QBittorrentError("Connexion échouée")
 
         def close(self):
