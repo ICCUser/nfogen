@@ -14,3 +14,6 @@ tests/Video test/
 .env
 .env.local
 .superpowers/
+
+# Dependances Node (racine et frontend/) : jamais commit.
+node_modules/
