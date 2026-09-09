@@ -34,6 +34,7 @@ import type {
   SeedMatchJob,
 } from "../api/types";
 import { useProfile } from "../ProfileContext";
+import { formatBytes } from "../format";
 
 /** Libelles de statut : parametres par le nom du tracker actif
  * (`trackerName`, voir ProfileContext.displayName) au lieu d'un "C411"
@@ -91,6 +92,7 @@ const LIBRARY_COLUMNS: ColumnDef<LibraryItem>[] = [
   { id: "status", header: "Statut", accessorKey: "status" },
   { id: "team", header: "Team", accessorKey: "team" },
   { id: "quality", header: "Ta version", accessorFn: (row) => row.local_quality.resolution ?? 0 },
+  { id: "size_bytes", header: "Taille", accessorKey: "size_bytes" },
   { id: "added_at", header: "Ajouté le", accessorKey: "added_at" },
   { id: "actions", header: "", enableSorting: false },
 ];
@@ -937,6 +939,9 @@ export default function LibraryPage() {
                 <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">{item.team ?? "—"}</td>
                 <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">
                   {qualitySummary(item.local_quality)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2 text-ink-dim">
+                  {item.size_bytes !== null ? formatBytes(item.size_bytes) : "—"}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-ink-dim">
                   {formatAddedAt(item.added_at)}

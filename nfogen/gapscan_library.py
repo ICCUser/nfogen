@@ -80,6 +80,14 @@ class LibraryItem:
     # codec/langues, voir seed_match.find_seed_match) -- permet de
     # proposer un seed sans re-upload (retour utilisateur, 2026-09-09).
     seed_match: Optional[dict[str, str]] = None
+    # Taille en octets (RadarrMovieFile.size_bytes / SonarrSeasonFile.
+    # size_bytes -- deja calculee pour _compute_seed_match, simplement
+    # jamais exposee ici jusqu'ici) -- retour utilisateur, 2026-09-09 :
+    # colonne manquante pour comprendre pourquoi un fichier plus petit
+    # peut pourtant prendre plus de temps a analyser (MediaInfo) qu'un
+    # plus gros -- la taille seule n'explique pas tout, mais reste une
+    # information utile a avoir sous les yeux.
+    size_bytes: Optional[int] = None
 
 
 @dataclass
@@ -192,6 +200,7 @@ def sort_library_items(
         "team": lambda i: i.team or "",
         "quality": lambda i: i.local_quality.resolution or 0,
         "added_at": lambda i: i.added_at or 0.0,
+        "size_bytes": lambda i: i.size_bytes or 0,
     }
     key_func = key_funcs.get(sort) if sort is not None else None
     if key_func is None:
@@ -284,6 +293,7 @@ def list_library(
                         previous, movie_quality, movie_team, movie_local_paths, movie_path_resolved,
                         movie.size_bytes,
                     ),
+                    size_bytes=movie.size_bytes,
                 )
             )
     if sonarr is not None:
@@ -329,6 +339,7 @@ def list_library(
                         previous, season_quality, season_team, season_local_paths, season_path_resolved,
                         season.size_bytes,
                     ),
+                    size_bytes=season.size_bytes,
                 )
             )
     return items

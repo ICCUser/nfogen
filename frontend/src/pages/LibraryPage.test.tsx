@@ -93,7 +93,7 @@ const MATRIX_ITEM: LibraryItem = {
   key: '["movie","tt0133093",1999]',
   status: "absent", checked_at: 1700000000, has_freeleech_alternative: false, has_double_upload_window: false,
   error: null, local_paths: [], path_resolved: true, path_error: null, tracker_genre: null, team: "TEAM",
-  seed_match: null,
+  seed_match: null, size_bytes: 4_500_000_000,
 };
 
 /** Titre jamais scanne (statut inconnu) -- comportement d'origine de la
@@ -106,7 +106,7 @@ const SHOW_ITEM: LibraryItem = {
   key: '["series",99,1]',
   status: null, checked_at: null, has_freeleech_alternative: false, has_double_upload_window: false,
   error: null, local_paths: [], path_resolved: false, path_error: null, tracker_genre: null, team: null,
-  seed_match: null,
+  seed_match: null, size_bytes: null,
 };
 
 /** Deux saisons de "Lucifer", meme serie/equipe -- source pour le test du
@@ -119,7 +119,7 @@ const LUCIFER_S05: LibraryItem = {
   key: '["series",305288,5]',
   status: "absent", checked_at: 1700000000, has_freeleech_alternative: false, has_double_upload_window: false,
   error: null, local_paths: ["/media/lucifer/s05.mkv"], path_resolved: true, path_error: null,
-  tracker_genre: null, team: "Frosties", seed_match: null,
+  tracker_genre: null, team: "Frosties", seed_match: null, size_bytes: 9_000_000_000,
 };
 
 const LUCIFER_S06: LibraryItem = {
@@ -666,6 +666,24 @@ describe("LibraryPage", () => {
     await waitFor(() => {
       expect(vi.mocked(libraryResults)).toHaveBeenLastCalledWith(
         expect.objectContaining({ sort: "title", order: "desc", page: 1 }),
+      );
+    });
+  });
+
+  it("affiche la taille du fichier et permet de trier par taille", async () => {
+    const user = userEvent.setup();
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 1, season_packs: [] });
+
+    renderPage();
+    await screen.findByText("4.19 Go");
+
+    // TanStack Table trie une colonne NUMERIQUE decroissant au premier clic
+    // (le plus gros fichier en premier) -- comportement par defaut de la
+    // bibliotheque pour ce type de donnee, pas de "asc" comme pour du texte.
+    await user.click(screen.getByTestId("col-header-size_bytes"));
+    await waitFor(() => {
+      expect(vi.mocked(libraryResults)).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "size_bytes", order: "desc", page: 1 }),
       );
     });
   });

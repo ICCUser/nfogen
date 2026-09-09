@@ -279,6 +279,10 @@ export interface LibraryItem {
    * codec/langues) -- permet de proposer un seed sans re-upload
    * (retour utilisateur, 2026-09-09). */
   seed_match: { guid: string; release_name: string } | null;
+  /** Taille en octets (deja connue cote Radarr/Sonarr) -- retour
+   * utilisateur, 2026-09-09 : colonne manquante pour comprendre certains
+   * ecarts de temps de traitement entre fichiers. */
+  size_bytes: number | null;
 }
 
 /** Groupe de saisons consecutives d'une meme serie, meme equipe, propose

@@ -58,6 +58,25 @@ def test_list_library_builds_movie_item_with_selection_key():
     assert item.key == upload_history_store.key_str(movie_key("tt001", "1", "Movie", 2020))
 
 
+def test_list_library_exposes_size_bytes_for_movie_and_series():
+    """Retour utilisateur, 2026-09-09 : colonne "Taille" manquante dans la
+    Bibliotheque -- la donnee etait deja calculee (RadarrMovieFile.
+    size_bytes / SonarrSeasonFile.size_bytes, ajoutes pour _compute_seed_match)
+    mais jamais exposee sur LibraryItem lui-meme."""
+    movie = RadarrMovieFile(
+        movie_id=1, title="Movie", year=2020, imdb_id="tt001", tmdb_id=1, size_bytes=4_500_000_000,
+    )
+    season = SonarrSeasonFile(
+        series_id=7, title="Show", year=2019, tvdb_id=99, imdb_id=None,
+        season_number=1, episode_file_count=10, size_bytes=9_000_000_000,
+    )
+    items = gapscan_library.list_library(radarr=_FakeRadarr([movie]), sonarr=_FakeSonarr([season]))
+    movie_item = next(i for i in items if i.media_type == "movie")
+    season_item = next(i for i in items if i.media_type == "series")
+    assert movie_item.size_bytes == 4_500_000_000
+    assert season_item.size_bytes == 9_000_000_000
+
+
 def test_list_library_extracts_team_from_movie_scene_name():
     """Retour utilisateur, 2026-09-08 : afficher le tag d'equipe par ligne
     dans la Bibliotheque -- meme extraction que celle deja utilisee dans
@@ -494,6 +513,14 @@ def test_sort_library_items_by_added_at_none_first_ascending():
     unknown = _library_item(key="unknown", added_at=None)
     result = gapscan_library.sort_library_items([known, unknown], "added_at", "asc")
     assert [i.key for i in result] == ["unknown", "known"]
+
+
+def test_sort_library_items_by_size_bytes_unknown_first_ascending():
+    small = _library_item(key="small", size_bytes=1_000_000)
+    big = _library_item(key="big", size_bytes=9_000_000)
+    unknown = _library_item(key="unknown", size_bytes=None)
+    result = gapscan_library.sort_library_items([big, small, unknown], "size_bytes", "asc")
+    assert [i.key for i in result] == ["unknown", "small", "big"]
 
 
 def test_sort_library_items_unknown_sort_returns_items_unchanged():

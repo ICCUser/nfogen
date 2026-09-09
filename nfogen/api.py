@@ -1086,9 +1086,10 @@ def gapscan_library_endpoint(
     jamais scannes). `added_since_days` : ne garde que les items ajoutes
     il y a moins de N jours (ignore les items sans added_at connu).
     `processed` : filtre sur already_processed. `sort` : colonne de tri
-    (`title`/`media_type`/`status`/`team`/`quality`/`added_at`, voir
-    gapscan_library.sort_library_items) -- applique sur la liste deja
-    filtree, AVANT pagination (retour utilisateur, 2026-09-09 : le tri
+    (`title`/`media_type`/`status`/`team`/`quality`/`added_at`/
+    `size_bytes`, voir gapscan_library.sort_library_items) -- applique
+    sur la liste deja filtree, AVANT pagination (retour utilisateur,
+    2026-09-09 : le tri
     doit porter sur toute la bibliotheque, pas seulement la page
     affichee). `order` : `"asc"` (defaut) ou `"desc"`. `profile` : quel
     profil de tracker pour classer `tracker_genre` (fusion
