@@ -1635,6 +1635,111 @@ def test_cancel_already_finished_job_is_409(reload_api, tmp_path):
     assert cancel_resp.status_code == 409
 
 
+# --------------------------------------------------------------------------- #
+# Verification approfondie du fichier video (AUTOMATION.md, sous-projet 7)
+# --------------------------------------------------------------------------- #
+def test_verify_integrity_returns_job_id(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod.integrity_job_runner, "start", lambda staged_path: "job-1")
+    client = TestClient(mod.app)
+
+    resp = client.post("/gapscan/verify-integrity", json={"staged_path": "/staging/movie.mkv"})
+    assert resp.status_code == 200
+    assert resp.json() == {"job_id": "job-1"}
+
+
+def test_verify_integrity_400_when_ffmpeg_absent(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+
+    def fake_start(staged_path):
+        raise RuntimeError("ffmpeg/ffprobe requis pour la vérification — non trouvés sur le serveur nfogen.")
+
+    monkeypatch.setattr(mod.integrity_job_runner, "start", fake_start)
+    client = TestClient(mod.app)
+
+    resp = client.post("/gapscan/verify-integrity", json={"staged_path": "/staging/movie.mkv"})
+    assert resp.status_code == 400
+    assert "ffmpeg" in resp.json()["detail"]
+
+
+def test_integrity_job_status_404_for_unknown_job(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.get("/gapscan/integrity-jobs/does-not-exist")
+    assert resp.status_code == 404
+
+
+def test_integrity_job_status_returns_job(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    fake_status = {
+        "job_id": "job-1", "state": "done", "percent": 100.0,
+        "started_at": 1.0, "finished_at": 2.0, "error": None,
+        "result": {"passed": True, "errors": [], "warnings": []},
+    }
+    monkeypatch.setattr(mod.integrity_job_runner, "status", lambda job_id: fake_status)
+    client = TestClient(mod.app)
+
+    resp = client.get("/gapscan/integrity-jobs/job-1")
+    assert resp.status_code == 200
+    assert resp.json() == fake_status
+
+
+def test_cancel_integrity_job_unknown_is_404(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    client = TestClient(mod.app)
+    resp = client.post("/gapscan/integrity-jobs/does-not-exist/cancel")
+    assert resp.status_code == 404
+
+
+def test_cancel_integrity_job_already_finished_is_409(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(
+        mod.integrity_job_runner, "status",
+        lambda job_id: {"job_id": job_id, "state": "done", "percent": 100.0,
+                         "started_at": 1.0, "finished_at": 2.0, "error": None, "result": None},
+    )
+    client = TestClient(mod.app)
+
+    resp = client.post("/gapscan/integrity-jobs/job-1/cancel")
+    assert resp.status_code == 409
+
+
+def test_cancel_integrity_job_cancels(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(
+        mod.integrity_job_runner, "status",
+        lambda job_id: {"job_id": job_id, "state": "verifying", "percent": 10.0,
+                         "started_at": 1.0, "finished_at": None, "error": None, "result": None},
+    )
+    cancelled = []
+    monkeypatch.setattr(mod.integrity_job_runner, "cancel", lambda job_id: cancelled.append(job_id) or True)
+    client = TestClient(mod.app)
+
+    resp = client.post("/gapscan/integrity-jobs/job-1/cancel")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "cancelling"}
+    assert cancelled == ["job-1"]
+
+
+def test_verify_integrity_endpoints_501_without_gapscan_extra(reload_api, monkeypatch):
+    mod = reload_api(NFOGEN_API_TOKEN=None)
+    monkeypatch.setattr(mod, "_GAPSCAN_AVAILABLE", False)
+    client = TestClient(mod.app)
+
+    assert client.post("/gapscan/verify-integrity", json={"staged_path": "x"}).status_code == 501
+    assert client.get("/gapscan/integrity-jobs/x").status_code == 501
+    assert client.post("/gapscan/integrity-jobs/x/cancel").status_code == 501
+
+
+def test_verify_integrity_endpoints_401_without_token(reload_api):
+    mod = reload_api(NFOGEN_API_TOKEN="secret")
+    client = TestClient(mod.app)
+
+    assert client.post("/gapscan/verify-integrity", json={"staged_path": "x"}).status_code == 401
+    assert client.get("/gapscan/integrity-jobs/x").status_code == 401
+    assert client.post("/gapscan/integrity-jobs/x/cancel").status_code == 401
+
+
 def test_prepare_upload_send_creates_a_draft(reload_api, tmp_path, monkeypatch):
     staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
     staged.write_bytes(b"video")

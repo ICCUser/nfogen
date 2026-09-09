@@ -60,6 +60,7 @@ try:
         gapscan_config_store,
         gapscan_library,
         gapscan_runner,
+        integrity_job_runner,
         tracker_profile,
         upload_history_store,
         upload_prep,
@@ -1261,6 +1262,42 @@ def gapscan_commit_job_cancel(job_id: str) -> dict[str, str]:
     if status["state"] in ("done", "error", "cancelled"):
         raise HTTPException(status_code=409, detail="Cette tâche est déjà terminée.")
     commit_job_runner.cancel(job_id)
+    return {"status": "cancelling"}
+
+
+class VerifyIntegrityRequest(BaseModel):
+    staged_path: str
+
+
+@app.post("/gapscan/verify-integrity", dependencies=[Depends(require_token)])
+def gapscan_verify_integrity(req: VerifyIntegrityRequest) -> dict[str, str]:
+    """Demarre la verification approfondie EN TACHE DE FOND (AUTOMATION.md,
+    sous-projet 7) -- renvoie un job_id immediatement, suivi via
+    GET /gapscan/integrity-jobs/{job_id}. `ffmpeg`/`ffprobe` absents du
+    serveur -> 400 immediat (voir integrity_job_runner.start())."""
+    _require_gapscan_available()
+    job_id = _run_upload_prep(integrity_job_runner.start, req.staged_path)
+    return {"job_id": job_id}
+
+
+@app.get("/gapscan/integrity-jobs/{job_id}", dependencies=[Depends(require_token)])
+def gapscan_integrity_job_status(job_id: str) -> dict[str, Any]:
+    _require_gapscan_available()
+    status = integrity_job_runner.status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Tâche inconnue.")
+    return status
+
+
+@app.post("/gapscan/integrity-jobs/{job_id}/cancel", dependencies=[Depends(require_token)])
+def gapscan_integrity_job_cancel(job_id: str) -> dict[str, str]:
+    _require_gapscan_available()
+    status = integrity_job_runner.status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Tâche inconnue.")
+    if status["state"] in ("done", "error", "cancelled"):
+        raise HTTPException(status_code=409, detail="Cette tâche est déjà terminée.")
+    integrity_job_runner.cancel(job_id)
     return {"status": "cancelling"}
 
 
