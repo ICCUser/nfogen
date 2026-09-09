@@ -215,3 +215,49 @@ def test_verify_video_file_real_truncated_clip_fails(tmp_path):
 
     report = video_integrity.verify_video_file(str(clip))
     assert report.passed is False
+
+
+# --------------------------------------------------------------------------- #
+# verify_staged_media() -- agregation fichier/dossier
+# --------------------------------------------------------------------------- #
+def test_verify_staged_media_single_file_delegates_to_verify_video_file(monkeypatch, tmp_path):
+    movie = tmp_path / "Movie.mkv"
+    movie.write_bytes(b"x")
+    captured = {}
+
+    def fake_verify(path, *, on_progress=None, cancel_event=None):
+        captured["path"] = path
+        return video_integrity.VideoIntegrityReport(passed=True)
+
+    monkeypatch.setattr("nfogen.video_integrity.verify_video_file", fake_verify)
+
+    report = video_integrity.verify_staged_media(str(movie))
+    assert report.passed is True
+    assert captured["path"] == str(movie)
+
+
+def test_verify_staged_media_directory_aggregates_all_video_files(monkeypatch, tmp_path):
+    (tmp_path / "S05").mkdir()
+    ep1 = tmp_path / "S05" / "ep01.mkv"
+    ep2 = tmp_path / "S05" / "ep02.mkv"
+    ep1.write_bytes(b"x")
+    ep2.write_bytes(b"x")
+    (tmp_path / "S05" / "readme.txt").write_text("pas une video")
+
+    def fake_verify(path, *, on_progress=None, cancel_event=None):
+        if path.endswith("ep02.mkv"):
+            return video_integrity.VideoIntegrityReport(passed=False, errors=["corrompu"])
+        return video_integrity.VideoIntegrityReport(passed=True)
+
+    monkeypatch.setattr("nfogen.video_integrity.verify_video_file", fake_verify)
+
+    report = video_integrity.verify_staged_media(str(tmp_path))
+    assert report.passed is False
+    assert any("ep02.mkv" in e and "corrompu" in e for e in report.errors)
+
+
+def test_verify_staged_media_no_video_files_found(tmp_path):
+    (tmp_path / "notes.txt").write_text("rien a voir")
+    report = video_integrity.verify_staged_media(str(tmp_path))
+    assert report.passed is False
+    assert "Aucun fichier vidéo trouvé" in report.errors[0]

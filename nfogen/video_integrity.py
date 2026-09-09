@@ -16,9 +16,11 @@ import shutil
 import subprocess
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 from .cancellation import OperationCancelled
+from .extract import VIDEO_EXTS
 
 DURATION_TOLERANCE_SECONDS = 5.0
 AV_SYNC_TOLERANCE_SECONDS = 0.5
@@ -123,3 +125,40 @@ def verify_video_file(
             errors.append(f"Décalage audio/vidéo détecté ({gap:.2f}s) au démarrage.")
 
     return VideoIntegrityReport(passed=len(errors) == 0, errors=errors)
+
+
+def verify_staged_media(
+    staged_path: str,
+    *,
+    on_progress: Optional[Callable[[float], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
+) -> VideoIntegrityReport:
+    """staged_path : UN fichier (film) ou UN dossier (serie / pack de
+    saisons, voir upload_prep.CommitResult.staged_path). Enumere tous
+    les fichiers video (extract.VIDEO_EXTS) recursivement et agrege un
+    rapport par fichier en un seul VideoIntegrityReport -- erreurs/
+    warnings prefixes du nom de fichier pour rester lisibles sur un pack
+    multi-fichiers."""
+    root = Path(staged_path)
+    if root.is_file():
+        files = [root]
+    else:
+        files = sorted(p for p in root.rglob("*") if p.suffix.lower() in VIDEO_EXTS)
+
+    if not files:
+        return VideoIntegrityReport(passed=False, errors=[f"Aucun fichier vidéo trouvé dans {staged_path}."])
+
+    all_errors: list[str] = []
+    all_warnings: list[str] = []
+    for index, file in enumerate(files):
+        def file_progress(percent: float, index: int = index) -> None:
+            if on_progress is not None:
+                on_progress(100.0 * (index + percent / 100.0) / len(files))
+
+        report = verify_video_file(
+            str(file), on_progress=file_progress if on_progress else None, cancel_event=cancel_event,
+        )
+        all_errors.extend(f"[{file.name}] {e}" for e in report.errors)
+        all_warnings.extend(f"[{file.name}] {w}" for w in report.warnings)
+
+    return VideoIntegrityReport(passed=len(all_errors) == 0, errors=all_errors, warnings=all_warnings)
