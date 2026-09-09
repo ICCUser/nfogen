@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
     "mediainfo.js": "^0.3.7",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

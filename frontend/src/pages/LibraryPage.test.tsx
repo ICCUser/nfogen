@@ -648,6 +648,28 @@ describe("LibraryPage", () => {
     });
   });
 
+  it("trie par titre au clic sur l'en-tête, inverse l'ordre au second clic", async () => {
+    const user = userEvent.setup();
+    vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 1, season_packs: [] });
+
+    renderPage();
+    await waitFor(() => expect(libraryResults).toHaveBeenCalled());
+
+    await user.click(screen.getByTestId("col-header-title"));
+    await waitFor(() => {
+      expect(vi.mocked(libraryResults)).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "title", order: "asc", page: 1 }),
+      );
+    });
+
+    await user.click(screen.getByTestId("col-header-title"));
+    await waitFor(() => {
+      expect(vi.mocked(libraryResults)).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "title", order: "desc", page: 1 }),
+      );
+    });
+  });
+
   it("affiche la pagination et change de page au clic sur Suivant", async () => {
     const user = userEvent.setup();
     vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 120, season_packs: [] });

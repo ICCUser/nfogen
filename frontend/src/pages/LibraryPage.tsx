@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  type ColumnDef,
+  type SortingState,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import ActiveTransfersTray from "../components/ActiveTransfersTray";
 import UploadPrepPanel from "../components/UploadPrepPanel";
 import {
@@ -61,6 +68,33 @@ function qualitySummary(q: LibraryItem["local_quality"]): string {
   return parts.length > 0 ? parts.join(" · ") : "—";
 }
 
+/** Date relative ("il y a 3 j") -- LibraryItem.added_at (retour
+ * utilisateur, 2026-09-09) etait deja connu (utilise par le filtre
+ * added_since_days) mais jamais affiche en colonne. */
+function formatAddedAt(addedAt: number | null): string {
+  if (addedAt === null) return "—";
+  const days = Math.floor((Date.now() / 1000 - addedAt) / 86400);
+  if (days <= 0) return "aujourd'hui";
+  if (days === 1) return "hier";
+  if (days < 30) return `il y a ${days} j`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `il y a ${months} mois`;
+  const years = Math.floor(months / 12);
+  return `il y a ${years} an${years > 1 ? "s" : ""}`;
+}
+
+const LIBRARY_COLUMNS: ColumnDef<LibraryItem>[] = [
+  { id: "select", header: "", enableSorting: false },
+  { id: "title", header: "Titre", accessorKey: "title" },
+  { id: "media_type", header: "Type", accessorKey: "media_type" },
+  { id: "genres", header: "Genres", enableSorting: false },
+  { id: "status", header: "Statut", accessorKey: "status" },
+  { id: "team", header: "Team", accessorKey: "team" },
+  { id: "quality", header: "Ta version", accessorFn: (row) => row.local_quality.resolution ?? 0 },
+  { id: "added_at", header: "Ajouté le", accessorKey: "added_at" },
+  { id: "actions", header: "", enableSorting: false },
+];
+
 const PAGE_SIZE = 50;
 
 /** Page "Bibliothèque" (AUTOMATION.md, sous-projet 8) : inventaire brut
@@ -110,6 +144,7 @@ export default function LibraryPage() {
   const [addedSinceDays, setAddedSinceDays] = useState("");
   const [processed, setProcessed] = useState<"" | "true" | "false">("");
   const [page, setPage] = useState(1);
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [starting, setStarting] = useState(false);
@@ -170,13 +205,26 @@ export default function LibraryPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQ, mediaType, genre, trackerGenre, statusFilter, addedSinceDays, processed, page, profile]);
+  }, [
+    debouncedQ, mediaType, genre, trackerGenre, statusFilter, addedSinceDays, processed, page, profile,
+    sorting,
+  ]);
 
   function resetPageAnd<T>(setter: (v: T) => void) {
     return (v: T) => {
       setter(v);
       setPage(1);
     };
+  }
+
+  /** Changer de tri revient a la page 1 -- meme logique que resetPageAnd
+   * pour les filtres (retour utilisateur, 2026-09-09). */
+  function handleSortingChange(updater: SortingState | ((old: SortingState) => SortingState)) {
+    setSorting((old) => {
+      const next = typeof updater === "function" ? updater(old) : updater;
+      setPage(1);
+      return next;
+    });
   }
 
   function stopPolling() {
@@ -210,6 +258,7 @@ export default function LibraryPage() {
 
   async function load() {
     try {
+      const activeSort = sorting[0];
       const res = await libraryResults({
         q: debouncedQ || undefined,
         mediaType: mediaType || undefined,
@@ -218,6 +267,8 @@ export default function LibraryPage() {
         status: statusFilter || undefined,
         addedSinceDays: addedSinceDays ? Number(addedSinceDays) : undefined,
         processed: processed === "" ? undefined : processed === "true",
+        sort: activeSort?.id,
+        order: activeSort ? (activeSort.desc ? "desc" : "asc") : undefined,
         page,
         pageSize: PAGE_SIZE,
         profile,
@@ -388,6 +439,16 @@ export default function LibraryPage() {
   // Un scan precedent existe (memoire ou repris du disque au demarrage,
   // voir gapscan_results_store.py) des qu'un "done" a deja ete rapporte.
   const hasPreviousScan = status?.state === "done" && status.finished_at !== null;
+
+  const table = useReactTable({
+    data: items ?? [],
+    columns: LIBRARY_COLUMNS,
+    state: { sorting },
+    onSortingChange: handleSortingChange,
+    manualSorting: true,
+    enableMultiSort: false,
+    getCoreRowModel: getCoreRowModel(),
+  });
 
   return (
     <div className="space-y-4">
@@ -759,16 +820,22 @@ export default function LibraryPage() {
       {items !== null && items.length > 0 && (
         <table className="w-full overflow-hidden rounded-md border border-line bg-surface text-sm">
           <thead className="bg-surface-2 text-left text-ink-dim">
-            <tr>
-              <th className="px-4 py-2" />
-              <th className="px-4 py-2">Titre</th>
-              <th className="px-4 py-2">Type</th>
-              <th className="px-4 py-2">Genres</th>
-              <th className="px-4 py-2">Statut</th>
-              <th className="px-4 py-2">Team</th>
-              <th className="px-4 py-2">Ta version</th>
-              <th className="px-4 py-2" />
-            </tr>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th
+                    key={header.id}
+                    data-testid={`col-header-${header.column.id}`}
+                    className={`px-4 py-2 ${header.column.getCanSort() ? "cursor-pointer select-none" : ""}`}
+                    onClick={header.column.getToggleSortingHandler()}
+                  >
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getIsSorted() === "asc" && " ▲"}
+                    {header.column.getIsSorted() === "desc" && " ▼"}
+                  </th>
+                ))}
+              </tr>
+            ))}
           </thead>
           <tbody>
             {items.map((item) => (
@@ -816,6 +883,9 @@ export default function LibraryPage() {
                 <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">{item.team ?? "—"}</td>
                 <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">
                   {qualitySummary(item.local_quality)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2 text-ink-dim">
+                  {formatAddedAt(item.added_at)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-right">
                   <Link to="/" className="text-sm text-accent-ink underline">

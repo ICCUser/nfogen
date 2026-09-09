@@ -354,6 +354,8 @@ export function libraryResults(
     status?: GapStatus | "not_verified";
     addedSinceDays?: number;
     processed?: boolean;
+    sort?: string;
+    order?: "asc" | "desc";
     page?: number;
     pageSize?: number;
     profile?: string;
@@ -367,6 +369,8 @@ export function libraryResults(
   if (opts.status) params.set("status", opts.status);
   if (opts.addedSinceDays !== undefined) params.set("added_since_days", String(opts.addedSinceDays));
   if (opts.processed !== undefined) params.set("processed", String(opts.processed));
+  if (opts.sort) params.set("sort", opts.sort);
+  if (opts.order) params.set("order", opts.order);
   params.set("page", String(opts.page ?? 1));
   params.set("page_size", String(opts.pageSize ?? 50));
   if (opts.profile) params.set("profile", opts.profile);
