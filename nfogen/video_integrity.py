@@ -15,6 +15,7 @@ import json
 import shutil
 import subprocess
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -24,6 +25,12 @@ from .extract import VIDEO_EXTS
 
 DURATION_TOLERANCE_SECONDS = 5.0
 AV_SYNC_TOLERANCE_SECONDS = 0.5
+# Nombre de fichiers decodes en parallele pour un pack multi-fichiers
+# (audit performance, 2026-09-09) -- ffmpeg est CPU-bound, un decodage par
+# thread Python tourne dans un vrai sous-processus (le GIL n'est jamais un
+# frein ici) ; plafonne volontairement bas pour ne pas saturer un petit
+# serveur/NAS meme sur un pack a 24 episodes.
+_MAX_CONCURRENT_DECODES = 4
 
 
 @dataclass
@@ -138,7 +145,11 @@ def verify_staged_media(
     les fichiers video (extract.VIDEO_EXTS) recursivement et agrege un
     rapport par fichier en un seul VideoIntegrityReport -- erreurs/
     warnings prefixes du nom de fichier pour rester lisibles sur un pack
-    multi-fichiers."""
+    multi-fichiers. Decode JUSQU'A `_MAX_CONCURRENT_DECODES` fichiers en
+    parallele (audit performance, 2026-09-09 -- un pack de saisons
+    entier decode sequentiellement pouvait prendre des dizaines de
+    minutes ; ffmpeg tourne dans un vrai sous-processus par fichier,
+    aucun frein du GIL Python)."""
     root = Path(staged_path)
     if root.is_file():
         files = [root]
@@ -148,17 +159,67 @@ def verify_staged_media(
     if not files:
         return VideoIntegrityReport(passed=False, errors=[f"Aucun fichier vidéo trouvé dans {staged_path}."])
 
+    if len(files) == 1:
+        reports = [(0, verify_video_file(str(files[0]), on_progress=on_progress, cancel_event=cancel_event))]
+    else:
+        reports = _verify_files_concurrently(files, on_progress=on_progress, cancel_event=cancel_event)
+
     all_errors: list[str] = []
     all_warnings: list[str] = []
-    for index, file in enumerate(files):
-        def file_progress(percent: float, index: int = index) -> None:
-            if on_progress is not None:
-                on_progress(100.0 * (index + percent / 100.0) / len(files))
-
-        report = verify_video_file(
-            str(file), on_progress=file_progress if on_progress else None, cancel_event=cancel_event,
-        )
+    for index, report in sorted(reports, key=lambda item: item[0]):
+        file = files[index]
         all_errors.extend(f"[{file.name}] {e}" for e in report.errors)
         all_warnings.extend(f"[{file.name}] {w}" for w in report.warnings)
 
     return VideoIntegrityReport(passed=len(all_errors) == 0, errors=all_errors, warnings=all_warnings)
+
+
+def _verify_files_concurrently(
+    files: list[Path],
+    *,
+    on_progress: Optional[Callable[[float], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
+) -> list[tuple[int, VideoIntegrityReport]]:
+    """Lance `verify_video_file` sur chaque fichier dans un pool borne a
+    `_MAX_CONCURRENT_DECODES` threads. `on_progress` recoit la MOYENNE de
+    l'avancement de chaque fichier (0 tant qu'il n'a pas commence) --
+    n'a de sens que pour une execution concurrente, contrairement a
+    l'ancienne formule sequentielle (fichiers precedents a 100%, suivants
+    a 0%). Si `cancel_event` est positionne, chaque worker leve
+    OperationCancelled individuellement (voir verify_video_file) ; le
+    premier recu est propage une fois TOUS les workers termines (jamais
+    de sous-processus ffmpeg abandonne en arriere-plan)."""
+    progress_lock = threading.Lock()
+    per_file_percent = [0.0] * len(files)
+
+    def make_progress(index: int) -> Callable[[float], None]:
+        def _progress(percent: float) -> None:
+            with progress_lock:
+                per_file_percent[index] = percent
+                if on_progress is not None:
+                    on_progress(sum(per_file_percent) / len(files))
+
+        return _progress
+
+    reports: list[tuple[int, VideoIntegrityReport]] = []
+    first_cancelled: Optional[OperationCancelled] = None
+    max_workers = min(_MAX_CONCURRENT_DECODES, len(files))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_index = {
+            executor.submit(
+                verify_video_file, str(file),
+                on_progress=make_progress(index) if on_progress else None, cancel_event=cancel_event,
+            ): index
+            for index, file in enumerate(files)
+        }
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            try:
+                reports.append((index, future.result()))
+            except OperationCancelled as exc:
+                if first_cancelled is None:
+                    first_cancelled = exc
+
+    if first_cancelled is not None:
+        raise first_cancelled
+    return reports

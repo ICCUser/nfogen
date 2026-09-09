@@ -261,3 +261,48 @@ def test_verify_staged_media_no_video_files_found(tmp_path):
     report = video_integrity.verify_staged_media(str(tmp_path))
     assert report.passed is False
     assert "Aucun fichier vidéo trouvé" in report.errors[0]
+
+
+def test_verify_staged_media_runs_multiple_files_concurrently(monkeypatch, tmp_path):
+    """Audit performance, 2026-09-09 : un pack de saisons ne doit plus
+    decoder ses fichiers un par un -- si l'implementation redevenait
+    sequentielle, ce test bloquerait jusqu'au timeout (le premier appel
+    n'avance qu'une fois que les DEUX ont demarre)."""
+    (tmp_path / "S05").mkdir()
+    (tmp_path / "S05" / "ep01.mkv").write_bytes(b"x")
+    (tmp_path / "S05" / "ep02.mkv").write_bytes(b"x")
+
+    lock = threading.Lock()
+    started: list[str] = []
+    both_started = threading.Event()
+
+    def fake_verify(path, *, on_progress=None, cancel_event=None):
+        with lock:
+            started.append(path)
+            if len(started) == 2:
+                both_started.set()
+        assert both_started.wait(timeout=5)
+        return video_integrity.VideoIntegrityReport(passed=True)
+
+    monkeypatch.setattr("nfogen.video_integrity.verify_video_file", fake_verify)
+
+    report = video_integrity.verify_staged_media(str(tmp_path))
+    assert report.passed is True
+    assert len(started) == 2
+
+
+def test_verify_staged_media_progress_averages_across_concurrent_files(monkeypatch, tmp_path):
+    (tmp_path / "S05").mkdir()
+    (tmp_path / "S05" / "ep01.mkv").write_bytes(b"x")
+    (tmp_path / "S05" / "ep02.mkv").write_bytes(b"x")
+
+    def fake_verify(path, *, on_progress=None, cancel_event=None):
+        if on_progress is not None:
+            on_progress(100.0)
+        return video_integrity.VideoIntegrityReport(passed=True)
+
+    monkeypatch.setattr("nfogen.video_integrity.verify_video_file", fake_verify)
+    seen: list[float] = []
+
+    video_integrity.verify_staged_media(str(tmp_path), on_progress=seen.append)
+    assert seen[-1] == 100.0
