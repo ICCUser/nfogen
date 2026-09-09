@@ -21,14 +21,16 @@ tracker DEJA CONNU pour lui, retrouve via la MEME cle que la selection
 (movie_key/series_key) -- jamais une nouvelle interrogation de C411 ici."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
 from . import upload_history_store
-from .gapscan import GapResult, genre_of, movie_key, series_key
+from .gapscan import GapResult, GapStatus, genre_of, movie_key, series_key
 from .name_proposal import extract_team_tag
 from .quality import ReleaseQuality, build_quality
 from .radarr_client import RadarrClient
+from .seed_match import find_seed_match
 from .sonarr_client import SonarrClient
 
 
@@ -74,6 +76,11 @@ class LibraryItem:
     # pack "INTEGRALE"). Meme extraction que upload_prep.py, jamais
     # devine autrement : `None` si aucun tag detecte dans le scene_name.
     team: Optional[str] = None
+    # Present uniquement si status == "covered" ET une SEULE release
+    # C411 correspond exactement (taille + team + resolution/source/
+    # codec/langues, voir seed_match.find_seed_match) -- permet de
+    # proposer un seed sans re-upload (retour utilisateur, 2026-09-09).
+    seed_match: Optional[dict[str, str]] = None
 
 
 @dataclass
@@ -152,6 +159,34 @@ def _previous_key(r: GapResult) -> str:
     return upload_history_store.key_str(series_key(r.tvdb_id, r.imdb_id, r.title, r.season_number))
 
 
+def find_result_by_key(key: str, results: list[GapResult]) -> Optional[GapResult]:
+    """Retrouve le GapResult correspondant a `key` (LibraryItem.key)
+    parmi des resultats de scan connus -- reutilise le meme calcul que
+    list_library() (_previous_key), pour que le serveur puisse
+    revalider un `key`/`guid` fournis par le client contre un scan
+    reellement effectue (voir seed_match_job_runner.py, audit securite
+    2026-09-09)."""
+    return next((r for r in results if _previous_key(r) == key), None)
+
+
+def _compute_seed_match(
+    previous: Optional[GapResult], local_quality: ReleaseQuality, team: Optional[str],
+    local_paths: list[str], path_resolved: bool,
+) -> Optional[dict[str, str]]:
+    if previous is None or previous.status != GapStatus.COVERED:
+        return None
+    if not path_resolved or not local_paths:
+        return None
+    try:
+        local_size = os.path.getsize(local_paths[0])
+    except OSError:
+        return None
+    candidate = find_seed_match(local_quality, team, local_size, previous.c411_matches)
+    if candidate is None:
+        return None
+    return {"guid": candidate.guid, "release_name": candidate.release_name}
+
+
 def list_library(
     radarr: Optional[RadarrClient] = None,
     sonarr: Optional[SonarrClient] = None,
@@ -181,16 +216,20 @@ def list_library(
             proc_key = upload_history_store.processed_key("movie", movie.movie_id, None)
             key = upload_history_store.key_str(movie_key(movie.imdb_id, tmdb_id, movie.title, movie.year))
             previous = previous_by_key.get(key)
+            movie_quality = build_quality(
+                movie.scene_name or movie.title,
+                fallback_resolution=movie.best_resolution,
+                fallback_language_names=movie.language_names,
+            )
+            movie_team = extract_team_tag(movie.scene_name or movie.title)
+            movie_local_paths = previous.local_paths if previous else []
+            movie_path_resolved = previous.path_resolved if previous else False
             items.append(
                 LibraryItem(
                     media_type="movie", title=movie.title, year=movie.year, season_number=None,
                     imdb_id=movie.imdb_id, tvdb_id=None, tmdb_id=tmdb_id,
                     genres=movie.genres, added_at=movie.added_at,
-                    local_quality=build_quality(
-                        movie.scene_name or movie.title,
-                        fallback_resolution=movie.best_resolution,
-                        fallback_language_names=movie.language_names,
-                    ),
+                    local_quality=movie_quality,
                     radarr_movie_id=movie.movie_id, sonarr_series_id=None,
                     already_processed=proc_key is not None and upload_history_store.is_processed(proc_key),
                     last_processed_at=upload_history_store.last_processed_at(proc_key) if proc_key else None,
@@ -200,11 +239,14 @@ def list_library(
                     has_freeleech_alternative=previous.has_freeleech_alternative if previous else False,
                     has_double_upload_window=previous.has_double_upload_window if previous else False,
                     error=previous.error if previous else None,
-                    local_paths=previous.local_paths if previous else [],
-                    path_resolved=previous.path_resolved if previous else False,
+                    local_paths=movie_local_paths,
+                    path_resolved=movie_path_resolved,
                     path_error=previous.path_error if previous else None,
                     tracker_genre=genre_of(previous, profile) if previous else None,
-                    team=extract_team_tag(movie.scene_name or movie.title),
+                    team=movie_team,
+                    seed_match=_compute_seed_match(
+                        previous, movie_quality, movie_team, movie_local_paths, movie_path_resolved,
+                    ),
                 )
             )
     if sonarr is not None:
@@ -216,6 +258,14 @@ def list_library(
                 series_key(season.tvdb_id, season.imdb_id, season.title, season.season_number)
             )
             previous = previous_by_key.get(key)
+            season_quality = build_quality(
+                season.scene_name or season.title,
+                fallback_resolution=season.best_resolution,
+                fallback_language_names=season.language_names,
+            )
+            season_team = extract_team_tag(season.scene_name or season.title)
+            season_local_paths = previous.local_paths if previous else []
+            season_path_resolved = previous.path_resolved if previous else False
             items.append(
                 LibraryItem(
                     media_type="series", title=season.title, year=season.year,
@@ -223,11 +273,7 @@ def list_library(
                     tvdb_id=season.tvdb_id,
                     tmdb_id=str(season.tmdb_id) if season.tmdb_id else None,
                     genres=season.genres, added_at=season.added_at,
-                    local_quality=build_quality(
-                        season.scene_name or season.title,
-                        fallback_resolution=season.best_resolution,
-                        fallback_language_names=season.language_names,
-                    ),
+                    local_quality=season_quality,
                     radarr_movie_id=None, sonarr_series_id=season.series_id,
                     already_processed=proc_key is not None and upload_history_store.is_processed(proc_key),
                     last_processed_at=upload_history_store.last_processed_at(proc_key) if proc_key else None,
@@ -237,11 +283,14 @@ def list_library(
                     has_freeleech_alternative=previous.has_freeleech_alternative if previous else False,
                     has_double_upload_window=previous.has_double_upload_window if previous else False,
                     error=previous.error if previous else None,
-                    local_paths=previous.local_paths if previous else [],
-                    path_resolved=previous.path_resolved if previous else False,
+                    local_paths=season_local_paths,
+                    path_resolved=season_path_resolved,
                     path_error=previous.path_error if previous else None,
                     tracker_genre=genre_of(previous, profile) if previous else None,
-                    team=extract_team_tag(season.scene_name or season.title),
+                    team=season_team,
+                    seed_match=_compute_seed_match(
+                        previous, season_quality, season_team, season_local_paths, season_path_resolved,
+                    ),
                 )
             )
     return items

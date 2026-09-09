@@ -6,10 +6,11 @@ import pytest
 
 from nfogen import gapscan_library, upload_history_store
 from nfogen.gapscan import GapResult, GapStatus, movie_key, series_key
-from nfogen.gapscan_library import detect_season_packs
+from nfogen.gapscan_library import detect_season_packs, find_result_by_key
 from nfogen.quality import ReleaseQuality
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.sonarr_client import SonarrSeasonFile
+from nfogen.torznab_client import TorznabRelease
 
 
 class _FakeRadarr:
@@ -282,3 +283,117 @@ def test_detect_season_packs_excludes_seasons_without_team_or_unresolved_path():
     assert len(suggestions) == 1
     assert suggestions[0].season_numbers == [2, 3]
     assert suggestions[0].is_full_series is False  # saison 1 existe (meme sans team), donc pas INTEGRALE
+
+
+# --------------------------------------------------------------------------- #
+# seed_match (retour utilisateur, 2026-09-09) : proposer un seed sans
+# re-upload quand le fichier local correspond EXACTEMENT a une release
+# C411 deja connue via un scan precedent (previous_results).
+# --------------------------------------------------------------------------- #
+def _covered_movie_previous(c411_matches):
+    return GapResult(
+        media_type="movie", title="Matrix", year=1999, season_number=None,
+        imdb_id="tt0133093", tmdb_id="603", tvdb_id=None, status=GapStatus.COVERED,
+        local_quality=ReleaseQuality(
+            raw="", resolution=1080, source="BLURAY", codec="X264", languages=["VFF"], multi=True,
+        ),
+        c411_matches=c411_matches,
+        local_paths=["/data/movies/Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM.mkv"],
+        path_resolved=True,
+    )
+
+
+def test_gapscan_library_exposes_seed_match_when_exact_candidate_found(tmp_path, monkeypatch):
+    local_file = tmp_path / "Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM.mkv"
+    local_file.write_bytes(b"x" * 1_000_000)
+    previous = _covered_movie_previous(
+        c411_matches=[
+            TorznabRelease(
+                title="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM", guid="guid-1",
+                link="https://c411.org/torrents/x", size=1_000_000,
+            )
+        ],
+    )
+    previous.local_paths = [str(local_file)]
+
+    movie = RadarrMovieFile(
+        movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
+        scene_name="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM",
+    )
+    items = gapscan_library.list_library(
+        radarr=_FakeRadarr([movie]), sonarr=None, previous_results=[previous],
+    )
+
+    assert items[0].seed_match == {
+        "guid": "guid-1", "release_name": "Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM",
+    }
+
+
+def test_gapscan_library_seed_match_none_when_not_covered():
+    previous = _covered_movie_previous(c411_matches=[])
+    previous.status = GapStatus.ABSENT
+
+    movie = RadarrMovieFile(
+        movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
+        scene_name="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM",
+    )
+    items = gapscan_library.list_library(
+        radarr=_FakeRadarr([movie]), sonarr=None, previous_results=[previous],
+    )
+
+    assert items[0].seed_match is None
+
+
+def test_gapscan_library_seed_match_none_when_path_not_resolved():
+    previous = _covered_movie_previous(
+        c411_matches=[
+            TorznabRelease(
+                title="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM", guid="guid-1",
+                link="https://c411.org/torrents/x", size=1_000_000,
+            )
+        ],
+    )
+    previous.path_resolved = False
+
+    movie = RadarrMovieFile(
+        movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
+        scene_name="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM",
+    )
+    items = gapscan_library.list_library(
+        radarr=_FakeRadarr([movie]), sonarr=None, previous_results=[previous],
+    )
+
+    assert items[0].seed_match is None
+
+
+def test_gapscan_library_seed_match_none_when_no_exact_candidate():
+    local_paths = ["/data/movies/Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM.mkv"]
+    previous = _covered_movie_previous(
+        c411_matches=[
+            TorznabRelease(
+                title="Matrix.1999.MULTI.VFF.2160p.BluRay.x264-TEAM", guid="guid-1",
+                link="https://c411.org/torrents/x", size=1_000_000,
+            )
+        ],
+    )
+    previous.local_paths = local_paths
+
+    movie = RadarrMovieFile(
+        movie_id=1, title="Matrix", year=1999, imdb_id="tt0133093", tmdb_id=603,
+        scene_name="Matrix.1999.MULTI.VFF.1080p.BluRay.x264-TEAM",
+    )
+    items = gapscan_library.list_library(
+        radarr=_FakeRadarr([movie]), sonarr=None, previous_results=[previous],
+    )
+
+    assert items[0].seed_match is None
+
+
+def test_find_result_by_key_returns_matching_result():
+    result = _covered_movie_previous(c411_matches=[])
+    key = upload_history_store.key_str(movie_key("tt0133093", "603", "Matrix", 1999))
+    assert find_result_by_key(key, [result]) is result
+
+
+def test_find_result_by_key_returns_none_when_absent():
+    assert find_result_by_key("does-not-exist", []) is None
