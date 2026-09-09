@@ -117,6 +117,39 @@ describe("SeedQueuePage -- section « En cours de seed » (retour utilisateur, 2
     expect(screen.getByText(/Movie\.2020\.1080p\.x264-TEAM/)).toBeInTheDocument();
   });
 
+  it("trie par defaut sur Envoi decroissant -- le plus gros debit en premier", async () => {
+    vi.mocked(seedQueue).mockResolvedValue([]);
+    vi.mocked(seedStatus).mockResolvedValue([
+      { ...TORRENT, name: "Lent", upspeed: 1000 },
+      { ...TORRENT, name: "Rapide", upspeed: 900000 },
+    ]);
+    renderPage();
+
+    await screen.findByText("Rapide");
+    const names = screen.getAllByRole("row").slice(1).map((row) => row.textContent);
+    expect(names[0]).toContain("Rapide");
+    expect(names[1]).toContain("Lent");
+  });
+
+  it("trie par nom au clic sur l'en-tête Nom", async () => {
+    const user = userEvent.setup();
+    vi.mocked(seedQueue).mockResolvedValue([]);
+    vi.mocked(seedStatus).mockResolvedValue([
+      { ...TORRENT, name: "Beta", upspeed: 100 },
+      { ...TORRENT, name: "Alpha", upspeed: 200 },
+    ]);
+    renderPage();
+    await screen.findByText("Beta");
+
+    await user.click(screen.getByTestId("col-header-name"));
+
+    await waitFor(() => {
+      const names = screen.getAllByRole("row").slice(1).map((row) => row.textContent);
+      expect(names[0]).toContain("Alpha");
+      expect(names[1]).toContain("Beta");
+    });
+  });
+
   it("rafraîchit l'état du seed automatiquement sans recharger la page", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(seedQueue).mockResolvedValue([]);

@@ -1,4 +1,12 @@
 import { useEffect, useState } from "react";
+import {
+  type ColumnDef,
+  type SortingState,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import { addToSeedQueue, seedQueue, seedStatus } from "../api/client";
 import { ApiError } from "../api/types";
 import type { SeedingTorrent, SeedQueueEntry } from "../api/types";
@@ -17,6 +25,19 @@ function formatSpeed(bytesPerSecond: number): string {
   return `${formatBytes(bytesPerSecond)}/s`;
 }
 
+/** Tri par defaut : Envoi decroissant, pour que le polling live fasse
+ * ressortir naturellement qui envoie actuellement en haut du tableau
+ * (retour utilisateur, 2026-09-09). Tri 100% client (pas de pagination,
+ * la liste qBittorrent est deja complete en un appel). */
+const SEED_STATUS_COLUMNS: ColumnDef<SeedingTorrent>[] = [
+  { id: "name", header: "Nom", accessorKey: "name" },
+  { id: "size", header: "Taille", accessorKey: "size" },
+  { id: "progress", header: "Progression", accessorKey: "progress" },
+  { id: "ratio", header: "Ratio", accessorKey: "ratio" },
+  { id: "state", header: "État", accessorKey: "state" },
+  { id: "upspeed", header: "Envoi", accessorKey: "upspeed" },
+];
+
 /** Page "À mettre en seed" (AUTOMATION.md, sous-projet 6) : titres déjà
  * envoyés à C411 (voir "Envoyer à C411", sous-projet 5) en attente du
  * `.torrent` RE-SIGNÉ par le tracker une fois la modération terminée --
@@ -32,6 +53,17 @@ export default function SeedQueuePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [torrents, setTorrents] = useState<SeedingTorrent[] | null>(null);
   const [seedStatusError, setSeedStatusError] = useState<string | null>(null);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "upspeed", desc: true }]);
+
+  const seedStatusTable = useReactTable({
+    data: torrents ?? [],
+    columns: SEED_STATUS_COLUMNS,
+    state: { sorting },
+    onSortingChange: setSorting,
+    enableMultiSort: false,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
 
   useEffect(() => {
     load();
@@ -155,26 +187,37 @@ export default function SeedQueuePage() {
           <div className="overflow-x-auto rounded-md border border-line">
             <table className="w-full text-left text-sm">
               <thead className="bg-surface-2 text-xs uppercase text-ink-dim">
-                <tr>
-                  <th className="px-3 py-2">Nom</th>
-                  <th className="px-3 py-2">Taille</th>
-                  <th className="px-3 py-2">Progression</th>
-                  <th className="px-3 py-2">Ratio</th>
-                  <th className="px-3 py-2">État</th>
-                  <th className="px-3 py-2">Envoi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {torrents.map((torrent, index) => (
-                  <tr key={`${torrent.name}-${index}`} className="border-t border-line">
-                    <td className="px-3 py-2 font-mono text-ink">{torrent.name}</td>
-                    <td className="px-3 py-2 text-ink-dim">{formatBytes(torrent.size)}</td>
-                    <td className="px-3 py-2 text-ink-dim">{(torrent.progress * 100).toFixed(0)}%</td>
-                    <td className="px-3 py-2 text-ink-dim">{torrent.ratio.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-ink-dim">{torrent.state}</td>
-                    <td className="px-3 py-2 text-ink-dim">{formatSpeed(torrent.upspeed)}</td>
+                {seedStatusTable.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        data-testid={`col-header-${header.column.id}`}
+                        className="cursor-pointer select-none px-3 py-2"
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getIsSorted() === "asc" && " ▲"}
+                        {header.column.getIsSorted() === "desc" && " ▼"}
+                      </th>
+                    ))}
                   </tr>
                 ))}
+              </thead>
+              <tbody>
+                {seedStatusTable.getRowModel().rows.map((row) => {
+                  const torrent = row.original;
+                  return (
+                    <tr key={row.id} className="border-t border-line">
+                      <td className="px-3 py-2 font-mono text-ink">{torrent.name}</td>
+                      <td className="px-3 py-2 text-ink-dim">{formatBytes(torrent.size)}</td>
+                      <td className="px-3 py-2 text-ink-dim">{(torrent.progress * 100).toFixed(0)}%</td>
+                      <td className="px-3 py-2 text-ink-dim">{torrent.ratio.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-ink-dim">{torrent.state}</td>
+                      <td className="px-3 py-2 text-ink-dim">{formatSpeed(torrent.upspeed)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
