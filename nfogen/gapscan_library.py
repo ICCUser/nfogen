@@ -22,7 +22,7 @@ tracker DEJA CONNU pour lui, retrouve via la MEME cle que la selection
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from . import upload_history_store
 from .gapscan import GapResult, GapStatus, genre_of, movie_key, series_key
@@ -166,6 +166,30 @@ def find_result_by_key(key: str, results: list[GapResult]) -> Optional[GapResult
     reellement effectue (voir seed_match_job_runner.py, audit securite
     2026-09-09)."""
     return next((r for r in results if _previous_key(r) == key), None)
+
+
+def sort_library_items(
+    items: list[LibraryItem], sort: Optional[str], order: str,
+) -> list[LibraryItem]:
+    """Trie `items` (deja filtres par l'appelant) selon `sort` -- AVANT
+    troncature de pagination, pour que le tri porte sur toute la liste
+    filtree, pas seulement la page affichee (retour utilisateur,
+    2026-09-09 : "j'avais en tete du dynamique [...] datatable"). `sort`
+    absent ou non reconnu : ordre d'origine (list_library()) inchange,
+    jamais une exception. `order` : `"desc"` -> decroissant, toute autre
+    valeur (dont `"asc"`) -> croissant."""
+    key_funcs: dict[str, Callable[[LibraryItem], Any]] = {
+        "title": lambda i: (i.title.lower(), i.year or 0),
+        "media_type": lambda i: i.media_type,
+        "status": lambda i: i.status or "",
+        "team": lambda i: i.team or "",
+        "quality": lambda i: i.local_quality.resolution or 0,
+        "added_at": lambda i: i.added_at or 0.0,
+    }
+    key_func = key_funcs.get(sort) if sort is not None else None
+    if key_func is None:
+        return items
+    return sorted(items, key=key_func, reverse=(order == "desc"))
 
 
 def _compute_seed_match(

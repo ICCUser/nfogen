@@ -2564,6 +2564,58 @@ def test_gapscan_library_refetches_after_ttl_expires(reload_api, monkeypatch):
     assert _CountingFakeGapscanRadarr.calls == 2
 
 
+class _ThreeNamedMoviesFakeRadarr(_FakeGapscanRadarr):
+    def list_movie_files(self):
+        return [
+            RadarrMovieFile(movie_id=1, title="Beta", year=1999, imdb_id="tt1", tmdb_id=1),
+            RadarrMovieFile(movie_id=2, title="Alpha", year=1999, imdb_id="tt2", tmdb_id=2),
+            RadarrMovieFile(movie_id=3, title="Gamma", year=1999, imdb_id="tt3", tmdb_id=3),
+        ]
+
+
+def test_gapscan_library_sort_by_title_ascending(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    monkeypatch.setattr(mod, "RadarrClient", _ThreeNamedMoviesFakeRadarr)
+    client = TestClient(mod.app)
+
+    body = client.get("/gapscan/library", params={"sort": "title", "order": "asc"}).json()
+
+    assert [i["title"] for i in body["items"]] == ["Alpha", "Beta", "Gamma"]
+
+
+def test_gapscan_library_sort_by_title_descending(reload_api, monkeypatch):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    monkeypatch.setattr(mod, "RadarrClient", _ThreeNamedMoviesFakeRadarr)
+    client = TestClient(mod.app)
+
+    body = client.get("/gapscan/library", params={"sort": "title", "order": "desc"}).json()
+
+    assert [i["title"] for i in body["items"]] == ["Gamma", "Beta", "Alpha"]
+
+
+def test_gapscan_library_sort_applies_before_pagination(reload_api, monkeypatch):
+    """Le tri doit porter sur toute la liste, PUIS etre pagine -- pas
+    l'inverse (sinon page=2 ne serait pas trie par rapport a page=1)."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    monkeypatch.setattr(mod, "RadarrClient", _ThreeNamedMoviesFakeRadarr)
+    client = TestClient(mod.app)
+
+    body = client.get(
+        "/gapscan/library", params={"sort": "title", "order": "asc", "page": 1, "page_size": 2},
+    ).json()
+
+    assert [i["title"] for i in body["items"]] == ["Alpha", "Beta"]
+
+
 def test_gapscan_library_cache_invalidated_by_a_finished_scan(reload_api, monkeypatch):
     """Un scan qui vient de se terminer doit rafraichir la bibliotheque
     IMMEDIATEMENT (statut tracker a jour), sans attendre l'expiration du

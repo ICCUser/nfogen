@@ -422,3 +422,61 @@ def test_find_result_by_key_returns_matching_result():
 
 def test_find_result_by_key_returns_none_when_absent():
     assert find_result_by_key("does-not-exist", []) is None
+
+
+# --------------------------------------------------------------------------- #
+# sort_library_items (retour utilisateur, 2026-09-09) : tri sur toute la
+# bibliotheque filtree, applique AVANT pagination cote endpoint.
+# --------------------------------------------------------------------------- #
+def _library_item(**overrides):
+    base = dict(
+        media_type="movie", title="Matrix", year=1999, season_number=None,
+        imdb_id="tt1", tvdb_id=None, tmdb_id="1", genres=[], added_at=None,
+        local_quality=ReleaseQuality(raw=""), radarr_movie_id=1, sonarr_series_id=None,
+        already_processed=False, last_processed_at=None, key="k1",
+    )
+    base.update(overrides)
+    return gapscan_library.LibraryItem(**base)
+
+
+def test_sort_library_items_by_title_ascending():
+    b = _library_item(title="Beta", key="b")
+    a = _library_item(title="Alpha", key="a")
+    result = gapscan_library.sort_library_items([b, a], "title", "asc")
+    assert [i.key for i in result] == ["a", "b"]
+
+
+def test_sort_library_items_by_title_descending():
+    a = _library_item(title="Alpha", key="a")
+    b = _library_item(title="Beta", key="b")
+    result = gapscan_library.sort_library_items([a, b], "title", "desc")
+    assert [i.key for i in result] == ["b", "a"]
+
+
+def test_sort_library_items_by_quality_uses_resolution():
+    low = _library_item(key="low", local_quality=ReleaseQuality(raw="", resolution=1080))
+    high = _library_item(key="high", local_quality=ReleaseQuality(raw="", resolution=2160))
+    unknown = _library_item(key="unknown", local_quality=ReleaseQuality(raw="", resolution=None))
+    result = gapscan_library.sort_library_items([high, low, unknown], "quality", "asc")
+    assert [i.key for i in result] == ["unknown", "low", "high"]
+
+
+def test_sort_library_items_by_added_at_none_first_ascending():
+    known = _library_item(key="known", added_at=1_000_000.0)
+    unknown = _library_item(key="unknown", added_at=None)
+    result = gapscan_library.sort_library_items([known, unknown], "added_at", "asc")
+    assert [i.key for i in result] == ["unknown", "known"]
+
+
+def test_sort_library_items_unknown_sort_returns_items_unchanged():
+    a = _library_item(key="a")
+    b = _library_item(key="b")
+    result = gapscan_library.sort_library_items([a, b], "bogus", "asc")
+    assert result == [a, b]
+
+
+def test_sort_library_items_none_sort_returns_items_unchanged():
+    a = _library_item(key="a")
+    b = _library_item(key="b")
+    result = gapscan_library.sort_library_items([a, b], None, "asc")
+    assert result == [a, b]

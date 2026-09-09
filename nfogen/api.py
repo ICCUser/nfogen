@@ -1070,6 +1070,8 @@ def gapscan_library_endpoint(
     status: Optional[str] = Query(None),
     added_since_days: Optional[float] = Query(None),
     processed: Optional[bool] = Query(None),
+    sort: Optional[str] = Query(None),
+    order: str = Query("asc"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     profile: str = Query("c411"),
@@ -1083,12 +1085,17 @@ def gapscan_library_endpoint(
     scan connu (une valeur de GapStatus, ou "not_verified" pour les items
     jamais scannes). `added_since_days` : ne garde que les items ajoutes
     il y a moins de N jours (ignore les items sans added_at connu).
-    `processed` : filtre sur already_processed. `profile` : quel profil de
-    tracker pour classer `tracker_genre` (fusion Bibliotheque/Scan, retour
-    utilisateur 2026-09-06 : les deux pages faisaient doublon). Le
-    resultat brut Radarr/Sonarr est mis en cache brievement (voir
-    `_cached_library_items`) -- filtre/pagine a chaque appel, jamais mis
-    en cache lui-meme (bon marche, en memoire)."""
+    `processed` : filtre sur already_processed. `sort` : colonne de tri
+    (`title`/`media_type`/`status`/`team`/`quality`/`added_at`, voir
+    gapscan_library.sort_library_items) -- applique sur la liste deja
+    filtree, AVANT pagination (retour utilisateur, 2026-09-09 : le tri
+    doit porter sur toute la bibliotheque, pas seulement la page
+    affichee). `order` : `"asc"` (defaut) ou `"desc"`. `profile` : quel
+    profil de tracker pour classer `tracker_genre` (fusion
+    Bibliotheque/Scan, retour utilisateur 2026-09-06 : les deux pages
+    faisaient doublon). Le resultat brut Radarr/Sonarr est mis en cache
+    brievement (voir `_cached_library_items`) -- filtre/trie/pagine a
+    chaque appel, jamais mis en cache lui-meme (bon marche, en memoire)."""
     _require_gapscan_available()
     sonarr_config = gapscan_config_store.effective_sonarr()
     radarr_config = gapscan_config_store.effective_radarr()
@@ -1128,6 +1135,8 @@ def gapscan_library_endpoint(
         items = [i for i in items if i.added_at is not None and i.added_at >= cutoff]
     if processed is not None:
         items = [i for i in items if i.already_processed == processed]
+
+    items = gapscan_library.sort_library_items(items, sort, order)
 
     total = len(items)
     start = (page - 1) * page_size
