@@ -19,8 +19,8 @@ import type {
   SeedQueueEntry,
   SendToTrackerResult,
   TemplatesDocument,
-  UploadGroupProposal,
   UploadPrepFile,
+  UploadPreviewJob,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -456,14 +456,18 @@ export async function gapscanExportCsv(
 // Preparation d'upload (AUTOMATION.md, sous-projet 4)
 // --------------------------------------------------------------------------- //
 /** Aucune ecriture disque cote serveur -- calcule uniquement les noms
- * proposes et les avertissements (voir nfogen/upload_prep.py:preview_upload). */
+ * proposes et les avertissements (voir nfogen/upload_prep.py:preview_upload).
+ * Demarre EN TACHE DE FOND (retour utilisateur, 2026-09-09 : un fichier
+ * sans debit/frame rate video embarques peut forcer une analyse MediaInfo
+ * tres longue) -- renvoie un job_id immediatement, suivi via
+ * uploadPreviewJobStatus(). */
 export function prepareUploadPreview(
   localPaths: string[],
   profile = "c411",
   titleOverride?: string,
   seasonPack?: SeasonPackRequest,
-): Promise<UploadGroupProposal[]> {
-  return request<UploadGroupProposal[]>("/gapscan/prepare-upload/preview", {
+): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>("/gapscan/prepare-upload/preview", {
     method: "POST",
     body: JSON.stringify({
       local_paths: localPaths,
@@ -472,6 +476,16 @@ export function prepareUploadPreview(
       season_pack: seasonPack,
     }),
   });
+}
+
+export function uploadPreviewJobStatus(jobId: string): Promise<UploadPreviewJob> {
+  return request<UploadPreviewJob>(`/gapscan/prepare-upload/preview-jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function cancelUploadPreviewJob(jobId: string): Promise<{ status: string }> {
+  return request<{ status: string }>(
+    `/gapscan/prepare-upload/preview-jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" },
+  );
 }
 
 /** Demarre la mise en scene + generation de .torrent EN TACHE DE FOND

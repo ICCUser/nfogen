@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import {
   cancelCommitJob,
   cancelIntegrityJob,
+  cancelUploadPreviewJob,
   commitJobStatus,
   integrityJobStatus,
   prepareUploadCommit,
   prepareUploadPreview,
   sendToTracker,
+  uploadPreviewJobStatus,
   verifyIntegrity,
 } from "../api/client";
 import { ApiError } from "../api/types";
@@ -17,6 +19,7 @@ import type {
   SendToTrackerResult,
   UploadCommitResult,
   UploadGroupProposal,
+  UploadPreviewJob,
 } from "../api/types";
 import { useProfile } from "../ProfileContext";
 
@@ -73,6 +76,13 @@ export default function UploadPrepPanel({
   const [groups, setGroups] = useState<UploadGroupProposal[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recalculating, setRecalculating] = useState(false);
+  // Calcul de l'apercu EN TACHE DE FOND (retour utilisateur, 2026-09-09 :
+  // "j'ai le film Bernie qui est ultra long [...] juste Calcul de
+  // l'apercu [...] je me suis fait avoir") -- un fichier sans debit/
+  // frequence d'image deja indiques dans ses metadonnees peut forcer une
+  // analyse bien plus longue. previewJob porte la progression reelle
+  // (utile surtout pour un pack) ET permet d'annuler.
+  const [previewJob, setPreviewJob] = useState<UploadPreviewJob | null>(null);
   const [titleOverride, setTitleOverride] = useState(title);
   const [commitJobs, setCommitJobs] = useState<Record<number, CommitJob>>({});
   const [commitResults, setCommitResults] = useState<Record<number, UploadCommitResult>>({});
@@ -90,16 +100,43 @@ export default function UploadPrepPanel({
   const [integrityErrors, setIntegrityErrors] = useState<Record<number, string>>({});
   const pollRefs = useRef<Record<number, number>>({});
 
+  async function pollPreviewUntilTerminal(jobId: string): Promise<UploadPreviewJob> {
+    for (;;) {
+      const job = await uploadPreviewJobStatus(jobId);
+      setPreviewJob(job);
+      if (TERMINAL_STATES.includes(job.state)) return job;
+      await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    }
+  }
+
   async function loadPreview(override?: string, profileOverride: string = profile) {
     setRecalculating(true);
     setLoadError(null);
+    setGroups(null);
+    setPreviewJob(null);
     try {
-      const g = await prepareUploadPreview(localPaths, profileOverride, override || undefined, seasonPack);
-      setGroups(g);
+      const { job_id } = await prepareUploadPreview(localPaths, profileOverride, override || undefined, seasonPack);
+      const job = await pollPreviewUntilTerminal(job_id);
+      if (job.state === "done") {
+        setGroups(job.result ?? []);
+      } else if (job.state === "cancelled") {
+        setLoadError("Aperçu annulé.");
+      } else {
+        setLoadError(job.error ?? "Aperçu indisponible.");
+      }
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : "Aperçu indisponible.");
     } finally {
       setRecalculating(false);
+    }
+  }
+
+  async function handleCancelPreview() {
+    if (!previewJob) return;
+    try {
+      await cancelUploadPreviewJob(previewJob.job_id);
+    } catch {
+      // best effort -- le prochain poll reflete l'etat reel de toute facon
     }
   }
 
@@ -364,7 +401,28 @@ export default function UploadPrepPanel({
       </div>
 
       {loadError && <p className="text-sm text-crit">{loadError}</p>}
-      {!groups && !loadError && <p className="text-sm text-ink-faint">Calcul de l'aperçu…</p>}
+      {!groups && !loadError && (
+        <div className="space-y-1 text-sm text-ink-faint">
+          <p>
+            {previewJob && previewJob.total > 1
+              ? `Analyse en cours… (${previewJob.processed}/${previewJob.total} fichiers)`
+              : "Analyse en cours…"}
+          </p>
+          <p className="text-xs">
+            Un fichier dont le débit/la fréquence d'image ne sont pas déjà indiqués dans ses métadonnées
+            peut nécessiter une analyse plus longue (surtout sur un stockage distant).
+          </p>
+          {previewJob && !TERMINAL_STATES.includes(previewJob.state) && (
+            <button
+              type="button"
+              onClick={handleCancelPreview}
+              className="text-xs text-crit underline hover:opacity-80"
+            >
+              Annuler
+            </button>
+          )}
+        </div>
+      )}
 
       {groups && groups.length === 0 && (
         <p className="text-sm text-ink-faint">Aucun fichier à préparer.</p>

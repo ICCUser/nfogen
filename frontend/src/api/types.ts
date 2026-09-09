@@ -422,6 +422,28 @@ export interface IntegrityJob {
   result: VideoIntegrityReport | null;
 }
 
+/** POST /gapscan/prepare-upload/preview + GET .../preview-jobs/{id}
+ * (retour utilisateur, 2026-09-09 : "j'ai le film Bernie qui est ultra
+ * long [...] juste Calcul de l'apercu [...] je me suis fait avoir" -- un
+ * fichier sans debit/frame rate video embarques force une analyse
+ * MediaInfo complete, potentiellement tres longue). Meme patron que
+ * IntegrityJob : tache de fond suivie en polling, jamais de blocage du
+ * formulaire sur un gros fichier. `processed`/`total` : progression par
+ * fichier (utile surtout pour un pack multi-saisons -- un film seul
+ * passe directement de 0 a 1). */
+export type UploadPreviewJobState = "analyzing" | "done" | "error" | "cancelled";
+
+export interface UploadPreviewJob {
+  job_id: string;
+  state: UploadPreviewJobState;
+  processed: number;
+  total: number;
+  started_at: number;
+  finished_at: number | null;
+  error: string | null;
+  result: UploadGroupProposal[] | null;
+}
+
 /** POST /gapscan/seed-match/start + GET /gapscan/seed-match-jobs/{id}
  * (retour utilisateur, 2026-09-09 -- seed d'une release C411 deja
  * possedee, sans re-upload). Meme patron que IntegrityJob. */

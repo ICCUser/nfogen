@@ -1404,12 +1404,31 @@ def test_prepare_upload_routes_require_auth_when_token_configured(reload_api):
     assert client.post("/gapscan/commit-jobs/x/cancel").status_code == 401
 
 
+def _wait_preview_job_terminal(client, job_id: str, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = client.get(f"/gapscan/prepare-upload/preview-jobs/{job_id}").json()
+        if status["state"] in ("done", "error", "cancelled"):
+            return status
+        time.sleep(0.01)
+    raise TimeoutError("la tâche de test ne s'est jamais terminée")
+
+
 def test_prepare_upload_preview_empty_paths_returns_empty_list(reload_api):
+    """Calcul de l'apercu EN TACHE DE FOND (retour utilisateur, 2026-09-09 :
+    un fichier sans debit/frame rate embarques peut forcer une analyse
+    MediaInfo tres longue) -- POST renvoie un job_id immediatement, suivi
+    via GET .../preview-jobs/{job_id}."""
     mod = reload_api(NFOGEN_API_TOKEN=None)
     client = TestClient(mod.app)
     resp = client.post("/gapscan/prepare-upload/preview", json={"local_paths": []})
     assert resp.status_code == 200
-    assert resp.json() == []
+    job_id = resp.json()["job_id"]
+    assert job_id
+
+    status = _wait_preview_job_terminal(client, job_id)
+    assert status["state"] == "done"
+    assert status["result"] == []
 
 
 def test_prepare_upload_preview_real_c411_profile(reload_api, monkeypatch):
@@ -1425,7 +1444,11 @@ def test_prepare_upload_preview_real_c411_profile(reload_api, monkeypatch):
         json={"local_paths": ["/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"]},
     )
     assert resp.status_code == 200
-    body = resp.json()
+    job_id = resp.json()["job_id"]
+
+    status = _wait_preview_job_terminal(client, job_id)
+    assert status["state"] == "done"
+    body = status["result"]
     assert len(body) == 1
     assert body[0]["release_name"].startswith("Kaamelott")
     assert body[0]["files"][0]["source_path"] == "/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"
@@ -1452,7 +1475,11 @@ def test_prepare_upload_preview_season_pack(reload_api, monkeypatch):
         },
     )
     assert resp.status_code == 200
-    body = resp.json()
+    job_id = resp.json()["job_id"]
+
+    status = _wait_preview_job_terminal(client, job_id)
+    assert status["state"] == "done"
+    body = status["result"]
     assert len(body) == 1
     assert "INTEGRALE" in body[0]["release_name"]
     assert body[0]["files"][0]["staged_name"] == "S05/ep1.mkv"
@@ -1473,8 +1500,11 @@ def test_prepare_upload_preview_title_override(reload_api, monkeypatch):
         },
     )
     assert resp.status_code == 200
-    body = resp.json()
-    assert body[0]["release_name"].startswith("Un.Gars.Une.Fille.")
+    job_id = resp.json()["job_id"]
+
+    status = _wait_preview_job_terminal(client, job_id)
+    assert status["state"] == "done"
+    assert status["result"][0]["release_name"].startswith("Un.Gars.Une.Fille.")
 
 
 def test_prepare_upload_commit_without_staging_dir_is_400(reload_api, tmp_path):
@@ -1546,15 +1576,23 @@ def test_prepare_upload_commit_real_flow(reload_api, tmp_path, monkeypatch):
 # --------------------------------------------------------------------------- #
 def test_prepare_upload_preview_400_for_unknown_source_path(reload_api):
     """Sans mock : gapscan_runner n'a jamais eu de resultat de scan pour
-    ce chemin -- /prepare-upload/preview doit refuser de le traiter."""
+    ce chemin -- /prepare-upload/preview doit refuser de le traiter. La
+    validation reste faite DANS le job (voir upload_prep.preview_upload,
+    appele depuis le thread de fond) -- meme patron que /commit (voir
+    test_prepare_upload_commit_400_for_a_staged_name_escaping_staging_dir) :
+    le POST demarre toujours le job (200), l'erreur surgit en etat "error"."""
     mod = reload_api(NFOGEN_API_TOKEN=None)
     client = TestClient(mod.app)
     resp = client.post(
         "/gapscan/prepare-upload/preview",
         json={"local_paths": ["/nas/forged.mkv"]},
     )
-    assert resp.status_code == 400
-    assert "non reconnu" in resp.json()["detail"]
+    assert resp.status_code == 200
+    job_id = resp.json()["job_id"]
+
+    status = _wait_preview_job_terminal(client, job_id)
+    assert status["state"] == "error"
+    assert "non reconnu" in status["error"]
 
 
 def test_prepare_upload_commit_400_for_a_staged_name_escaping_staging_dir(reload_api, tmp_path, monkeypatch):

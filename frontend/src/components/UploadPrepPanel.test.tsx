@@ -7,6 +7,8 @@ import { ProfileProvider } from "../ProfileContext";
 
 vi.mock("../api/client", () => ({
   prepareUploadPreview: vi.fn(),
+  uploadPreviewJobStatus: vi.fn(),
+  cancelUploadPreviewJob: vi.fn(),
   prepareUploadCommit: vi.fn(),
   commitJobStatus: vi.fn(),
   cancelCommitJob: vi.fn(),
@@ -21,6 +23,7 @@ vi.mock("../api/client", () => ({
 import {
   cancelCommitJob,
   cancelIntegrityJob,
+  cancelUploadPreviewJob,
   commitJobStatus,
   integrityJobStatus,
   listAllProfiles,
@@ -28,10 +31,26 @@ import {
   prepareUploadPreview,
   readManagedProfile,
   sendToTracker,
+  uploadPreviewJobStatus,
   verifyIntegrity,
 } from "../api/client";
 import { ApiError } from "../api/types";
-import type { SeasonPackRequest, UploadGroupProposal } from "../api/types";
+import type { SeasonPackRequest, UploadGroupProposal, UploadPreviewJob } from "../api/types";
+
+/** Le calcul de l'apercu passe desormais par une tache de fond (retour
+ * utilisateur, 2026-09-09) -- ce helper simule un job qui se termine
+ * immediatement en "done" avec `groups` comme resultat, pour que les
+ * tests existants (ecrits pour l'ancien appel synchrone) n'aient qu'a
+ * remplacer `vi.mocked(prepareUploadPreview).mockResolvedValue(X)` par
+ * `mockPreview(X)`. */
+function mockPreview(groups: UploadGroupProposal[]): void {
+  vi.mocked(prepareUploadPreview).mockResolvedValue({ job_id: "preview-job-1" });
+  const job: UploadPreviewJob = {
+    job_id: "preview-job-1", state: "done", processed: groups.length, total: groups.length,
+    started_at: 0, finished_at: 1, error: null, result: groups,
+  };
+  vi.mocked(uploadPreviewJobStatus).mockResolvedValue(job);
+}
 
 function renderPanel(props: {
   localPaths: string[];
@@ -90,6 +109,8 @@ const DONE_JOB = {
 
 beforeEach(() => {
   vi.mocked(prepareUploadPreview).mockReset();
+  vi.mocked(uploadPreviewJobStatus).mockReset();
+  vi.mocked(cancelUploadPreviewJob).mockReset();
   vi.mocked(prepareUploadCommit).mockReset();
   vi.mocked(commitJobStatus).mockReset();
   vi.mocked(cancelCommitJob).mockReset();
@@ -112,7 +133,7 @@ it("la boite de dialogue reste bornee en hauteur, defilable en interne (incident
    * Fermer une fois scrolle au milieu de la liste. La boite doit rester
    * bornee (max-h) et defiler EN INTERNE (overflow-y-auto), pas grandir
    * indefiniment. */
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
   const dialog = await screen.findByRole("dialog");
@@ -125,7 +146,7 @@ it("charge et affiche l'apercu au montage avec le titre deja connu (GapResult) c
    * le titre Radarr/Sonarr est deja affiche dans l'en-tete du panneau --
    * jamais reutilise jusqu'ici pour le nommage, qui redecouvrait un titre
    * (souvent anglais) depuis le nom de fichier au lieu de ca. */
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
   await waitFor(() => {
@@ -136,7 +157,7 @@ it("charge et affiche l'apercu au montage avec le titre deja connu (GapResult) c
 });
 
 it("un groupe bloque n'a pas de bouton Confirmer, affiche l'avertissement", async () => {
-  vi.mocked(prepareUploadPreview).mockResolvedValue(BLOCKED_GROUP);
+  mockPreview(BLOCKED_GROUP);
   renderPanel({ localPaths: ["/media/x.mkv"], title: "X", onClose: vi.fn() });
 
   await waitFor(() => {
@@ -146,7 +167,7 @@ it("un groupe bloque n'a pas de bouton Confirmer, affiche l'avertissement", asyn
 });
 
 it("Confirmer demarre une tache, affiche le resultat une fois terminee (done)", async () => {
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   const user = userEvent.setup();
@@ -168,7 +189,7 @@ it("Confirmer demarre une tache, affiche le resultat une fois terminee (done)", 
 });
 
 it("affiche une barre de progression et un bouton Annuler pendant une tache en cours", async () => {
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue({
     job_id: "job-1", release_name: "X", state: "staging", percent: 42,
@@ -186,7 +207,7 @@ it("affiche une barre de progression et un bouton Annuler pendant une tache en c
 });
 
 it("Annuler appelle cancelCommitJob avec le job_id en cours", async () => {
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue({
     job_id: "job-1", release_name: "X", state: "staging", percent: 10,
@@ -204,7 +225,7 @@ it("Annuler appelle cancelCommitJob avec le job_id en cours", async () => {
 });
 
 it("etat error : affiche le message et fait reapparaitre Confirmer", async () => {
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue({
     job_id: "job-1", release_name: "X", state: "error", percent: 0,
@@ -222,7 +243,7 @@ it("etat error : affiche le message et fait reapparaitre Confirmer", async () =>
 
 it("affiche le bouton Envoyer a C411 seulement apres confirmation, et affiche le lien du brouillon", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(sendToTracker).mockResolvedValue({
@@ -258,7 +279,7 @@ it("Uploader directement demande confirmation, appelle sendToTracker avec direct
   /* Retour d'un membre de l'equipe C411, 2026-09-07 : vrai endpoint
    * d'upload direct (POST /api/torrents), distinct des brouillons. */
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(verifyIntegrity).mockResolvedValue({ job_id: "integrity-1" });
@@ -290,7 +311,7 @@ it("Uploader directement demande confirmation, appelle sendToTracker avec direct
 
 it("Uploader directement n'appelle rien si l'utilisateur annule la confirmation", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.spyOn(window, "confirm").mockReturnValue(false);
@@ -311,7 +332,7 @@ it("Uploader directement n'appelle rien si l'utilisateur annule la confirmation"
 it("Uploader directement lance d'abord une verification d'integrite avant sendToTracker", async () => {
   const user = userEvent.setup();
   vi.spyOn(window, "confirm").mockReturnValue(true);
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(verifyIntegrity).mockResolvedValue({ job_id: "integrity-1" });
@@ -343,7 +364,7 @@ it("Uploader directement lance d'abord une verification d'integrite avant sendTo
 it("bloque l'upload direct si la verification d'integrite echoue, n'appelle jamais sendToTracker", async () => {
   const user = userEvent.setup();
   vi.spyOn(window, "confirm").mockReturnValue(true);
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(verifyIntegrity).mockResolvedValue({ job_id: "integrity-1" });
@@ -365,7 +386,7 @@ it("bloque l'upload direct si la verification d'integrite echoue, n'appelle jama
 
 it("Creer un brouillon n'appelle jamais verifyIntegrity", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(sendToTracker).mockResolvedValue({
@@ -387,7 +408,7 @@ it("affiche l'avertissement d'ajout qBittorrent quand present (upload direct)", 
   /* Retour utilisateur, 2026-09-07 : "le torrent n'est jamais envoye a
    * qbit !!!!" -- ajout auto a qBittorrent en mode direct, best-effort. */
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(verifyIntegrity).mockResolvedValue({ job_id: "integrity-1" });
@@ -418,7 +439,7 @@ it("affiche l'avertissement d'ajout qBittorrent quand present (upload direct)", 
 
 it("affiche l'avertissement anti-doublon quand present", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(sendToTracker).mockResolvedValue({
@@ -444,7 +465,7 @@ it("affiche l'avertissement de presentation incomplete (cle TMDB manquante) quan
   /* Retour C411, 2026-09-07 : tous les elements de la presentation sont
    * obligatoires -- sans cle TMDB, Pays/Createur(s)/Note/IMDB manqueront. */
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   vi.mocked(sendToTracker).mockResolvedValue({
@@ -477,14 +498,14 @@ it("une erreur de chargement affiche un message", async () => {
 
 it("Recalculer renvoie le titre corrige a prepareUploadPreview", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
   await waitFor(() => screen.getByRole("button", { name: "Recalculer" }));
 
   const CORRECTED_GROUP: UploadGroupProposal[] = [
     { ...ONE_GROUP[0], release_name: "Un.Gars.Une.Fille.2020.MULTI.VFF.1080p.BluRay.AC3.x264-TEAM" },
   ];
-  vi.mocked(prepareUploadPreview).mockResolvedValue(CORRECTED_GROUP);
+  mockPreview(CORRECTED_GROUP);
 
   await user.clear(screen.getByLabelText(/Titre/i));
   await user.type(screen.getByLabelText(/Titre/i), "Un Gars, Une Fille");
@@ -502,7 +523,7 @@ it("Recalculer renvoie le titre corrige a prepareUploadPreview", async () => {
 });
 
 it("defaults to the globally active profile", async () => {
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
   await waitFor(() => {
@@ -512,7 +533,7 @@ it("defaults to the globally active profile", async () => {
 
 it("lets the user override the profile for this one upload without changing the global active profile", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
   await waitFor(() => screen.getByRole("button", { name: "Recalculer" }));
 
@@ -525,7 +546,7 @@ it("lets the user override the profile for this one upload without changing the 
 });
 
 it("transmet seasonPack a prepareUploadPreview quand fourni (bouton 'Preparer le pack', Bibliotheque)", async () => {
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   const seasonPack = {
     title: "Lucifer",
     team: "Frosties",
@@ -558,7 +579,7 @@ it("transmet seasonPack a prepareUploadPreview quand fourni (bouton 'Preparer le
 // quelle que soit la ligne cliquee ou le defilement de la page.
 // --------------------------------------------------------------------------- //
 it("s'affiche comme une fenetre modale (role dialog)", async () => {
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
   expect(await screen.findByRole("dialog")).toBeInTheDocument();
@@ -566,7 +587,7 @@ it("s'affiche comme une fenetre modale (role dialog)", async () => {
 
 it("Fermer appelle onClose directement quand rien n'est confirme-mais-pas-envoye", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   const confirmSpy = vi.spyOn(window, "confirm");
   const onClose = vi.fn();
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
@@ -579,7 +600,7 @@ it("Fermer appelle onClose directement quand rien n'est confirme-mais-pas-envoye
 
 it("Echap appelle onClose directement quand rien n'est confirme-mais-pas-envoye", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   const onClose = vi.fn();
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
   await screen.findByRole("dialog");
@@ -591,7 +612,7 @@ it("Echap appelle onClose directement quand rien n'est confirme-mais-pas-envoye"
 
 it("le clic sur le fond assombri appelle onClose directement quand rien n'est confirme-mais-pas-envoye", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   const onClose = vi.fn();
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
   const dialog = await screen.findByRole("dialog");
@@ -606,7 +627,7 @@ it("le clic sur le fond assombri appelle onClose directement quand rien n'est co
 
 it("un clic A L'INTERIEUR de la boite de dialogue n'appelle jamais onClose", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   const onClose = vi.fn();
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
   const dialog = await screen.findByRole("dialog");
@@ -618,7 +639,7 @@ it("un clic A L'INTERIEUR de la boite de dialogue n'appelle jamais onClose", asy
 
 it("Fermer demande confirmation quand un groupe est confirme mais pas encore envoye, respecte l'annulation", async () => {
   const user = userEvent.setup();
-  vi.mocked(prepareUploadPreview).mockResolvedValue(ONE_GROUP);
+  mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
   const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
@@ -636,4 +657,83 @@ it("Fermer demande confirmation quand un groupe est confirme mais pas encore env
   confirmSpy.mockReturnValue(true);
   await user.click(screen.getByRole("button", { name: "Fermer" }));
   expect(onClose).toHaveBeenCalled();
+});
+
+it("affiche un message explicatif et la progression pendant l'analyse, jusqu'a resolution", async () => {
+  /* Retour utilisateur (2026-09-09) : "juste Calcul de l'apercu [...] je
+   * me suis fait avoir" -- le simple "Calcul de l'apercu…" muet devient un
+   * message explicatif + une vraie progression (utile pour un pack), sans
+   * bloquer le reste du formulaire. */
+  vi.mocked(prepareUploadPreview).mockResolvedValue({ job_id: "preview-job-1" });
+  let resolveStatus: (job: UploadPreviewJob) => void = () => {};
+  vi.mocked(uploadPreviewJobStatus).mockImplementation(
+    () => new Promise((resolve) => { resolveStatus = resolve; }),
+  );
+
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  await screen.findByText(/Analyse en cours/);
+  expect(screen.getByText(/débit\/la fréquence d'image/)).toBeInTheDocument();
+
+  resolveStatus({
+    job_id: "preview-job-1", state: "done", processed: 1, total: 1,
+    started_at: 0, finished_at: 1, error: null, result: ONE_GROUP,
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText(/Movie\.2020\.MULTI\.VFF\.1080p\.BluRay\.AC3\.x264-TEAM$/)).toBeInTheDocument();
+  });
+});
+
+it("affiche la progression par fichier pour un pack multi-fichiers", async () => {
+  vi.mocked(prepareUploadPreview).mockResolvedValue({ job_id: "preview-job-1" });
+  vi.mocked(uploadPreviewJobStatus).mockResolvedValue({
+    job_id: "preview-job-1", state: "analyzing", processed: 2, total: 5,
+    started_at: 0, finished_at: null, error: null, result: null,
+  });
+
+  renderPanel({ localPaths: ["/media/a.mkv"], title: "Pack", onClose: vi.fn() });
+
+  await screen.findByText(/Analyse en cours… \(2\/5 fichiers\)/);
+});
+
+it("le bouton Annuler pendant l'analyse appelle cancelUploadPreviewJob", async () => {
+  const user = userEvent.setup();
+  vi.mocked(prepareUploadPreview).mockResolvedValue({ job_id: "preview-job-1" });
+  vi.mocked(uploadPreviewJobStatus).mockResolvedValue({
+    job_id: "preview-job-1", state: "analyzing", processed: 0, total: 1,
+    started_at: 0, finished_at: null, error: null, result: null,
+  });
+  vi.mocked(cancelUploadPreviewJob).mockResolvedValue({ status: "cancelling" });
+
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  await user.click(await screen.findByRole("button", { name: "Annuler" }));
+
+  expect(cancelUploadPreviewJob).toHaveBeenCalledWith("preview-job-1");
+});
+
+it("une analyse annulee affiche un message d'erreur explicite, permet de Recalculer", async () => {
+  vi.mocked(prepareUploadPreview).mockResolvedValue({ job_id: "preview-job-1" });
+  vi.mocked(uploadPreviewJobStatus).mockResolvedValue({
+    job_id: "preview-job-1", state: "cancelled", processed: 0, total: 1,
+    started_at: 0, finished_at: 1, error: null, result: null,
+  });
+
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  expect(await screen.findByText("Aperçu annulé.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Recalculer" })).toBeInTheDocument();
+});
+
+it("une analyse en erreur affiche le message d'erreur du job", async () => {
+  vi.mocked(prepareUploadPreview).mockResolvedValue({ job_id: "preview-job-1" });
+  vi.mocked(uploadPreviewJobStatus).mockResolvedValue({
+    job_id: "preview-job-1", state: "error", processed: 0, total: 1,
+    started_at: 0, finished_at: 1, error: "Chemin source non reconnu.", result: null,
+  });
+
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+
+  expect(await screen.findByText("Chemin source non reconnu.")).toBeInTheDocument();
 });

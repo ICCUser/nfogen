@@ -65,6 +65,7 @@ try:
         tracker_profile,
         upload_history_store,
         upload_prep,
+        upload_preview_job_runner,
     )
     from .qbittorrent_client import QBittorrentClient, QBittorrentError
     from .radarr_client import RadarrClient, RadarrError
@@ -1255,7 +1256,13 @@ class PrepareUploadPreviewRequest(BaseModel):
 
 
 @app.post("/gapscan/prepare-upload/preview", dependencies=[Depends(require_token)])
-def gapscan_prepare_upload_preview(req: PrepareUploadPreviewRequest) -> list[dict[str, Any]]:
+def gapscan_prepare_upload_preview(req: PrepareUploadPreviewRequest) -> dict[str, str]:
+    """Demarre le calcul de l'apercu EN TACHE DE FOND (retour utilisateur,
+    2026-09-09 : un fichier sans debit/frame rate video embarques force
+    une analyse MediaInfo complete, potentiellement tres longue -- jusque
+    la, ca bloquait tout le formulaire sans le moindre retour visuel) --
+    renvoie un job_id immediatement, suivi via
+    GET /gapscan/prepare-upload/preview-jobs/{job_id}."""
     _require_gapscan_available()
     season_pack = None
     if req.season_pack is not None:
@@ -1267,11 +1274,32 @@ def gapscan_prepare_upload_preview(req: PrepareUploadPreviewRequest) -> list[dic
                 for s in req.season_pack.seasons
             ],
         )
-    proposals = _run_upload_prep(
-        upload_prep.preview_upload, req.local_paths, profile=req.profile,
+    job_id = _run_upload_prep(
+        upload_preview_job_runner.start, req.local_paths, profile=req.profile,
         title_override=req.title_override, season_pack=season_pack,
     )
-    return [asdict(p) for p in proposals]
+    return {"job_id": job_id}
+
+
+@app.get("/gapscan/prepare-upload/preview-jobs/{job_id}", dependencies=[Depends(require_token)])
+def gapscan_prepare_upload_preview_job_status(job_id: str) -> dict[str, Any]:
+    _require_gapscan_available()
+    status = upload_preview_job_runner.status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Tâche inconnue.")
+    return status
+
+
+@app.post("/gapscan/prepare-upload/preview-jobs/{job_id}/cancel", dependencies=[Depends(require_token)])
+def gapscan_prepare_upload_preview_job_cancel(job_id: str) -> dict[str, str]:
+    _require_gapscan_available()
+    status = upload_preview_job_runner.status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Tâche inconnue.")
+    if status["state"] in ("done", "error", "cancelled"):
+        raise HTTPException(status_code=409, detail="Cette tâche est déjà terminée.")
+    upload_preview_job_runner.cancel(job_id)
+    return {"status": "cancelling"}
 
 
 class PrepareUploadFile(BaseModel):

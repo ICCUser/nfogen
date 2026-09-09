@@ -264,6 +264,53 @@ def test_preview_upload_season_pack_extraction_failure_is_a_soft_warning():
     assert any("Métadonnées illisibles" in w for w in proposals[0].warnings)
 
 
+def test_preview_upload_reports_progress_per_file():
+    """Retour utilisateur (2026-09-09) : "juste Calcul de l'apercu [...] je
+    me suis fait avoir" -- upload_preview_job_runner.py a besoin d'une
+    vraie progression pour un pack de plusieurs fichiers (l'extraction
+    d'UN SEUL fichier reste indivisible, MediaInfo.parse() ne s'interrompt
+    pas en cours de route)."""
+    calls: list[tuple[int, int]] = []
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        preview_upload(
+            ["/media/a.mkv", "/media/b.mkv"], profile="c411",
+            on_progress=lambda done, total: calls.append((done, total)),
+        )
+    assert calls == [(1, 2), (2, 2)]
+
+
+def test_preview_upload_cancel_event_stops_before_the_next_file():
+    """L'annulation ne peut prendre effet qu'ENTRE deux fichiers, jamais au
+    milieu de l'extraction d'un fichier en cours (meme limite que
+    video_integrity.py -- MediaInfo.parse() est un seul appel bloquant)."""
+    cancel_event = threading.Event()
+
+    def fake_extract(path):
+        if str(path).endswith("a.mkv"):
+            cancel_event.set()  # simule une annulation demandee pendant l'extraction de a.mkv
+        return _fake_metadata()
+
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", side_effect=fake_extract):
+        with pytest.raises(OperationCancelled):
+            preview_upload(["/media/a.mkv", "/media/b.mkv"], profile="c411", cancel_event=cancel_event)
+
+
+def test_preview_upload_season_pack_reports_progress_per_file():
+    season_pack = SeasonPackRequest(
+        title="Lucifer", team="Frosties", is_full_series=True,
+        seasons=[
+            SeasonPackSeasonFiles(season_number=5, local_paths=["/media/S05/ep1.mkv", "/media/S05/ep2.mkv"]),
+        ],
+    )
+    calls: list[tuple[int, int]] = []
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        preview_upload(
+            [], profile="c411", season_pack=season_pack,
+            on_progress=lambda done, total: calls.append((done, total)),
+        )
+    assert calls == [(1, 2), (2, 2)]
+
+
 def test_preview_upload_title_override_replaces_filename_derived_title():
     """Cas reel signale par l'utilisateur (2026-08-28) : le titre Sonarr/
     Radarr ('A Guy And A Girl') ne correspond pas au titre officiel attendu
@@ -713,6 +760,33 @@ def test_preview_upload_uses_real_audio_tracks_when_filename_has_no_language_tag
     assert len(proposals) == 1
     assert "MULTI.VFF" in proposals[0].release_name
     assert not any("langue" in w.lower() for w in proposals[0].warnings)
+
+
+def test_preview_upload_dts_hd_master_audio_uses_the_more_specific_token():
+    """Cas reel signale par l'utilisateur (2026-09-09, "Chronicle") : C411
+    refusait le titre propose car son token audio "DTS-HD" ne correspondait
+    a aucune piste du NFO reel ("DTS-HD MA", "DTS") -- le nom de fichier
+    scene source portait "DTS-HDMA" (colle), mais l'alias generique
+    "DTS-HD" (present dans le meme texte comme sous-chaine) gagnait avant
+    le plus specifique, jamais declare dans rules.json. Convention C411
+    confirmee : separateur point partout, y compris pour "MA"."""
+    paths = ["/media/Chronicle.2012.MULTi.TRUEFRENCH.1080p.BluRay.DTS-HDMA.x264-FoX.mkv"]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(paths)
+    assert len(proposals) == 1
+    assert "DTS.HD.MA" in proposals[0].release_name
+    assert "DTS.HD-" not in proposals[0].release_name  # jamais le generique quand le plus specifique existe
+
+
+def test_preview_upload_plain_dts_hd_uses_dot_separator():
+    """Le DTS-HD generique (sans "MA") suit la meme convention a points que
+    le reste du nom -- retour utilisateur (2026-09-09)."""
+    paths = ["/media/Movie.2020.MULTI.VFF.1080p.BluRay.DTS-HD.5.1.x264-TEAM.mkv"]
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(paths)
+    assert len(proposals) == 1
+    assert "DTS.HD" in proposals[0].release_name
+    assert "DTS-HD" not in proposals[0].release_name
 
 
 # --------------------------------------------------------------------------- #

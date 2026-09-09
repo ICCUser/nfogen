@@ -26,6 +26,7 @@ from . import (
     upload_history_store,
 )
 from .c411_upload_client import C411UploadClient, C411UploadError
+from .cancellation import OperationCancelled
 from .engine import propose_release_name
 from .languages import flagcdn_url, resolve_language
 from .models import RenderContext
@@ -243,23 +244,39 @@ def validate_staged_path(path: str) -> None:
         raise ValueError(f"Chemin hors du dossier de mise en scène : {path}")
 
 
-def _preview_season_pack(season_pack: SeasonPackRequest, profile: str) -> GroupProposal:
+def _preview_season_pack(
+    season_pack: SeasonPackRequest, profile: str,
+    on_progress: Optional[Callable[[int, int], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
+) -> GroupProposal:
     """Un pack multi-saisons DEJA VALIDE (voir SeasonPackRequest) donne
     TOUJOURS un seul GroupProposal -- jamais de group_by_team() ici (les
     fichiers de plusieurs saisons portent des tokens SxxExx differents,
     group_by_team n'a pas de sens pour ce cas). Le premier fichier de la
     premiere saison sert de representant pour extraire langue/resolution/
     codec/source (memes alias que la proposition standard, voir
-    propose_season_pack_name)."""
-    _validate_known_source_paths(
-        [source_path for season in season_pack.seasons for source_path in season.local_paths]
-    )
+    propose_season_pack_name).
+
+    `on_progress(traites, total)` / `cancel_event` (retour utilisateur,
+    2026-09-09 : "juste Calcul de l'apercu [...] je me suis fait avoir" --
+    un fichier sans debit/frame rate embarques force une analyse COMPLETE
+    par MediaInfo, potentiellement tres longue sur un gros pack) : permet
+    a upload_preview_job_runner.py d'exposer une vraie progression et une
+    annulation EFFECTIVE ENTRE deux fichiers (jamais au milieu de
+    l'extraction d'un fichier en cours, MediaInfo.parse() ne s'interrompt
+    pas en cours de route -- meme limite que video_integrity.py)."""
+    all_source_paths = [source_path for season in season_pack.seasons for source_path in season.local_paths]
+    _validate_known_source_paths(all_source_paths)
 
     warnings: list[str] = []
     files: list[ProposedFile] = []
     representative_filename: Optional[str] = None
+    total = len(all_source_paths)
+    processed = 0
     for season in season_pack.seasons:
         for source_path in season.local_paths:
+            if cancel_event is not None and cancel_event.is_set():
+                raise OperationCancelled("Aperçu annulé.")
             filename = Path(source_path).name
             if representative_filename is None:
                 representative_filename = filename
@@ -270,6 +287,9 @@ def _preview_season_pack(season_pack: SeasonPackRequest, profile: str) -> GroupP
             files.append(
                 ProposedFile(source_path=source_path, staged_name=f"S{season.season_number:02d}/{filename}")
             )
+            processed += 1
+            if on_progress is not None:
+                on_progress(processed, total)
 
     if not files or representative_filename is None:
         return GroupProposal(
@@ -293,6 +313,8 @@ def _preview_season_pack(season_pack: SeasonPackRequest, profile: str) -> GroupP
 def preview_upload(
     local_paths: list[str], profile: str = "c411", title_override: Optional[str] = None,
     season_pack: Optional[SeasonPackRequest] = None,
+    on_progress: Optional[Callable[[int, int], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> list[GroupProposal]:
     """Sans aucune ecriture disque : extrait les metadonnees (best-effort --
     une extraction illisible devient un avertissement, jamais un
@@ -306,9 +328,13 @@ def preview_upload(
     titre Sonarr/Radarr, "A Guy And A Girl" -> "Un Gars, Une Fille").
     `season_pack` (AUTOMATION.md, retour utilisateur 2026-09-08) :
     court-circuite tout ce qui precede -- `local_paths` est alors ignore,
-    voir `_preview_season_pack`."""
+    voir `_preview_season_pack`. `on_progress`/`cancel_event` : voir
+    `_preview_season_pack` -- meme role ici, pour upload_preview_job_runner.py."""
     if season_pack is not None:
-        return [_preview_season_pack(season_pack, profile)]
+        group = _preview_season_pack(
+            season_pack, profile, on_progress=on_progress, cancel_event=cancel_event,
+        )
+        return [group]
 
     if not local_paths:
         return []
@@ -319,6 +345,8 @@ def preview_upload(
     metas: list[dict] = []
     extraction_warning_by_index: dict[int, str] = {}
     for i, path in enumerate(local_paths):
+        if cancel_event is not None and cancel_event.is_set():
+            raise OperationCancelled("Aperçu annulé.")
         try:
             meta = extract.extract_video_metadata(Path(path))
         except Exception:
@@ -326,6 +354,8 @@ def preview_upload(
             extraction_warning_by_index[i] = _extraction_warning(filenames[i])
         meta["name"] = filenames[i]
         metas.append(meta)
+        if on_progress is not None:
+            on_progress(i + 1, len(local_paths))
 
     language_codes = tracker_profile.audio_language_codes(profile)
     hints: list[Optional[str]] = []
