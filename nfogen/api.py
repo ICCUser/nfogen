@@ -949,15 +949,25 @@ def gapscan_results_export_csv(
 # Retour utilisateur, 2026-09-08 : "5 a 10 secondes" de chargement, puis
 # "5 a 10 secondes de plus" apres chaque frappe dans la recherche --
 # gapscan_library.list_library() recalcule TOUT depuis Radarr/Sonarr a
-# chaque appel (aucun cache), et SonarrClient.list_season_files() fait un
-# appel HTTP PAR SERIE (list_episode_files, N+1) -- couteux sur une grosse
-# bibliotheque, repete a chaque frappe cote frontend (avant meme le
-# debounce ajoute ce jour-la sur LibraryPage.tsx). Cache en memoire, courte
-# duree, en attendant une eventuelle elimination du N+1 cote Sonarr (a
-# verifier : /api/v3/episodefile sans `seriesId` renvoie-t-il tout en un
-# seul appel ?).
+# chaque appel (aucun cache), et SonarrClient.list_season_files() fait des
+# appels HTTP PAR SERIE (list_episode_files, N+1, desormais parallelises
+# -- voir sonarr_client.py) -- couteux sur une grosse bibliotheque, repete
+# a chaque frappe cote frontend (avant meme le debounce ajoute ce jour-la
+# sur LibraryPage.tsx). Cache en memoire, courte duree.
 _LIBRARY_CACHE_TTL_SECONDS = 30.0
 _library_cache: dict[tuple[str, Any], tuple[float, list[Any]]] = {}
+# Incident reel de performance (retour utilisateur, 2026-09-09) : sans
+# verrou, deux requetes GET /gapscan/library concurrentes (ex. "page
+# suivante" cliquee avant que la precedente ait fini de charger) tombaient
+# TOUTES LES DEUX en cache MISS et declenchaient chacune leur propre
+# interrogation complete Radarr/Sonarr -- confirme par les logs de
+# production : une rafale d'appels episodefile suivie, quelques centaines
+# de ms apres la fin de la premiere, d'une DEUXIEME rafale complete. Ce
+# verrou fait qu'une seule requete "meneuse" effectue reellement le fetch
+# par cle de cache (profile, scan_finished_at) ; les autres attendent son
+# resultat au lieu d'en declencher un chacune (patron "single-flight").
+_library_fetch_lock = threading.Lock()
+_library_fetch_in_progress: dict[tuple[str, Any], threading.Event] = {}
 
 
 def _cached_library_items(
@@ -972,49 +982,83 @@ def _cached_library_items(
     precedente (statut tracker a jour), sans attendre l'expiration du TTL.
     Une seule entree conservee a la fois (`_library_cache.clear()` avant
     d'inserer) -- inutile de garder plusieurs profils/generations en
-    memoire pour ce cas d'usage."""
+    memoire pour ce cas d'usage.
+
+    Concurrence (voir `_library_fetch_lock` ci-dessus) : si un fetch pour
+    CETTE cle est deja en cours dans un autre thread, on attend son
+    resultat plutot que d'en lancer un second -- FastAPI/Starlette execute
+    les routes synchrones (comme celle-ci) dans un pool de threads, donc
+    plusieurs requetes HTTP peuvent reellement s'executer en parallele."""
     scan_finished_at = gapscan_runner.status()["finished_at"]
     cache_key = (profile, scan_finished_at)
-    now = time.time()
-    cached = _library_cache.get(cache_key)
-    if cached is not None and (now - cached[0]) < _LIBRARY_CACHE_TTL_SECONDS:
-        logger.info(
-            "gapscan_library cache HIT (profile=%s, scan_finished_at=%s, age=%.1fs, %d items)",
-            profile, scan_finished_at, now - cached[0], len(cached[1]),
-        )
-        return cached[1]
 
-    # Instrumentation temporaire (retour utilisateur 2026-09-09 : Bibliotheque
-    # lente/instable, chaque "page suivante" coute ~10s) -- le cache_key
-    # inclut scan_finished_at : si celui-ci change entre deux requetes
-    # (scan en cours/relance frequente), chaque appel est un MISS malgre le
-    # TTL de 30s. Ce log permet de confirmer/infirmer cette hypothese sans
-    # deviner (voir CHANGELOG / discussion en cours).
+    with _library_fetch_lock:
+        now = time.time()
+        cached = _library_cache.get(cache_key)
+        if cached is not None and (now - cached[0]) < _LIBRARY_CACHE_TTL_SECONDS:
+            logger.info(
+                "gapscan_library cache HIT (profile=%s, scan_finished_at=%s, age=%.1fs, %d items)",
+                profile, scan_finished_at, now - cached[0], len(cached[1]),
+            )
+            return cached[1]
+
+        existing_fetch = _library_fetch_in_progress.get(cache_key)
+        if existing_fetch is not None:
+            logger.info(
+                "gapscan_library cache MISS (profile=%s) -- fetch deja en cours ailleurs, attente "
+                "de son resultat au lieu d'en lancer un second",
+                profile,
+            )
+            is_leader = False
+        else:
+            existing_fetch = threading.Event()
+            _library_fetch_in_progress[cache_key] = existing_fetch
+            is_leader = True
+
+    if not is_leader:
+        # Attente bornee : si le meneur echoue/plante sans jamais liberer
+        # l'evenement (ne devrait pas arriver, voir `finally` plus bas),
+        # on ne bloque pas indefiniment -- on retente nous-memes ensuite.
+        existing_fetch.wait(timeout=60.0)
+        with _library_fetch_lock:
+            cached = _library_cache.get(cache_key)
+        if cached is not None:
+            return cached[1]
+        # Le meneur a echoue (exception) ou a timeout : on retente comme
+        # meneur plutot que de renvoyer une erreur perimee.
+        return _cached_library_items(profile, sonarr_config, radarr_config)
+
     logger.info(
-        "gapscan_library cache MISS (profile=%s, scan_finished_at=%s, previous_key=%s) -- "
-        "interrogation Radarr/Sonarr en cours",
-        profile, scan_finished_at, list(_library_cache.keys()),
+        "gapscan_library cache MISS (profile=%s, scan_finished_at=%s) -- interrogation Radarr/Sonarr "
+        "en cours",
+        profile, scan_finished_at,
     )
     started = time.time()
-    sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
-    radarr = RadarrClient(*radarr_config) if radarr_config else None
     try:
-        items = gapscan_library.list_library(
-            radarr=radarr, sonarr=sonarr, previous_results=gapscan_runner.results(), profile=profile
-        )
-    finally:
-        if sonarr is not None:
-            sonarr.close()
-        if radarr is not None:
-            radarr.close()
+        sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
+        radarr = RadarrClient(*radarr_config) if radarr_config else None
+        try:
+            items = gapscan_library.list_library(
+                radarr=radarr, sonarr=sonarr, previous_results=gapscan_runner.results(), profile=profile
+            )
+        finally:
+            if sonarr is not None:
+                sonarr.close()
+            if radarr is not None:
+                radarr.close()
 
-    logger.info(
-        "gapscan_library cache MISS resolved in %.1fs (%d items, profile=%s)",
-        time.time() - started, len(items), profile,
-    )
-    _library_cache.clear()
-    _library_cache[cache_key] = (now, items)
-    return items
+        logger.info(
+            "gapscan_library cache MISS resolved in %.1fs (%d items, profile=%s)",
+            time.time() - started, len(items), profile,
+        )
+        with _library_fetch_lock:
+            _library_cache.clear()
+            _library_cache[cache_key] = (time.time(), items)
+        return items
+    finally:
+        with _library_fetch_lock:
+            _library_fetch_in_progress.pop(cache_key, None)
+        existing_fetch.set()
 
 
 @app.get("/gapscan/library", dependencies=[Depends(require_token)])

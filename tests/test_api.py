@@ -2591,6 +2591,64 @@ def test_gapscan_library_cache_invalidated_by_a_finished_scan(reload_api, monkey
     assert _CountingFakeGapscanRadarr.calls > calls_after_scan
 
 
+class _SlowCountingFakeGapscanRadarr(_FakeGapscanRadarr):
+    """Comme _CountingFakeGapscanRadarr, mais `list_movie_files()` bloque
+    jusqu'a un signal externe -- simule un fetch Radarr/Sonarr encore en
+    cours pendant qu'une deuxieme requete HTTP arrive (incident reel de
+    performance, retour utilisateur 2026-09-09 : logs de production
+    montrant DEUX rafales completes d'appels Sonarr quasi simultanees,
+    l'une juste apres l'autre)."""
+
+    calls = 0
+    gate: threading.Event = threading.Event()
+
+    def list_movie_files(self):
+        type(self).calls += 1
+        type(self).gate.wait(timeout=5)
+        return super().list_movie_files()
+
+
+def test_gapscan_library_concurrent_requests_share_a_single_fetch(reload_api, monkeypatch):
+    """Deux requetes GET /gapscan/library concurrentes pour la MEME cle de
+    cache (meme profil, aucun scan termine entre les deux) ne doivent
+    declencher qu'UN SEUL fetch Radarr reel -- la seconde attend le
+    resultat du premier au lieu d'en lancer un second (voir
+    `_library_fetch_lock` dans nfogen/api.py)."""
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+    )
+    _SlowCountingFakeGapscanRadarr.calls = 0
+    _SlowCountingFakeGapscanRadarr.gate = threading.Event()
+    monkeypatch.setattr(mod, "RadarrClient", _SlowCountingFakeGapscanRadarr)
+    client = TestClient(mod.app)
+
+    results: list[int] = []
+
+    def _get():
+        results.append(client.get("/gapscan/library").status_code)
+
+    first = threading.Thread(target=_get)
+    first.start()
+    # Laisse le premier thread entrer reellement dans list_movie_files()
+    # (et donc enregistrer son fetch comme "en cours") avant de lancer le
+    # second -- sans cette synchronisation, le second pourrait gagner la
+    # course et devenir lui-meme le meneur, ce qui ne prouverait rien.
+    deadline = time.monotonic() + 5
+    while _SlowCountingFakeGapscanRadarr.calls < 1 and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    second = threading.Thread(target=_get)
+    second.start()
+    time.sleep(0.05)  # laisse le second thread atteindre l'attente du meneur
+    _SlowCountingFakeGapscanRadarr.gate.set()  # debloque le fetch du meneur
+    first.join(timeout=5)
+    second.join(timeout=5)
+
+    assert results == [200, 200]
+    assert _SlowCountingFakeGapscanRadarr.calls == 1
+
+
 class _FakeGapscanRadarrThreeMovies(_FakeGapscanRadarr):
     def list_movie_files(self):
         return [
