@@ -1,5 +1,6 @@
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
+import Sidebar from "./components/Sidebar";
 import GeneratePage from "./pages/GeneratePage";
 import LibraryPage from "./pages/LibraryPage";
 import ProfilesListPage from "./pages/ProfilesListPage";
@@ -7,12 +8,6 @@ import ProfileEditorPage from "./pages/ProfileEditorPage";
 import SeedQueuePage from "./pages/SeedQueuePage";
 import SettingsPage from "./pages/SettingsPage";
 import { ProfileProvider, useProfile } from "./ProfileContext";
-
-function navClass({ isActive }: { isActive: boolean }) {
-  return `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-    isActive ? "bg-accent text-surface" : "text-ink-dim hover:bg-surface-2 hover:text-ink"
-  }`;
-}
 
 /** Selecteur unique du profil actif, dans l'entete -- remplace un
  * selecteur par page (retour utilisateur, 2026-08-29 : "je charge un
@@ -36,50 +31,36 @@ function ProfileSelect() {
   );
 }
 
+/** Mobile-first (voir Sidebar.tsx) : empile Sidebar (barre du bas fixe)
+ * au-dessus du contenu par defaut, passe en ligne (rail a gauche) a
+ * partir de `md:` (768px, convention Tailwind -- s'applique a partir de
+ * ce seuil, pas en dessous). `pb-16` reserve la place de la barre du bas
+ * fixe sous 768px, retiree des `md:` puisque le rail redevient statique. */
 function AppShell() {
   return (
-    <div className="min-h-screen bg-bg font-sans text-ink">
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-3">
-          <span className="font-display text-lg font-bold text-ink">
-            nfogen<span className="font-mono text-sm text-accent">.nfo</span>
-          </span>
-          <nav className="flex gap-1">
-            <NavLink to="/" className={navClass} end>
-              Générer
-            </NavLink>
-            <NavLink to="/profils" className={navClass}>
-              Profils
-            </NavLink>
-            <NavLink to="/library" className={navClass}>
-              Bibliothèque
-            </NavLink>
-            <NavLink to="/seed-queue" className={navClass}>
-              À mettre en seed
-            </NavLink>
-            <NavLink to="/settings" className={navClass}>
-              Réglages
-            </NavLink>
-          </nav>
+    <div className="flex min-h-screen flex-col bg-bg pb-16 font-sans text-ink md:flex-row md:pb-0">
+      <Sidebar />
+      <div className="flex flex-1 flex-col">
+        <header className="flex items-center justify-end border-b border-line bg-surface px-4 py-3">
           <ProfileSelect />
-        </div>
-      </header>
-      <main className="mx-auto max-w-[1600px] px-4 py-6">
-        {/* key=pathname : une erreur de rendu sur une page ne doit pas rester
-            affichee apres avoir navigue ailleurs -- remonte la limite
-            d'erreur (et donc reessaie le rendu) a chaque changement de route. */}
-        <ErrorBoundary key={useLocation().pathname}>
-          <Routes>
-            <Route path="/" element={<GeneratePage />} />
-            <Route path="/profils" element={<ProfilesListPage />} />
-            <Route path="/profiles/new" element={<ProfileEditorPage mode="create" />} />
-            <Route path="/profiles/:name" element={<ProfileEditorPage mode="edit" />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/library" element={<LibraryPage />} />
-            <Route path="/seed-queue" element={<SeedQueuePage />} />
-          </Routes>
-        </ErrorBoundary>
-      </main>
+        </header>
+        <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-6">
+          {/* key=pathname : une erreur de rendu sur une page ne doit pas rester
+              affichee apres avoir navigue ailleurs -- remonte la limite
+              d'erreur (et donc reessaie le rendu) a chaque changement de route. */}
+          <ErrorBoundary key={useLocation().pathname}>
+            <Routes>
+              <Route path="/" element={<GeneratePage />} />
+              <Route path="/profils" element={<ProfilesListPage />} />
+              <Route path="/profiles/new" element={<ProfileEditorPage mode="create" />} />
+              <Route path="/profiles/:name" element={<ProfileEditorPage mode="edit" />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/library" element={<LibraryPage />} />
+              <Route path="/seed-queue" element={<SeedQueuePage />} />
+            </Routes>
+          </ErrorBoundary>
+        </main>
+      </div>
     </div>
   );
 }
