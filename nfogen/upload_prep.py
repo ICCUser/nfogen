@@ -530,7 +530,7 @@ def commit_upload(
             file_staging.stage_file(
                 files[0].source_path, staged_path,
                 on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
-                overwrite=overwrite,
+                overwrite=overwrite, manifest_dir=staging_dir,
             )
             raw_text = extract.extract_video_text(Path(staged_path))
         else:
@@ -541,7 +541,7 @@ def commit_upload(
             file_staging.stage_files(
                 [f.source_path for f in files], target_dir, [f.staged_name for f in files],
                 on_progress=_staging_progress if on_progress else None, cancel_event=cancel_event,
-                overwrite=overwrite,
+                overwrite=overwrite, manifest_dir=staging_dir,
             )
             staged_path = target_dir
             # Un seul .nfo pour tout le pack (pas un par episode) : coherent

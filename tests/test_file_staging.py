@@ -265,3 +265,109 @@ def test_stage_files_propagates_cancellation_from_a_file_mid_pack(tmp_path, monk
 
     assert not (target_dir / "E01.mkv").exists()
     assert not (target_dir / "E02.mkv").exists()  # jamais tente, la boucle s'arrete au premier fichier
+
+
+# manifest_dir -- retour utilisateur reel, 2026-09-12 : source sur un NAS
+# distant relie en WireGuard site-to-site (montage reseau, donc TOUJOURS
+# en repli copie complete cote hardlink -- jamais de hardlink direct
+# possible avec la source). Un simple renommage cosmetique du fichier de
+# mise en scene (ex. suite au fix de convention x265->H265) forcait une
+# retransmission COMPLETE via le reseau distant alors que le contenu
+# etait deja rapatrie sous l'ancien nom. Chaque test simule cette
+# topologie : `os.link` echoue EXDEV UNIQUEMENT depuis la source d'origine
+# (le "NAS distant"), jamais entre deux fichiers deja en scene (le
+# "disque local"), pour bien distinguer les deux chemins de code.
+def _fake_link_exdev_only_from(source_path: str):
+    real_link = os.link
+
+    def fake_link(src, dst):
+        if src == source_path:
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        real_link(src, dst)
+
+    return fake_link
+
+
+def test_stage_file_reuses_already_staged_copy_via_manifest_instead_of_recopying(tmp_path, monkeypatch):
+    source = tmp_path / "remote" / "source.mkv"
+    source.parent.mkdir()
+    source.write_bytes(b"contenu couteux a retransmettre" * 1000)
+    manifest_dir = tmp_path / "staging"
+    manifest_dir.mkdir()
+    old_target = manifest_dir / "Old.Name.mkv"
+    new_target = manifest_dir / "New.Name.mkv"
+
+    monkeypatch.setattr(os, "link", _fake_link_exdev_only_from(str(source)))
+
+    # Premiere mise en scene : source "distante" -> seule la copie complete
+    # fonctionne (EXDEV), comme attendu.
+    stage_file(str(source), str(old_target), manifest_dir=str(manifest_dir))
+    assert old_target.read_bytes() == source.read_bytes()
+
+    # Deuxieme mise en scene : MEME source, nouveau nom -- ne doit PAS
+    # repasser par la source distante (le fake `os.link` leverait EXDEV
+    # si on retentait depuis `source`) : doit reutiliser `old_target` via
+    # le manifest et faire un hardlink LOCAL.
+    stage_file(str(source), str(new_target), manifest_dir=str(manifest_dir))
+
+    assert new_target.read_bytes() == source.read_bytes()
+    assert new_target.stat().st_ino == old_target.stat().st_ino  # hardlink reel, pas une recopie
+
+
+def test_stage_file_without_manifest_dir_recopies_every_time(tmp_path, monkeypatch):
+    """Comportement inchange sans `manifest_dir` (defaut `None`) -- pas de
+    raccourci pris, meme scenario que ci-dessus."""
+    source = tmp_path / "remote" / "source.mkv"
+    source.parent.mkdir()
+    source.write_bytes(b"contenu" * 1000)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    old_target = staging / "Old.Name.mkv"
+    new_target = staging / "New.Name.mkv"
+
+    monkeypatch.setattr(os, "link", _fake_link_exdev_only_from(str(source)))
+
+    stage_file(str(source), str(old_target))
+    stage_file(str(source), str(new_target))  # sans manifest_dir : nouvelle copie complete, pas de crash
+
+    assert new_target.read_bytes() == source.read_bytes()
+    assert new_target.stat().st_ino != old_target.stat().st_ino  # deux copies distinctes
+
+
+def test_stage_file_manifest_ignores_stale_entry_whose_staged_file_is_gone(tmp_path, monkeypatch):
+    """Le manifest n'est qu'une optimisation best-effort : une entree
+    perimee (fichier de mise en scene supprime depuis) ne doit jamais
+    faire planter, seulement ne pas etre utilisee."""
+    source = tmp_path / "remote" / "source.mkv"
+    source.parent.mkdir()
+    source.write_bytes(b"contenu" * 1000)
+    manifest_dir = tmp_path / "staging"
+    manifest_dir.mkdir()
+    old_target = manifest_dir / "Old.Name.mkv"
+    new_target = manifest_dir / "New.Name.mkv"
+
+    monkeypatch.setattr(os, "link", _fake_link_exdev_only_from(str(source)))
+    stage_file(str(source), str(old_target), manifest_dir=str(manifest_dir))
+    old_target.unlink()  # l'ancienne mise en scene a disparu entre-temps
+
+    stage_file(str(source), str(new_target), manifest_dir=str(manifest_dir))
+
+    assert new_target.read_bytes() == source.read_bytes()  # retombe sur la copie complete, sans planter
+
+
+def test_stage_files_forwards_manifest_dir_to_each_file_in_a_pack(tmp_path, monkeypatch):
+    source = tmp_path / "remote" / "e01.mkv"
+    source.parent.mkdir()
+    source.write_bytes(b"contenu" * 1000)
+    manifest_dir = tmp_path / "staging"
+    old_target_dir = manifest_dir / "Old.Name"
+    new_target_dir = manifest_dir / "New.Name"
+
+    monkeypatch.setattr(os, "link", _fake_link_exdev_only_from(str(source)))
+
+    stage_files([str(source)], str(old_target_dir), ["E01.mkv"], manifest_dir=str(manifest_dir))
+    stage_files([str(source)], str(new_target_dir), ["E01.mkv"], manifest_dir=str(manifest_dir))
+
+    old_target = old_target_dir / "E01.mkv"
+    new_target = new_target_dir / "E01.mkv"
+    assert new_target.stat().st_ino == old_target.stat().st_ino
