@@ -124,6 +124,23 @@ def _detect_via_aliases(text: str, aliases: dict[str, str]) -> str:
     return ""
 
 
+def _apply_web_codec_convention(info: dict[str, str], config: dict[str, Any]) -> None:
+    """C411 (retour reel de moderation, 2026-09-10, pack Lucifer S05) :
+    "Une source WEB ne peut pas avoir ce CodecVideo [x265] -- pour une
+    source WEB le CodecVideo peut etre H264/H265/AV1. Remplace [X265] par
+    [H265] dans le titre." -- un codec video annonce sous forme
+    'x264'/'x265' (nom d'ENCODEUR, convention scene BluRay) n'est pas
+    accepte pour une source WEB, meme si le fichier a bien ete encode avec
+    x264/x265 en interne (outil d'encodage != convention de nommage du
+    tracker). Mute `info` en place ; no-op si le profil ne declare pas
+    `web_video_codec_overrides` (rules.json -> video -> name_proposal) ou
+    si la source detectee n'est pas une variante WEB (WEB/WEB.DSNP/
+    WEB.NF/WEB.AMZN, voir source_aliases)."""
+    overrides = config.get("web_video_codec_overrides", {})
+    if overrides and info["source"].startswith("WEB") and info["video_codec"] in overrides:
+        info["video_codec"] = overrides[info["video_codec"]]
+
+
 def _extract_release_info(text: str, alias_groups: dict[str, dict[str, str]]) -> dict[str, str]:
     """Cherche resolution/codec video/audio/source/langue n'importe ou dans
     `text`. `alias_groups` : {"language": {...}, "source": {...},
@@ -252,6 +269,7 @@ def propose_video_release_name(
     info_from_filename = _extract_release_info(stems[0], alias_groups)
     info_from_hint = _extract_release_info(hints[0], alias_groups)
     info = _merge_release_info(info_from_hint, info_from_filename)
+    _apply_web_codec_convention(info, config)
 
     if not info["language"]:
         for bracket in _BRACKETS_RE.findall(stems[0]) + _BRACKETS_RE.findall(hints[0]):
@@ -374,6 +392,7 @@ def propose_season_pack_name(
         "audio_codec": config.get("audio_codec_aliases", {}),
     }
     info = _extract_release_info(representative_filename, alias_groups)
+    _apply_web_codec_convention(info, config)
 
     fields = {
         "title": _normalize_title_text(title),

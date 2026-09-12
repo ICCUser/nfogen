@@ -126,6 +126,11 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
+        "web_video_codec_overrides": {
+          "type": "object",
+          "description": "Remplace le codec video (deja normalise via video_codec_aliases) par la convention attendue par le tracker pour une source WEB (WEB/WEB.DSNP/WEB.NF/WEB.AMZN), distincte de la convention scene BluRay -- retour reel de moderation C411, 2026-09-10 : 'x265' refuse sur une source WEB, 'H265' attendu.",
+          "additionalProperties": { "type": "string" }
+        },
         "audio_codec_aliases": {
           "type": "object",
           "additionalProperties": { "type": "string" }

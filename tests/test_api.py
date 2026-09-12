@@ -835,7 +835,9 @@ def test_propose_name_real_c411_video_convention(reload_api):
     resp = client.post("/propose-name", json={"category": "video", "filenames": filenames})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["name"] == "One.Piece.S01.MULTI.VFF.1080p.WEB.AC3.2.0.x264-NOTAG"
+    # H264, pas x264 : convention C411 pour une source WEB (retour reel
+    # de moderation, 2026-09-10).
+    assert body["name"] == "One.Piece.S01.MULTI.VFF.1080p.WEB.AC3.2.0.H264-NOTAG"
     assert any("équipe" in w for w in body["warnings"])
 
 
@@ -856,7 +858,9 @@ def test_propose_name_title_hint_fills_gaps_left_by_generic_filename(reload_api)
     assert resp.status_code == 200
     body = resp.json()
     assert body["fields"]["resolution"] == "1080"
-    assert body["fields"]["video_codec"] == "x264"
+    # source WEB (WebDl) -> convention H264, pas x264 (retour reel de
+    # moderation C411, 2026-09-10).
+    assert body["fields"]["video_codec"] == "H264"
     assert body["fields"]["team"] == "Chris44"
 
 

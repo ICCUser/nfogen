@@ -161,6 +161,7 @@
         "EN+VOSTFR": "VOSTFR"
       },
       "source_aliases": {
+        "WEB": "WEB",
         "WEBDL": "WEB",
         "WEB-DL": "WEB",
         "WEBRip": "WEB",
@@ -185,6 +186,10 @@
         "MPEG-2": "mpeg-2",
         "MPEG2": "mpeg2",
         "AV1": "AV1"
+      },
+      "web_video_codec_overrides": {
+        "x264": "H264",
+        "x265": "H265"
       },
       "audio_codec_aliases": {
         "AC3": "AC3",

@@ -391,3 +391,57 @@ def test_propose_season_pack_name_none_when_template_not_configured():
         config={},
     )
     assert result.name is None
+
+
+# --------------------------------------------------------------------------- #
+# web_video_codec_overrides (retour reel de moderation C411, 2026-09-10 --
+# pack Lucifer S05) : "Une source WEB ne peut pas avoir ce CodecVideo [x265]
+# [...] Remplace [X265] par [H265] dans le titre." Opt-in : sans cette cle
+# dans la config du profil, aucun changement de comportement (voir CONFIG
+# ci-dessus, sans cette cle, dans les tests plus haut).
+# --------------------------------------------------------------------------- #
+CONFIG_WITH_WEB_OVERRIDE = {**CONFIG, "web_video_codec_overrides": {"x264": "H264", "x265": "H265"}}
+
+
+def test_web_source_x265_becomes_h265_when_override_configured():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.WEBDL.AAC.x265-TEAM.mkv"], CONFIG_WITH_WEB_OVERRIDE,
+    )
+    assert result.name is not None
+    assert ".H265-TEAM" in result.name
+    assert "x265" not in result.name.lower()
+
+
+def test_bluray_source_x265_unaffected_by_web_override():
+    """La convention WEB ne s'applique PAS a une source BluRay -- x264/x265
+    y restent la convention normale (nom d'encodeur, pas de codec)."""
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.BluRay.AAC.x265-TEAM.mkv"], CONFIG_WITH_WEB_OVERRIDE,
+    )
+    assert result.name is not None
+    assert ".x265-TEAM" in result.name
+
+
+def test_web_override_is_opt_in_absent_by_default():
+    """Sans `web_video_codec_overrides` dans la config du profil (CONFIG,
+    utilise par tous les autres tests de ce fichier) : comportement
+    d'origine inchange, x265 reste x265 meme sur une source WEB."""
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.WEBDL.AAC.x265-TEAM.mkv"], CONFIG,
+    )
+    assert result.name is not None
+    assert ".x265-TEAM" in result.name
+
+
+def test_real_c411_profile_web_source_uses_h265_not_x265():
+    """Bout-en-bout contre le VRAI profil livre (nfogen/profiles/c411/rules.json),
+    pas seulement une config de test isolee."""
+    from nfogen.profile_store import read_profile
+
+    config = read_profile("c411")["rules"]["video"]["name_proposal"]
+    result = propose_video_release_name(
+        ["Lucifer.S05E01.MULTI.VFF.1080p.WEB.AAC.2.0.x265-Frosties.m4v"], config,
+    )
+    assert result.name is not None
+    assert ".H265-Frosties" in result.name
+    assert "x265" not in result.name.lower()
