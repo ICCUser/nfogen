@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Drawer from "./Drawer";
 import {
   cancelCommitJob,
   cancelIntegrityJob,
@@ -340,29 +341,14 @@ export default function UploadPrepPanel({
   }
 
   return (
-    // Modale (retour utilisateur, 2026-09-09 : "c'est etonnamant pas
-    // logique de tous mettre en bas de la page") -- toujours au meme
-    // endroit a l'ecran, quelle que soit la ligne cliquee ou le
-    // defilement de la Bibliotheque. Le clic sur le fond ferme (avec le
-    // meme garde-fou que le bouton Fermer/Echap) ; un clic a l'interieur
-    // de la boite ne doit jamais se propager jusqu'au fond.
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 p-4 sm:items-center"
-      onClick={handleRequestClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Préparer l'upload — ${title}`}
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-2xl space-y-3 overflow-y-auto rounded-md border border-line bg-surface p-4 shadow-lg"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-sm font-semibold text-ink">Préparer l'upload — {title}</h2>
-          <button type="button" onClick={handleRequestClose} className="text-sm text-ink-faint hover:text-ink">
-            Fermer
-          </button>
-        </div>
+    // Tiroir lateral droit (retour utilisateur, 2026-09-12 : l'overlay
+    // centre coupait la lecture du contenu en dessous) -- Drawer fournit
+    // deja le fond assombri, le clic-dehors et le bouton de fermeture
+    // (X), tous relies au meme garde-fou handleRequestClose que
+    // l'echappement clavier ci-dessus.
+    <Drawer onClose={handleRequestClose}>
+      <div role="dialog" aria-modal="true" aria-label={`Préparer l'upload — ${title}`} className="space-y-3">
+        <h2 className="font-display text-sm font-semibold text-ink">Préparer l'upload — {title}</h2>
 
       <div className="flex items-end gap-2">
         <label className="block text-xs font-medium text-ink-dim">
@@ -556,6 +542,6 @@ export default function UploadPrepPanel({
         </div>
       ))}
       </div>
-    </div>
+    </Drawer>
   );
 }

@@ -136,9 +136,13 @@ it("la boite de dialogue reste bornee en hauteur, defilable en interne (incident
   mockPreview(ONE_GROUP);
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
+  // Le plafonnement en hauteur/defilement interne vit desormais sur le
+  // tiroir (Drawer) qui englobe la boite de dialogue, pas sur la boite
+  // elle-meme (retour utilisateur, 2026-09-12 : conversion overlay -> tiroir).
   const dialog = await screen.findByRole("dialog");
-  expect(dialog.className).toContain("max-h-");
-  expect(dialog.className).toContain("overflow-y-auto");
+  const drawerContent = dialog.parentElement as HTMLElement;
+  expect(drawerContent.className).toContain("h-full");
+  expect(drawerContent.className).toContain("overflow-y-auto");
 });
 
 it("charge et affiche l'apercu au montage avec le titre deja connu (GapResult) comme override par defaut", async () => {
@@ -615,12 +619,12 @@ it("le clic sur le fond assombri appelle onClose directement quand rien n'est co
   mockPreview(ONE_GROUP);
   const onClose = vi.fn();
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
-  const dialog = await screen.findByRole("dialog");
+  await screen.findByRole("dialog");
 
-  // Le fond est le PARENT direct de la boite de dialogue -- clique juste a
-  // cote (coordonnee hors de la boite elle-meme, jamais interceptee par
-  // stopPropagation()).
-  await user.click(dialog.parentElement as HTMLElement);
+  // Le fond assombri est un ELEMENT DEDIE du tiroir (Drawer), plus le
+  // parent direct de la boite de dialogue depuis la conversion overlay ->
+  // tiroir (retour utilisateur, 2026-09-12) -- voir Drawer.tsx.
+  await user.click(screen.getByTestId("drawer-backdrop"));
 
   expect(onClose).toHaveBeenCalled();
 });

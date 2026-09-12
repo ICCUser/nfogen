@@ -8,6 +8,8 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import ActiveTransfersTray from "../components/ActiveTransfersTray";
+import InlineBanner from "../components/InlineBanner";
+import PageToolbar from "../components/PageToolbar";
 import UploadPrepPanel from "../components/UploadPrepPanel";
 import {
   cancelSeedMatchJob,
@@ -523,68 +525,62 @@ export default function LibraryPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-ink">Bibliothèque</h1>
-          <p className="text-sm text-ink-dim">
-            Ta bibliothèque Sonarr/Radarr, annotée du statut {trackerDisplayName} dès qu'il est connu —
-            sélectionne des titres à vérifier, ou lance un scan complet.
-          </p>
-          <p className="text-xs text-ink-dim">Dernière synchro : {formatSyncedAt(syncedAt)}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink hover:bg-surface-hover disabled:opacity-50"
+      <PageToolbar title="Bibliothèque" subtitle={`Dernière synchro : ${formatSyncedAt(syncedAt)}`}>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink hover:bg-surface-hover disabled:opacity-50"
+        >
+          {refreshing ? "Rafraîchissement…" : "Rafraîchir"}
+        </button>
+        <select
+          value={only}
+          onChange={(e) => setOnly(e.target.value as "" | "movies" | "series")}
+          disabled={starting || running}
+          aria-label="Bibliothèque à scanner"
+          className="rounded-md border border-line-strong bg-surface px-2 py-2 text-sm text-ink"
+        >
+          <option value="">Films + séries</option>
+          <option value="movies">Films seulement</option>
+          <option value="series">Séries seulement</option>
+        </select>
+        {hasPreviousScan && (
+          <label
+            className="flex items-center gap-1.5 text-sm text-ink-dim"
+            title="Reprend les titres déjà couverts et inchangés du dernier scan sans les réinterroger sur C411 — plus rapide."
           >
-            {refreshing ? "Rafraîchissement…" : "Rafraîchir"}
-          </button>
-          <select
-            value={only}
-            onChange={(e) => setOnly(e.target.value as "" | "movies" | "series")}
-            disabled={starting || running}
-            aria-label="Bibliothèque à scanner"
-            className="rounded-md border border-line-strong bg-surface px-2 py-2 text-sm text-ink"
-          >
-            <option value="">Films + séries</option>
-            <option value="movies">Films seulement</option>
-            <option value="series">Séries seulement</option>
-          </select>
-          {hasPreviousScan && (
-            <label
-              className="flex items-center gap-1.5 text-sm text-ink-dim"
-              title="Reprend les titres déjà couverts et inchangés du dernier scan sans les réinterroger sur C411 — plus rapide."
-            >
-              <input
-                type="checkbox"
-                checked={incremental}
-                onChange={(e) => setIncremental(e.target.checked)}
-                disabled={starting || running}
-                className="h-4 w-4 rounded border-line-strong"
-              />
-              Scan rapide
-            </label>
-          )}
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            disabled={!items || items.length === 0}
-            className="rounded-md border border-line-strong px-4 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
-          >
-            Export CSV
-          </button>
-          <button
-            type="button"
-            onClick={handleRun}
-            disabled={starting || running || notConfigured || noLibrary}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
-          >
-            {running ? "Scan en cours…" : "Lancer un scan complet"}
-          </button>
-        </div>
-      </div>
+            <input
+              type="checkbox"
+              checked={incremental}
+              onChange={(e) => setIncremental(e.target.checked)}
+              disabled={starting || running}
+              className="h-4 w-4 rounded border-line-strong"
+            />
+            Scan rapide
+          </label>
+        )}
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          disabled={!items || items.length === 0}
+          className="rounded-md border border-line-strong px-4 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
+        >
+          Export CSV
+        </button>
+        <button
+          type="button"
+          onClick={handleRun}
+          disabled={starting || running || notConfigured || noLibrary}
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
+        >
+          {running ? "Scan en cours…" : "Lancer un scan complet"}
+        </button>
+      </PageToolbar>
+      <p className="text-sm text-ink-dim">
+        Ta bibliothèque Sonarr/Radarr, annotée du statut {trackerDisplayName} dès qu'il est connu — sélectionne
+        des titres à vérifier, ou lance un scan complet.
+      </p>
 
       <ActiveTransfersTray />
 
@@ -839,8 +835,10 @@ export default function LibraryPage() {
       </div>
 
       {seasonPacks.length > 0 && (
-        <div className="space-y-2 rounded-md border border-line bg-surface p-4">
-          <p className="text-sm font-medium text-ink-dim">Packs disponibles</p>
+        <InlineBanner>
+          <p className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-ink-dim">
+            Packs disponibles
+          </p>
           {seasonPacks.map((pack) => {
             const seasons = seasonsForPack(pack);
             const label = pack.is_full_series
@@ -851,7 +849,7 @@ export default function LibraryPage() {
             return (
               <div
                 key={`${pack.sonarr_series_id}-${pack.season_numbers.join("-")}`}
-                className="flex items-center justify-between text-sm"
+                className="flex items-center justify-between px-3 py-2 text-sm"
               >
                 <span>
                   {pack.title} — {label} ({pack.team})
@@ -891,7 +889,7 @@ export default function LibraryPage() {
               </div>
             );
           })}
-        </div>
+        </InlineBanner>
       )}
 
       {items === null && !error && <p className="text-sm text-ink-faint">Chargement…</p>}
