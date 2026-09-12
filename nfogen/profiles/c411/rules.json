@@ -76,7 +76,7 @@
       },
       {
         "name": "language",
-        "pattern": "\\.(?:MULTI\\.)?(?P<language>VFF|VFQ|VF2|VFI|VOF|VO|VOSTFR|FRENCH|TRUEFRENCH)\\.",
+        "pattern": "\\.(?P<language>(?:MULTI\\.)?(?:VFF|VFQ|VF2|VFI|VOF|VO|VOSTFR|FRENCH|TRUEFRENCH))\\.",
         "level": "recommended",
         "warning": "aucun tag de langue reconnu (VFF/VFQ/VF2/VFI/VOF/VO/VOSTFR/FRENCH/TRUEFRENCH, eventuellement precede de MULTI) ; normal seulement pour les clips/concerts"
       },

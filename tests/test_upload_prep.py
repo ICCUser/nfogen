@@ -914,7 +914,9 @@ def test_send_to_tracker_movie_creates_a_draft(tmp_path, monkeypatch):
     assert "Synopsis test." in kwargs["description"]
     assert kwargs["category_id"] == 1
     assert kwargs["subcategory_id"] == 6
-    assert kwargs["options"] == {"1": [2], "2": 413}  # VFF (MULTI.VFF) + BluRay.HDLight
+    assert kwargs["options"] == {"1": [4], "2": 413}  # Multi (MULTI.VFF) + BluRay.HDLight
+    # -- valeur 4 (Multi), pas 2 (VFF seul) : bug reel corrige (moderation C411,
+    # 2026-09-10) -- le regex du capture "language" ignorait le prefixe "MULTI."
 
 
 def test_send_to_tracker_description_includes_new_metadata_fields(tmp_path, monkeypatch):
