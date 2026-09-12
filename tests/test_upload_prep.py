@@ -17,6 +17,7 @@ from nfogen.upload_prep import (
     ProposedFile,
     SeasonPackRequest,
     SeasonPackSeasonFiles,
+    _classify_subtitle_type,
     _language_hint_from_audio_tracks,
     commit_upload,
     group_by_team,
@@ -1853,3 +1854,50 @@ def test_send_to_tracker_rejects_a_staged_path_outside_staging_dir(tmp_path, mon
             nfo_path=str(staging_dir / "X.nfo"),
             profile="c411", media_type="movie",
         )
+
+
+# _classify_subtitle_type -- retour reel de moderation C411, 2026-09-12
+# (pack Lucifer S05, capture d'ecran) : "0/3 pistes conformes". Les 3
+# pistes du pack reel valaient toutes `Forced=No` (flag structurel
+# MediaInfo, forge par HandBrake) tout en portant "French (Forced)" /
+# "French (Forced Narrative)" / "English (CC)" dans leur `Title` libre --
+# les cas ci-dessous reproduisent exactement ces 3 pistes reelles, plus le
+# cas nominal (flag fiable) et les cas limites (aucun indice, mot-cle a
+# l'interieur d'un autre mot).
+def test_classify_subtitle_type_uses_reliable_forced_flag():
+    assert _classify_subtitle_type(True, None) == "FORCÉ"
+
+
+def test_classify_subtitle_type_defaults_to_complet_with_no_hint():
+    assert _classify_subtitle_type(False, None) == "COMPLET"
+    assert _classify_subtitle_type(False, "French") == "COMPLET"
+
+
+def test_classify_subtitle_type_real_lucifer_s05_forced_track():
+    """Piste #1 reelle (episode 1) : Forced=No mais Title="French
+    (Forced) / French (Forced)"."""
+    assert _classify_subtitle_type(False, "French (Forced) / French (Forced)") == "FORCÉ"
+
+
+def test_classify_subtitle_type_real_lucifer_s05_forced_narrative_track():
+    """Piste #2 reelle (episode 2) : Forced=No mais Title="French (Forced
+    Narrative) / French (Forced Narrative)" -- C411 n'a pas de categorie
+    Narrative separee, FORCÉ reste le bon classement."""
+    text = "French (Forced Narrative) / French (Forced Narrative)"
+    assert _classify_subtitle_type(False, text) == "FORCÉ"
+
+
+def test_classify_subtitle_type_real_lucifer_s05_cc_track():
+    """Piste #3 reelle (episode 2) : Forced=No, Title="English (CC) /
+    English (CC)"."""
+    assert _classify_subtitle_type(False, "English (CC) / English (CC)") == "CC"
+
+
+def test_classify_subtitle_type_sdh_hint():
+    assert _classify_subtitle_type(False, "English (SDH)") == "SDH"
+
+
+def test_classify_subtitle_type_keyword_inside_another_word_is_not_a_false_positive():
+    """"cc" ne doit matcher que le mot "CC", jamais un sous-mot -- voir
+    _SUBTITLE_TYPE_KEYWORDS (limites `\\b`)."""
+    assert _classify_subtitle_type(False, "Accessible") == "COMPLET"

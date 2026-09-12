@@ -53,12 +53,14 @@ def test_extract_video_metadata_returns_audio_tracks_detail(monkeypatch):
 
 
 def test_extract_video_metadata_returns_subtitle_tracks_detail(monkeypatch):
-    subtitle = _FakeTrack("Text", language="fre", forced="Yes")
+    subtitle = _FakeTrack("Text", language="fre", format="UTF-8", forced="Yes", title="French (Forced)")
     _mock_parse(monkeypatch, [_video_track(), subtitle])
 
     meta = extract.extract_video_metadata(Path("fake.mkv"))
 
-    assert meta["subtitle_tracks"] == [{"language": "fre", "forced": True}]
+    assert meta["subtitle_tracks"] == [
+        {"language": "fre", "format": "UTF-8", "forced": True, "title": "French (Forced)"},
+    ]
 
 
 def test_extract_video_metadata_subtitle_not_forced_defaults_false(monkeypatch):
@@ -67,7 +69,26 @@ def test_extract_video_metadata_subtitle_not_forced_defaults_false(monkeypatch):
 
     meta = extract.extract_video_metadata(Path("fake.mkv"))
 
-    assert meta["subtitle_tracks"] == [{"language": "eng", "forced": False}]
+    assert meta["subtitle_tracks"] == [
+        {"language": "eng", "format": None, "forced": False, "title": None},
+    ]
+
+
+def test_extract_video_metadata_subtitle_forced_flag_unreliable_falls_back_to_title(monkeypatch):
+    """Retour reel de moderation C411, 2026-09-12 (pack Lucifer S05,
+    fichiers HandBrake) : le flag structurel MediaInfo `Forced` valait
+    `No` alors que le `Title` de la piste disait explicitement "French
+    (Forced)" -- `title` doit rester capture tel quel (best-effort,
+    aucune classification faite ici : voir upload_prep._classify_subtitle_type,
+    seul consommateur de ce repli)."""
+    subtitle = _FakeTrack("Text", language="fre", format="Timed Text", forced="No", title="French (Forced)")
+    _mock_parse(monkeypatch, [_video_track(), subtitle])
+
+    meta = extract.extract_video_metadata(Path("fake.mkv"))
+
+    assert meta["subtitle_tracks"] == [
+        {"language": "fre", "format": "Timed Text", "forced": False, "title": "French (Forced)"},
+    ]
 
 
 def test_extract_video_metadata_no_audio_or_subtitle_tracks(monkeypatch):

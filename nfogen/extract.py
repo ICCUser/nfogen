@@ -146,8 +146,25 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
             }
             for t in mi.tracks if t.track_type == "Audio"
         ],
+        # Retour reel de moderation C411 (2026-09-12, pack Lucifer S05) :
+        # "0/3 pistes conformes" -- le tableau BBCode genere ne montrait ni
+        # le format de piste (SRT/ASS/PGS/Timed Text/...) ni un "Forced"
+        # fiable. Le champ structurel MediaInfo `Forced` s'est revele NON
+        # fiable sur ces fichiers reels : les 3 pistes valaient toutes
+        # `Forced=No`, alors que leur `Title` disait explicitement
+        # "French (Forced)" / "French (Forced Narrative)" / "English (CC)"
+        # -- certains outils d'encodage (ici HandBrake) n'ecrivent la
+        # nature de la piste que dans le titre libre, jamais dans le flag
+        # structurel. `title` est donc capture ici en plus de `forced`,
+        # pour que la classification finale (voir
+        # upload_prep._classify_subtitle_type) puisse s'y rabattre.
         "subtitle_tracks": [
-            {"language": t.language, "forced": getattr(t, "forced", None) == "Yes"}
+            {
+                "language": t.language,
+                "format": t.format,
+                "forced": getattr(t, "forced", None) == "Yes",
+                "title": getattr(t, "title", None),
+            }
             for t in mi.tracks if t.track_type == "Text"
         ],
     }

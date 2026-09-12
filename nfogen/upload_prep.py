@@ -9,6 +9,7 @@ fois) -- la mise en scene cree de vrais fichiers et la generation de
 """
 from __future__ import annotations
 
+import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -56,6 +57,39 @@ try:
     _TORRENT_BUILDER_AVAILABLE = True
 except ImportError:
     _TORRENT_BUILDER_AVAILABLE = False
+
+# Mots-cles reperes dans le `Title` MediaInfo libre d'une piste de
+# sous-titres, dans l'ordre de priorite ou ils doivent etre testes (retour
+# reel de moderation C411, 2026-09-12, pack Lucifer S05 : "0/3 pistes
+# conformes" -- le flag structurel MediaInfo `Forced` s'est revele NON
+# fiable sur ces fichiers reels, forge par HandBrake avec `Forced=No` alors
+# que le `Title` disait "French (Forced)"/"French (Forced Narrative)"/
+# "English (CC)". "forced"/"narrative" avant "sdh"/"cc" car un titre peut
+# cumuler plusieurs mots-cles ("Forced Narrative") -- FORCÉ prime toujours,
+# C411 n'a pas de categorie "Narrative" separee. `\b` limite chaque mot a
+# ses propres frontieres : "cc" ne doit matcher que le mot "CC", jamais un
+# sous-mot ("Accessible", "occitan"...).
+_SUBTITLE_TYPE_KEYWORDS = (
+    (re.compile(r"\bforced\b", re.IGNORECASE), "FORCÉ"),
+    (re.compile(r"\bnarrative\b", re.IGNORECASE), "FORCÉ"),
+    (re.compile(r"\bsdh\b", re.IGNORECASE), "SDH"),
+    (re.compile(r"\bcc\b", re.IGNORECASE), "CC"),
+)
+
+
+def _classify_subtitle_type(forced: bool, title: Optional[str]) -> str:
+    """Type C411 d'une piste de sous-titres (FORCÉ/SDH/CC/COMPLET) --
+    utilise le flag structurel MediaInfo `forced` quand il est fiable, et
+    se rabat sur le `Title` libre de la piste sinon (voir
+    `_SUBTITLE_TYPE_KEYWORDS` ci-dessus pour le contexte reel qui motive ce
+    repli)."""
+    if forced:
+        return "FORCÉ"
+    title = title or ""
+    for pattern, label in _SUBTITLE_TYPE_KEYWORDS:
+        if pattern.search(title):
+            return label
+    return "COMPLET"
 
 
 @dataclass
@@ -726,7 +760,8 @@ def send_to_tracker(
         name, flag_code = resolve_language(t.get("language"))
         subtitle_rows.append({
             "flag": flagcdn_url(flag_code) if flag_code else None,
-            "language": name, "forced": t.get("forced", False),
+            "language": name, "format": t.get("format"),
+            "type": _classify_subtitle_type(t.get("forced", False), t.get("title")),
         })
 
     description = render_upload_description(

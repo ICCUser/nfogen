@@ -32,7 +32,8 @@ FULL_CONTEXT = {
          "channels": "5.1", "codec": "AC-3", "bit_rate_kbps": 448, "sampling_khz": 48.0},
     ],
     "subtitle_rows": [
-        {"flag": "https://flagcdn.com/20x15/fr.png", "language": "Français", "forced": True},
+        {"flag": "https://flagcdn.com/20x15/fr.png", "language": "Français",
+         "format": "UTF-8", "type": "FORCÉ"},
     ],
     "video_bit_rate_kbps": 12000,
     "container": "MKV",
@@ -92,6 +93,15 @@ def test_renders_audio_and_subtitle_tables_with_flags():
     assert "flagcdn.com/20x15/fr.png" in out
     assert "5.1" in out and "AC-3" in out and "448 kb/s" in out and "48.0 kHz" in out
     assert "FORCÉ" in out
+
+
+def test_renders_subtitle_format_column():
+    """Retour reel de moderation C411, 2026-09-12 (pack Lucifer S05) :
+    "0/3 pistes conformes" -- le format de piste (SRT/ASS/PGS/Timed
+    Text/...) manquait completement du tableau BBCode, en plus du Type."""
+    out = render_upload_description("c411", FULL_CONTEXT)
+    assert "Format" in out
+    assert "UTF-8" in out
 
 
 def test_renders_container_and_hdr_format():

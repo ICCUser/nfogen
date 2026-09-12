@@ -27,8 +27,8 @@
 {% if audio_rows %}[table][tr][th]#[/th][th]Langue[/th][th]Canaux[/th][th]Codec[/th][th]Débit[/th][th]Sample Rate[/th][/tr]
 {% for a in audio_rows %}[tr][td]{{ loop.index }}[/td][td]{% if a.flag %}[img=20x15]{{ a.flag }}[/img] {% endif %}{{ a.language }}[/td][td]{{ a.channels }}[/td][td]{{ a.codec }}[/td][td]{{ a.bit_rate_kbps }} kb/s[/td][td]{{ a.sampling_khz }} kHz[/td][/tr]
 {% endfor %}[/table]
-{% endif %}{% if subtitle_rows %}[table][tr][th]#[/th][th]Langue[/th][th]Type[/th][/tr]
-{% for s in subtitle_rows %}[tr][td]{{ loop.index }}[/td][td]{% if s.flag %}[img=20x15]{{ s.flag }}[/img] {% endif %}{{ s.language }}[/td][td]{{ "FORCÉ" if s.forced else "COMPLET" }}[/td][/tr]
+{% endif %}{% if subtitle_rows %}[table][tr][th]#[/th][th]Langue[/th][th]Format[/th][th]Type[/th][/tr]
+{% for s in subtitle_rows %}[tr][td]{{ loop.index }}[/td][td]{% if s.flag %}[img=20x15]{{ s.flag }}[/img] {% endif %}{{ s.language }}[/td][td]{{ s.format }}[/td][td]{{ s.type }}[/td][/tr]
 {% endfor %}[/table]
 {% endif %}
 [img]{{ banner_telechargement }}[/img]
