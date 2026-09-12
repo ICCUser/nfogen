@@ -19,6 +19,7 @@ import {
   gapscanRun,
   gapscanStatus,
   libraryResults,
+  refreshLibrary,
   seedMatchJobStatus,
   startSeedMatch,
 } from "../api/client";
@@ -193,6 +194,8 @@ export default function LibraryPage() {
   const [page, setPage] = useState(1);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [error, setError] = useState<string | null>(null);
+  const [syncedAt, setSyncedAt] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [starting, setStarting] = useState(false);
   const [activeUpload, setActiveUpload] = useState<{
@@ -323,11 +326,32 @@ export default function LibraryPage() {
       setItems(res.items);
       setTotal(res.total);
       setSeasonPacks(res.season_packs);
+      setSyncedAt(res.synced_at ?? null);
     } catch (e) {
       setItems(null);
       setTotal(0);
       setError(e instanceof ApiError ? e.message : "Bibliothèque indisponible.");
     }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await refreshLibrary();
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Rafraîchissement impossible.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function formatSyncedAt(ts: number | null): string {
+    if (ts === null) return "jamais synchronisé";
+    const minutes = Math.round((Date.now() / 1000 - ts) / 60);
+    if (minutes < 1) return "à l'instant";
+    if (minutes < 60) return `il y a ${minutes} min`;
+    return `il y a ${Math.round(minutes / 60)} h`;
   }
 
   // Resout les chemins locaux par saison pour un SeasonPackSuggestion, a
@@ -506,8 +530,17 @@ export default function LibraryPage() {
             Ta bibliothèque Sonarr/Radarr, annotée du statut {trackerDisplayName} dès qu'il est connu —
             sélectionne des titres à vérifier, ou lance un scan complet.
           </p>
+          <p className="text-xs text-ink-dim">Dernière synchro : {formatSyncedAt(syncedAt)}</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink hover:bg-surface-hover disabled:opacity-50"
+          >
+            {refreshing ? "Rafraîchissement…" : "Rafraîchir"}
+          </button>
           <select
             value={only}
             onChange={(e) => setOnly(e.target.value as "" | "movies" | "series")}

@@ -377,6 +377,15 @@ export function libraryResults(
   return request<LibraryResultsPage>(`/gapscan/library?${params.toString()}`);
 }
 
+/** POST /gapscan/library/refresh : declenche une synchronisation
+ * immediate de l'inventaire Bibliotheque (bouton "Rafraichir"). */
+export function refreshLibrary(): Promise<{ status: string; synced_at: number | null; total: number }> {
+  return request<{ status: string; synced_at: number | null; total: number }>(
+    "/gapscan/library/refresh",
+    { method: "POST" },
+  );
+}
+
 /** GET /gapscan/seed-queue : titres envoyes a C411 mais pas encore
  * ajoutes a un client de seed (AUTOMATION.md, sous-projet 6). */
 export function seedQueue(): Promise<SeedQueueEntry[]> {

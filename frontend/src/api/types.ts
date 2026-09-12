@@ -302,6 +302,12 @@ export interface LibraryResultsPage {
   items: LibraryItem[];
   total: number;
   season_packs: SeasonPackSuggestion[];
+  // Optionnels (pas juste `| null`) : les tests existants construisent des
+  // reponses mockees sans ces 3 champs -- retour utilisateur, 2026-09-12,
+  // cache local de l'inventaire Bibliotheque (voir GAPSCAN.md).
+  synced_at?: number | null;
+  last_attempt_at?: number | null;
+  last_attempt_error?: string | null;
 }
 
 /** Payload envoye a POST /gapscan/prepare-upload/preview pour fusionner

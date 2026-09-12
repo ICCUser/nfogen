@@ -12,6 +12,7 @@ vi.mock("../api/client", () => ({
   gapscanRun: vi.fn(),
   gapscanStatus: vi.fn(),
   libraryResults: vi.fn(),
+  refreshLibrary: vi.fn(),
   listAllProfiles: vi.fn(),
   readManagedProfile: vi.fn(),
   startSeedMatch: vi.fn(),
@@ -53,6 +54,7 @@ import {
   gapscanRun,
   gapscanStatus,
   libraryResults,
+  refreshLibrary,
   listAllProfiles,
   readManagedProfile,
   seedMatchJobStatus,
@@ -145,6 +147,7 @@ beforeEach(() => {
     name: "c411", rules: { tracker: { display_name: "C411" } }, templates: {},
   });
   vi.mocked(clearGapscanLog).mockResolvedValue({ status: "cleared" });
+  vi.mocked(refreshLibrary).mockResolvedValue({ status: "ok", synced_at: 1700000000, total: 0 });
 });
 
 afterEach(() => vi.resetAllMocks());
@@ -161,6 +164,24 @@ describe("LibraryPage", () => {
     renderPage();
     expect(await screen.findByText(/Matrix \(1999\)/)).toBeInTheDocument();
     expect(libraryResults).toHaveBeenCalled();
+  });
+
+  it("affiche la derniere synchro et rafraichit au clic", async () => {
+    vi.mocked(libraryResults).mockResolvedValue({
+      items: [], total: 0, season_packs: [],
+      synced_at: Date.now() / 1000 - 120, last_attempt_at: Date.now() / 1000 - 120, last_attempt_error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Dernière synchro/i)).toBeInTheDocument();
+
+    const button = screen.getByRole("button", { name: /Rafraîchir/i });
+    await userEvent.click(button);
+
+    expect(refreshLibrary).toHaveBeenCalledTimes(1);
+    // load() est rappele apres le rafraichissement -- 1 au montage + 1 ici.
+    expect(libraryResults).toHaveBeenCalledTimes(2);
   });
 
   it("affiche le tag d'equipe par ligne, ou un tiret si absent", async () => {
