@@ -190,6 +190,12 @@ fi
 if [[ -f "${ENV_FILE}" ]] && ! grep -q "^NFOGEN_GAPSCAN_RESULTS_FILE=" "${ENV_FILE}"; then
     echo "NFOGEN_GAPSCAN_RESULTS_FILE=${DATA_DIR}/gapscan_results.json" >> "${ENV_FILE}"
 fi
+# Cache local de l'inventaire Bibliotheque (voir GAPSCAN.md) : evite un
+# appel Radarr/Sonarr a chaque chargement de /library, synchronise en
+# tache de fond -- retour utilisateur, 2026-09-12.
+if [[ -f "${ENV_FILE}" ]] && ! grep -q "^NFOGEN_LIBRARY_INVENTORY_FILE=" "${ENV_FILE}"; then
+    echo "NFOGEN_LIBRARY_INVENTORY_FILE=${DATA_DIR}/library_inventory.json" >> "${ENV_FILE}"
+fi
 
 echo "==> Dossier de mise en scene (${DATA_DIR}/staging) pour la generation de .torrent"
 STAGING_DIR="${DATA_DIR}/staging"

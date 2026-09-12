@@ -61,6 +61,8 @@ try:
         gapscan_library,
         gapscan_runner,
         integrity_job_runner,
+        library_inventory_store,
+        library_sync_runner,
         seed_match_job_runner,
         tracker_profile,
         upload_history_store,
@@ -96,6 +98,9 @@ _generate_rate_limit = os.environ.get("NFOGEN_GENERATE_RATE_LIMIT_PER_MINUTE")
 _GENERATE_RATE_LIMIT_PER_MINUTE = int(_generate_rate_limit) if _generate_rate_limit else None
 _GENERATE_RATE_WINDOW_SECONDS = 60.0
 _TRUST_PROXY_HEADERS = os.environ.get("NFOGEN_TRUST_PROXY_HEADERS", "0") == "1"
+# Cache local de l'inventaire Bibliotheque (voir library_sync_runner.py,
+# GAPSCAN.md) : intervalle de synchro en tache de fond, defaut 15 min.
+_LIBRARY_SYNC_INTERVAL_SECONDS = float(os.environ.get("NFOGEN_LIBRARY_SYNC_INTERVAL_SECONDS", "900"))
 
 
 class _Session(NamedTuple):
@@ -695,6 +700,21 @@ def _require_gapscan_available() -> None:
         )
 
 
+@app.on_event("startup")
+def _start_library_sync() -> None:
+    """Demarre la synchro en tache de fond de l'inventaire Bibliotheque
+    UNIQUEMENT si NFOGEN_LIBRARY_INVENTORY_FILE est configuree -- sinon
+    (deploiement qui n'a pas encore adopte cette option) rien ne change :
+    GET /gapscan/library continue de fonctionner en direct, exactement
+    comme avant (voir library_inventory_store.py, "opt-in, jamais
+    bloquant"). Verifie empiriquement (2026-09-12) : TestClient(app) SANS
+    `with` -- le patron utilise par toute la suite de tests existante --
+    ne declenche PAS cet evenement, donc cet ajout n'affecte aucun test
+    qui ne l'invoque pas explicitement."""
+    if _GAPSCAN_AVAILABLE and library_inventory_store.is_configured():
+        library_sync_runner.start(_LIBRARY_SYNC_INTERVAL_SECONDS)
+
+
 @app.get("/gapscan/config", dependencies=[Depends(require_token)])
 def gapscan_config(profile: str = Query("c411")) -> dict[str, Any]:
     """Jamais les cles elles-memes, seulement si chaque service est
@@ -947,121 +967,6 @@ def gapscan_results_export_csv(
     )
 
 
-# Retour utilisateur, 2026-09-08 : "5 a 10 secondes" de chargement, puis
-# "5 a 10 secondes de plus" apres chaque frappe dans la recherche --
-# gapscan_library.list_library() recalcule TOUT depuis Radarr/Sonarr a
-# chaque appel (aucun cache), et SonarrClient.list_season_files() fait des
-# appels HTTP PAR SERIE (list_episode_files, N+1, desormais parallelises
-# -- voir sonarr_client.py) -- couteux sur une grosse bibliotheque, repete
-# a chaque frappe cote frontend (avant meme le debounce ajoute ce jour-la
-# sur LibraryPage.tsx). Cache en memoire, courte duree.
-_LIBRARY_CACHE_TTL_SECONDS = 30.0
-_library_cache: dict[tuple[str, Any], tuple[float, list[Any]]] = {}
-# Incident reel de performance (retour utilisateur, 2026-09-09) : sans
-# verrou, deux requetes GET /gapscan/library concurrentes (ex. "page
-# suivante" cliquee avant que la precedente ait fini de charger) tombaient
-# TOUTES LES DEUX en cache MISS et declenchaient chacune leur propre
-# interrogation complete Radarr/Sonarr -- confirme par les logs de
-# production : une rafale d'appels episodefile suivie, quelques centaines
-# de ms apres la fin de la premiere, d'une DEUXIEME rafale complete. Ce
-# verrou fait qu'une seule requete "meneuse" effectue reellement le fetch
-# par cle de cache (profile, scan_finished_at) ; les autres attendent son
-# resultat au lieu d'en declencher un chacune (patron "single-flight").
-_library_fetch_lock = threading.Lock()
-_library_fetch_in_progress: dict[tuple[str, Any], threading.Event] = {}
-
-
-def _cached_library_items(
-    profile: str,
-    sonarr_config: Optional[tuple[str, str]],
-    radarr_config: Optional[tuple[str, str]],
-) -> list[Any]:
-    """Resultat BRUT (non filtre/pagine) de `gapscan_library.list_library()`,
-    reutilise pendant `_LIBRARY_CACHE_TTL_SECONDS` -- la cle inclut le
-    dernier `finished_at` de scan connu (voir gapscan_runner.status()) :
-    un scan qui vient de se terminer invalide immediatement l'entree
-    precedente (statut tracker a jour), sans attendre l'expiration du TTL.
-    Une seule entree conservee a la fois (`_library_cache.clear()` avant
-    d'inserer) -- inutile de garder plusieurs profils/generations en
-    memoire pour ce cas d'usage.
-
-    Concurrence (voir `_library_fetch_lock` ci-dessus) : si un fetch pour
-    CETTE cle est deja en cours dans un autre thread, on attend son
-    resultat plutot que d'en lancer un second -- FastAPI/Starlette execute
-    les routes synchrones (comme celle-ci) dans un pool de threads, donc
-    plusieurs requetes HTTP peuvent reellement s'executer en parallele."""
-    scan_finished_at = gapscan_runner.status()["finished_at"]
-    cache_key = (profile, scan_finished_at)
-
-    with _library_fetch_lock:
-        now = time.time()
-        cached = _library_cache.get(cache_key)
-        if cached is not None and (now - cached[0]) < _LIBRARY_CACHE_TTL_SECONDS:
-            logger.info(
-                "gapscan_library cache HIT (profile=%s, scan_finished_at=%s, age=%.1fs, %d items)",
-                profile, scan_finished_at, now - cached[0], len(cached[1]),
-            )
-            return cached[1]
-
-        existing_fetch = _library_fetch_in_progress.get(cache_key)
-        if existing_fetch is not None:
-            logger.info(
-                "gapscan_library cache MISS (profile=%s) -- fetch deja en cours ailleurs, attente "
-                "de son resultat au lieu d'en lancer un second",
-                profile,
-            )
-            is_leader = False
-        else:
-            existing_fetch = threading.Event()
-            _library_fetch_in_progress[cache_key] = existing_fetch
-            is_leader = True
-
-    if not is_leader:
-        # Attente bornee : si le meneur echoue/plante sans jamais liberer
-        # l'evenement (ne devrait pas arriver, voir `finally` plus bas),
-        # on ne bloque pas indefiniment -- on retente nous-memes ensuite.
-        existing_fetch.wait(timeout=60.0)
-        with _library_fetch_lock:
-            cached = _library_cache.get(cache_key)
-        if cached is not None:
-            return cached[1]
-        # Le meneur a echoue (exception) ou a timeout : on retente comme
-        # meneur plutot que de renvoyer une erreur perimee.
-        return _cached_library_items(profile, sonarr_config, radarr_config)
-
-    logger.info(
-        "gapscan_library cache MISS (profile=%s, scan_finished_at=%s) -- interrogation Radarr/Sonarr "
-        "en cours",
-        profile, scan_finished_at,
-    )
-    started = time.time()
-    try:
-        sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
-        radarr = RadarrClient(*radarr_config) if radarr_config else None
-        try:
-            items = gapscan_library.list_library(
-                radarr=radarr, sonarr=sonarr, previous_results=gapscan_runner.results(), profile=profile
-            )
-        finally:
-            if sonarr is not None:
-                sonarr.close()
-            if radarr is not None:
-                radarr.close()
-
-        logger.info(
-            "gapscan_library cache MISS resolved in %.1fs (%d items, profile=%s)",
-            time.time() - started, len(items), profile,
-        )
-        with _library_fetch_lock:
-            _library_cache.clear()
-            _library_cache[cache_key] = (time.time(), items)
-        return items
-    finally:
-        with _library_fetch_lock:
-            _library_fetch_in_progress.pop(cache_key, None)
-        existing_fetch.set()
-
-
 @app.get("/gapscan/library", dependencies=[Depends(require_token)])
 def gapscan_library_endpoint(
     q: Optional[str] = Query(None),
@@ -1077,45 +982,63 @@ def gapscan_library_endpoint(
     page_size: int = Query(50, ge=1, le=500),
     profile: str = Query("c411"),
 ) -> dict[str, Any]:
-    """Inventaire local Radarr/Sonarr, ZERO appel tracker (AUTOMATION.md,
-    sous-projet 8). `q` : recherche texte sur le titre (insensible a la
-    casse, sous-chaine). `genre` : genres Radarr/Sonarr (LibraryItem.genres).
-    `tracker_genre` : categorie C411 du dernier scan connu ("anime"/
-    "documentaire", voir gapscan.genre_of) -- DISTINCT de `genre`, les deux
-    classifications restent independantes. `status` : statut du dernier
-    scan connu (une valeur de GapStatus, ou "not_verified" pour les items
-    jamais scannes). `added_since_days` : ne garde que les items ajoutes
-    il y a moins de N jours (ignore les items sans added_at connu).
-    `processed` : filtre sur already_processed. `sort` : colonne de tri
-    (`title`/`media_type`/`status`/`team`/`quality`/`added_at`/
-    `size_bytes`, voir gapscan_library.sort_library_items) -- applique
-    sur la liste deja filtree, AVANT pagination (retour utilisateur,
-    2026-09-09 : le tri
-    doit porter sur toute la bibliotheque, pas seulement la page
-    affichee). `order` : `"asc"` (defaut) ou `"desc"`. `profile` : quel
-    profil de tracker pour classer `tracker_genre` (fusion
-    Bibliotheque/Scan, retour utilisateur 2026-09-06 : les deux pages
-    faisaient doublon). Le resultat brut Radarr/Sonarr est mis en cache
-    brievement (voir `_cached_library_items`) -- filtre/trie/pagine a
-    chaque appel, jamais mis en cache lui-meme (bon marche, en memoire)."""
+    """Inventaire local Radarr/Sonarr, lu depuis le cache persistant local
+    (voir library_inventory_store.py/library_sync_runner.py, AUTOMATION.md
+    sous-projet 8) -- ZERO appel Radarr/Sonarr en fonctionnement normal.
+    Si le cache n'a encore jamais ete rempli (tout premier demarrage, ou
+    NFOGEN_LIBRARY_INVENTORY_FILE non configuree) : un appel live
+    exceptionnel amorce/remplace le cache pour cette requete. La reponse
+    inclut `synced_at`/`last_attempt_at`/`last_attempt_error` pour afficher
+    la fraicheur des donnees cote frontend. `q` : recherche texte sur le
+    titre (insensible a la casse, sous-chaine). `genre` : genres Radarr/
+    Sonarr (LibraryItem.genres). `tracker_genre` : categorie C411 du
+    dernier scan connu ("anime"/"documentaire", voir gapscan.genre_of) --
+    DISTINCT de `genre`, les deux classifications restent independantes.
+    `status` : statut du dernier scan connu (une valeur de GapStatus, ou
+    "not_verified" pour les items jamais scannes). `added_since_days` : ne
+    garde que les items ajoutes il y a moins de N jours (ignore les items
+    sans added_at connu). `processed` : filtre sur already_processed.
+    `sort` : colonne de tri (`title`/`media_type`/`status`/`team`/
+    `quality`/`added_at`/`size_bytes`, voir gapscan_library.sort_library_items)
+    -- applique sur la liste deja filtree, AVANT pagination (retour
+    utilisateur, 2026-09-09 : le tri doit porter sur toute la bibliotheque,
+    pas seulement la page affichee). `order` : `"asc"` (defaut) ou
+    `"desc"`. `profile` : quel profil de tracker pour classer
+    `tracker_genre` (fusion Bibliotheque/Scan, retour utilisateur
+    2026-09-06 : les deux pages faisaient doublon)."""
     _require_gapscan_available()
-    sonarr_config = gapscan_config_store.effective_sonarr()
-    radarr_config = gapscan_config_store.effective_radarr()
-    if sonarr_config is None and radarr_config is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Aucune instance Sonarr ni Radarr configuree "
-            "(NFOGEN_SONARR_URL/_API_KEY et/ou NFOGEN_RADARR_URL/_API_KEY, ou PUT /gapscan/config).",
-        )
-    try:
-        items = _cached_library_items(profile, sonarr_config, radarr_config)
-    except (RadarrError, SonarrError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    cached = library_inventory_store.load()
+    if cached is not None:
+        items, synced_at = cached
+    else:
+        sonarr_config = gapscan_config_store.effective_sonarr()
+        radarr_config = gapscan_config_store.effective_radarr()
+        if sonarr_config is None and radarr_config is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Aucune instance Sonarr ni Radarr configuree "
+                "(NFOGEN_SONARR_URL/_API_KEY et/ou NFOGEN_RADARR_URL/_API_KEY, ou PUT /gapscan/config).",
+            )
+        sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
+        radarr = RadarrClient(*radarr_config) if radarr_config else None
+        try:
+            items = library_sync_runner.sync_now(radarr=radarr, sonarr=sonarr)
+        finally:
+            if sonarr is not None:
+                sonarr.close()
+            if radarr is not None:
+                radarr.close()
+        if items is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Synchronisation de la Bibliothèque indisponible : "
+                f"{library_sync_runner.last_attempt().last_attempt_error}",
+            )
+        synced_at = library_sync_runner.last_attempt().last_attempt_at
 
-    # Calcule sur le resultat BRUT (avant filtre q/pagination) : sinon un
+    # Calcule sur le resultat COMPLET (avant filtre q/pagination) : sinon un
     # filtre actif masquerait des saisons pourtant concernees par un pack
-    # (retour utilisateur, 2026-09-08). Pas de nouvel appel Radarr/Sonarr
-    # -- pure fonction sur `items` deja recupere/mis en cache ci-dessus.
+    # (retour utilisateur, 2026-09-08).
     season_packs = gapscan_library.detect_season_packs(items)
 
     if q:
@@ -1143,10 +1066,41 @@ def gapscan_library_endpoint(
     total = len(items)
     start = (page - 1) * page_size
     page_items = items[start : start + page_size]
+    attempt = library_sync_runner.last_attempt()
     return {
         "items": [asdict(i) for i in page_items], "total": total,
         "season_packs": [asdict(p) for p in season_packs],
+        "synced_at": synced_at,
+        "last_attempt_at": attempt.last_attempt_at,
+        "last_attempt_error": attempt.last_attempt_error,
     }
+
+
+@app.post("/gapscan/library/refresh", dependencies=[Depends(require_token)])
+def gapscan_library_refresh() -> dict[str, Any]:
+    """Declenche une synchronisation immediate de l'inventaire Bibliotheque
+    (bouton "Rafraichir" cote frontend) et attend sa fin -- un simple appel
+    liste Radarr/Sonarr, pas un scan MediaInfo lourd (quelques secondes au
+    plus). Voir library_sync_runner.sync_now()."""
+    _require_gapscan_available()
+    sonarr_config = gapscan_config_store.effective_sonarr()
+    radarr_config = gapscan_config_store.effective_radarr()
+    sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
+    radarr = RadarrClient(*radarr_config) if radarr_config else None
+    try:
+        items = library_sync_runner.sync_now(radarr=radarr, sonarr=sonarr)
+    finally:
+        if sonarr is not None:
+            sonarr.close()
+        if radarr is not None:
+            radarr.close()
+    attempt = library_sync_runner.last_attempt()
+    if items is None:
+        raise HTTPException(
+            status_code=503,
+            detail=attempt.last_attempt_error or "Synchronisation indisponible.",
+        )
+    return {"status": "ok", "synced_at": attempt.last_attempt_at, "total": len(items)}
 
 
 @app.get("/gapscan/seed-queue", dependencies=[Depends(require_token)])

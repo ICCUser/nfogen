@@ -301,6 +301,23 @@ ensemble :
 Le frontend expose ce choix (scan complet vs rapide) sur la page "Scan
 C411", rapide par défaut dès qu'un scan précédent existe.
 
+### Cache local de l'inventaire Bibliothèque (2026-09-12)
+
+`GET /gapscan/library` ne fait plus d'appel Radarr/Sonarr à chaque
+chargement de page — l'inventaire de base (titre/année/qualité/taille/
+added_at) est synchronisé en tâche de fond (`nfogen/library_sync_runner.py`)
+et persisté localement (`nfogen/library_inventory_store.py`, fichier
+optionnel `NFOGEN_LIBRARY_INVENTORY_FILE`, ajouté par `scripts/install.sh`).
+Trois déclencheurs pour cette synchro : au démarrage du service, à
+intervalle fixe (`NFOGEN_LIBRARY_SYNC_INTERVAL_SECONDS`, défaut 900s/15min),
+et via `POST /gapscan/library/refresh` (bouton "Rafraîchir" côté frontend).
+Une synchro qui échoue (Radarr/Sonarr injoignables) ne touche jamais à la
+copie précédente — la réponse de `GET /gapscan/library` inclut
+`synced_at`/`last_attempt_at`/`last_attempt_error` pour connaître la
+fraîcheur réelle des données affichées. Périmètre volontairement limité à
+l'affichage : Préparer l'upload/Confirmer continuent d'aller chercher les
+fichiers en direct, sans changement.
+
 ### Débit confirmé, scan par catégorie, expiration du mode incrémental, titres alternatifs (2026-08-27)
 
 Suite d'échange avec les admins C411 + retours après usage réel du mode

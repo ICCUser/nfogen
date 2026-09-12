@@ -19,7 +19,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from . import gapscan_config_store, gapscan_library, gapscan_runner, library_inventory_store
 from .gapscan_library import LibraryItem
@@ -51,37 +51,51 @@ def last_attempt() -> SyncState:
     return _state
 
 
-def sync_now() -> Optional[list[LibraryItem]]:
+def sync_now(radarr: Optional[Any] = None, sonarr: Optional[Any] = None) -> Optional[list[LibraryItem]]:
     """Une synchro immediate. Renvoie la liste calculee en cas de succes
     (deja persistee via library_inventory_store.save()), `None` si aucune
     synchro n'a pu avoir lieu maintenant (verrou deja pris par une autre
     synchro en cours -- jamais bloquant), si aucune instance Sonarr/Radarr
     n'est configuree, ou si Radarr/Sonarr ont leve une erreur. Ne leve
-    jamais elle-meme -- voir `last_attempt()` pour le detail de l'echec."""
+    jamais elle-meme -- voir `last_attempt()` pour le detail de l'echec.
+
+    `radarr`/`sonarr` (optionnels) : instances DEJA CONSTRUITES par
+    l'appelant (meme convention que gapscan_library.list_library()) --
+    utilisees telles quelles SANS etre fermees ici, l'appelant en reste
+    proprietaire. Sert a nfogen/api.py, qui garde ses propres references
+    RadarrClient/SonarrClient (patchables en tests, `monkeypatch.setattr(
+    mod, "RadarrClient", ...)` -- une classe importee ici directement
+    serait une liaison distincte, invisible a ce patch). Si aucun des deux
+    n'est fourni (cas normal : boucle de fond de start(), qui n'a pas de
+    contexte HTTP a partir duquel construire des clients) : construits
+    depuis la configuration, et alors fermes ici en fin de synchro."""
     if not _lock.acquire(blocking=False):
         _state.last_attempt_error = "Synchronisation déjà en cours."
         logger.info("library_sync_runner: synchro deja en cours, declenchement ignore")
         return None
     try:
         _state.last_attempt_at = time.time()
-        sonarr_config = gapscan_config_store.effective_sonarr()
-        radarr_config = gapscan_config_store.effective_radarr()
-        if sonarr_config is None and radarr_config is None:
-            _state.last_attempt_error = "Aucune instance Sonarr ni Radarr configurée."
-            logger.info("library_sync_runner: %s", _state.last_attempt_error)
-            return None
-        sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
-        radarr = RadarrClient(*radarr_config) if radarr_config else None
+        owns_clients = radarr is None and sonarr is None
+        if owns_clients:
+            sonarr_config = gapscan_config_store.effective_sonarr()
+            radarr_config = gapscan_config_store.effective_radarr()
+            if sonarr_config is None and radarr_config is None:
+                _state.last_attempt_error = "Aucune instance Sonarr ni Radarr configurée."
+                logger.info("library_sync_runner: %s", _state.last_attempt_error)
+                return None
+            sonarr = SonarrClient(*sonarr_config) if sonarr_config else None
+            radarr = RadarrClient(*radarr_config) if radarr_config else None
         try:
             items = gapscan_library.list_library(
                 radarr=radarr, sonarr=sonarr,
                 previous_results=gapscan_runner.results(), profile=_PROFILE,
             )
         finally:
-            if sonarr is not None:
-                sonarr.close()
-            if radarr is not None:
-                radarr.close()
+            if owns_clients:
+                if sonarr is not None:
+                    sonarr.close()
+                if radarr is not None:
+                    radarr.close()
     except (RadarrError, SonarrError) as exc:
         _state.last_attempt_error = str(exc)
         logger.warning("library_sync_runner: synchro echouee : %s", exc)
