@@ -83,3 +83,44 @@ def test_network_error_raises_lidarr_error():
             client.list_album_files()
     finally:
         client.close()
+
+
+def test_list_album_files_multi_disc_album():
+    """Verifie que _common_dir calcule le vrai prefixe commun pour albums
+    multi-disques (ex. CD1/CD2), pas juste le dirname du premier fichier."""
+    responses = {
+        "/api/v1/artist": [
+            {"id": 2, "artistName": "Pink Floyd", "foreignArtistId": "66c662b6-bbd0-474f-b89b-3a729560eec5"},
+        ],
+        "/api/v1/album": [
+            {
+                "id": 20, "artistId": 2, "title": "The Wall",
+                "releaseDate": "1979-11-30T00:00:00Z",
+                "foreignAlbumId": "e4b20e20-6e5c-4ea9-bab9-bfe92a7d7e91",
+                "statistics": {"trackFileCount": 26, "sizeOnDisk": 1234567890},
+            },
+        ],
+        "/api/v1/trackfile?albumId=20": [
+            {
+                "path": "/music/Pink Floyd/The Wall/CD1/01.flac",
+                "size": 50000000,
+                "dateAdded": "2024-01-01T00:00:00Z",
+            },
+            {
+                "path": "/music/Pink Floyd/The Wall/CD2/01.flac",
+                "size": 45000000,
+                "dateAdded": "2024-01-02T00:00:00Z",
+            },
+        ],
+    }
+    client = _client(responses)
+    try:
+        albums = client.list_album_files()
+    finally:
+        client.close()
+
+    assert len(albums) == 1
+    album = albums[0]
+    # Le dossier parent commun doit etre le dossier de l'album, pas le dossier du premier CD
+    assert album.remote_path == "/music/Pink Floyd/The Wall"
+    assert album.track_count == 26

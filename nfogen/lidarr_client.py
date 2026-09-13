@@ -53,12 +53,19 @@ def _parse_year(release_date: Optional[str]) -> Optional[int]:
 
 def _common_dir(paths: list[str]) -> Optional[str]:
     """Dossier parent commun aux fichiers d'un album (ex. le dossier de
-    l'album lui-meme) -- `None` si `paths` est vide."""
+    l'album lui-meme) -- calcule le vrai prefixe commun a TOUS les chemins,
+    gere les albums multi-disques. Retourne `None` si `paths` est vide."""
     if not paths:
         return None
     import posixpath
 
-    return posixpath.dirname(paths[0])
+    if len(paths) == 1:
+        return posixpath.dirname(paths[0])
+    try:
+        return posixpath.commonpath(paths)
+    except ValueError:
+        # Chemins sans racine commune, retourner le dirname du premier
+        return posixpath.dirname(paths[0])
 
 
 class LidarrClient:
