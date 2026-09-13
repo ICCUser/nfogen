@@ -696,7 +696,9 @@ def test_real_c411_profile_iso_source_uses_hevc_not_x265():
     assert result.name is not None
     assert ".HEVC-Frosties" in result.name
     assert "x265" not in result.name.lower()
-    assert result.fields["source"] == "BluRay.ISO"
+    # Prefixe "UHD." attendu ici (2160p, source pure) -- voir point 3/4,
+    # _apply_uhd_bluray_prefix : mis a jour depuis "BluRay.ISO" simple.
+    assert result.fields["source"] == "UHD.BluRay.ISO"
 
 
 def test_propose_season_pack_name_remux_source_uses_hevc():
@@ -709,3 +711,85 @@ def test_propose_season_pack_name_remux_source_uses_hevc():
     assert result.name is not None
     assert ".HEVC-Frosties" in result.name
     assert "x265" not in result.name.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Prefixe "UHD." pour les sources pures (REMUX/BDMV/ISO) en 2160p (audit C411
+# 2026-09-13, doc officielle "Films & Videos") : REMUX/BDMV/ISO 2160p
+# TOUJOURS avec le prefixe UHD. devant BluRay (jamais pour un simple encode
+# 2160p, qui reste BluRay sans prefixe -- exemple officiel Gladiator 2000).
+# Reutilise la MEME liste `pure_sources` que _apply_pure_source_codec_convention
+# (REMUX/BDMV/ISO restent purs peu importe la resolution) -- pas de nouvelle
+# cle de config, aucun opt-in separe.
+# --------------------------------------------------------------------------- #
+def test_remux_1080p_has_no_uhd_prefix():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.BDRemux.AAC.x265-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.fields["source"] == "BluRay.REMUX"
+
+
+def test_remux_2160p_gets_uhd_prefix():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.2160p.BDRemux.AAC.x265-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.fields["source"] == "UHD.BluRay.REMUX"
+    assert result.name is not None
+    assert "UHD.BluRay.REMUX" in result.name
+
+
+def test_bdmv_2160p_gets_uhd_prefix():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.2160p.BluRay.BDMV.AAC.x265-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.fields["source"] == "UHD.BluRay.BDMV"
+
+
+def test_iso_2160p_gets_uhd_prefix():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.2160p.BluRay.ISO.AAC.x265-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.fields["source"] == "UHD.BluRay.ISO"
+
+
+def test_plain_bluray_2160p_has_no_uhd_prefix():
+    """Un encode BluRay normal en 2160p n'est PAS une version pure -- jamais
+    de prefixe UHD (exemple officiel Gladiator 2000, 2160p, BluRay simple,
+    x265 -- pas de UHD.)."""
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.2160p.BluRay.AAC.x265-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.fields["source"] == "BluRay"
+
+
+def test_uhd_prefix_no_crash_when_resolution_missing():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.BDRemux.AAC.x265-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.fields["source"] == "BluRay.REMUX"
+
+
+def test_real_c411_profile_remux_2160p_gets_uhd_prefix():
+    """Bout-en-bout contre le VRAI profil livre (nfogen/profiles/c411/rules.json)."""
+    from nfogen.profile_store import read_profile
+
+    config = read_profile("c411")["rules"]["video"]["name_proposal"]
+    result = propose_video_release_name(
+        ["Lucifer.S05E01.MULTI.VFF.2160p.BDRemux.AAC.2.0.x265-Frosties.m4v"], config,
+    )
+    assert result.name is not None
+    assert result.fields["source"] == "UHD.BluRay.REMUX"
+    assert "UHD.BluRay.REMUX" in result.name
+    assert ".HEVC-Frosties" in result.name
+
+
+def test_propose_season_pack_name_remux_2160p_gets_uhd_prefix():
+    result = propose_season_pack_name(
+        title="Lucifer", season_numbers=[5, 6], is_full_series=False, team="Frosties",
+        representative_filename="Lucifer.S05E01.FR.2160p.BDRemux.x265-Frosties.mkv",
+        config={**_SEASON_PACK_CONFIG, "pure_sources": ["BluRay.REMUX", "BluRay.BDMV", "BluRay.ISO"],
+                "pure_source_codec_overrides": {"x265": "HEVC", "x264": "AVC"}},
+    )
+    assert result.name is not None
+    assert result.fields["source"] == "UHD.BluRay.REMUX"
+    assert ".HEVC-Frosties" in result.name

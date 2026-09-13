@@ -20,7 +20,8 @@ SCHEMA = {
         {
             "name": "source",
             "pattern": (
-                r"\.(?P<source>BluRay\.REMUX|BluRay\.BDMV|BluRay\.ISO|BluRay|BDRip"
+                r"\.(?P<source>UHD\.BluRay\.REMUX|UHD\.BluRay\.BDMV|UHD\.BluRay\.ISO"
+                r"|BluRay\.REMUX|BluRay\.BDMV|BluRay\.ISO|BluRay|BDRip"
                 r"|WEBRip|WEB\.[A-Za-z]+|WEB|HDTV|DVDRip)\."
             ),
         },
@@ -70,4 +71,31 @@ def test_real_c411_profile_source_capture_bluray_iso():
     schema = read_profile("c411")["rules"]["video"]
     release_name = "Movie.2020.2160p.BluRay.ISO.HEVC-TEAM"
     assert rules_engine.captures(release_name, schema)["source"] == "BluRay.ISO"
+
+def test_captures_source_uhd_remux_2160p_stays_composed():
+    release_name = "Movie.2020.2160p.UHD.BluRay.REMUX.HEVC-TEAM"
+    assert rules_engine.captures(release_name, SCHEMA) == {"source": "UHD.BluRay.REMUX"}
+
+
+def test_captures_source_uhd_bdmv_2160p_stays_composed():
+    release_name = "Movie.2020.2160p.UHD.BluRay.BDMV.HEVC-TEAM"
+    assert rules_engine.captures(release_name, SCHEMA) == {"source": "UHD.BluRay.BDMV"}
+
+
+def test_captures_source_uhd_iso_2160p_stays_composed():
+    release_name = "Movie.2020.2160p.UHD.BluRay.ISO.HEVC-TEAM"
+    assert rules_engine.captures(release_name, SCHEMA) == {"source": "UHD.BluRay.ISO"}
+
+
+def test_captures_source_plain_bluray_2160p_without_uhd_prefix_stays_plain():
+    release_name = "Movie.2020.2160p.BluRay.x265-TEAM"
+    assert rules_engine.captures(release_name, SCHEMA) == {"source": "BluRay"}
+
+
+def test_real_c411_profile_source_capture_uhd_remux():
+    from nfogen.profile_store import read_profile
+
+    schema = read_profile("c411")["rules"]["video"]
+    release_name = "Movie.2020.2160p.UHD.BluRay.REMUX.HEVC-TEAM"
+    assert rules_engine.captures(release_name, schema)["source"] == "UHD.BluRay.REMUX"
 

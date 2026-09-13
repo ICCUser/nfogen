@@ -37,6 +37,11 @@ UPLOAD_RULES = {
             "quality_values": {
                 "BluRay": 11, "BluRay.4K": 10, "BluRay.HDLight": 413,
                 "BluRay.REMUX": 12, "WEB": 25, "WEB.4K": 26,
+                # BDMV/ISO 2160p (prefixe "UHD.") : pas d'id C411 distinct
+                # documente pour ces sources pures a 2160p -- decision prise
+                # lors de l'audit 2026-09-13, meme id que "BluRay.4K" (10),
+                # a challenger si un id dedie existe reellement cote C411.
+                "BluRay.BDMV": 10, "BluRay.ISO": 10,
             },
             "season_option_id": 7,
             "season_values": {"INTEGRALE": 118, "S01": 121, "S02": 122},
@@ -210,3 +215,44 @@ def test_build_options_2160p_falls_back_to_plain_key_when_4k_variant_not_configu
     release_name = "Movie.2020.VFF.2160p.HDTV.AC3.x264-TEAM"
     result = options_engine.build_options("up", captures, release_name)
     assert result["2"] == 30
+
+# --- Prefixe "UHD." (audit C411 2026-09-13, point 3/4) ---------------------
+# `capture_values["source"]` peut desormais valoir "UHD.BluRay.REMUX" pour un
+# vrai REMUX 2160p (voir name_proposal._apply_uhd_bluray_prefix) -- le lookup
+# dans quality_values doit retirer ce prefixe AVANT de chercher la cle, mais
+# seulement pour cette recherche (REMUX n'a qu'un seul id C411 peu importe la
+# resolution, donc pas de "UHD.BluRay.REMUX.4K" a essayer).
+def test_build_options_uhd_remux_2160p_strips_uhd_prefix_for_lookup():
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "UHD.BluRay.REMUX", "language": "VFF", "resolution": "2160"}
+    release_name = "Movie.2020.VFF.2160p.UHD.BluRay.REMUX.DTS.HEVC-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 12
+
+
+def test_build_options_uhd_bdmv_2160p_maps_to_bluray_4k_quality_id():
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "UHD.BluRay.BDMV", "language": "VFF", "resolution": "2160"}
+    release_name = "Movie.2020.VFF.2160p.UHD.BluRay.BDMV.DTS.HEVC-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 10
+
+
+def test_build_options_uhd_iso_2160p_maps_to_bluray_4k_quality_id():
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "UHD.BluRay.ISO", "language": "VFF", "resolution": "2160"}
+    release_name = "Movie.2020.VFF.2160p.UHD.BluRay.ISO.DTS.HEVC-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 10
+
+
+def test_build_options_plain_web_source_unaffected_by_uhd_stripping():
+    """Le retrait du prefixe UHD. est reserve aux sources pures -- WEB/BluRay
+    simples n'ont jamais ce prefixe, leur logique .4K existante doit rester
+    intacte (non-regression)."""
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "WEB", "language": "VFF", "resolution": "2160"}
+    release_name = "Movie.2020.VFF.2160p.WEB.AC3.HEVC-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 26
+

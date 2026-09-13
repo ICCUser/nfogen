@@ -175,6 +175,34 @@ def _apply_pure_source_codec_convention(info: dict[str, str], config: dict[str, 
         info["video_codec"] = overrides[info["video_codec"]]
 
 
+def _apply_uhd_bluray_prefix(info: dict[str, str], config: dict[str, Any]) -> None:
+    """Audit de conformite C411, 2026-09-13 (doc officielle "Films & Videos",
+    section "2. Encodage" + exemples reels de "Le Nommage de l'upload") :
+    une version pure (REMUX/BDMV/ISO) en 2160p porte TOUJOURS le prefixe
+    "UHD." devant "BluRay" (ex. "2160p.UHD.BluRay.REMUX", "2160p.UHD.BluRay.
+    BDMV") -- jamais pour un simple encode 2160p, qui reste "BluRay" sans
+    prefixe (ex. officiel "Gladiator.2000...2160p.BluRay...x265-ZEKEY").
+    Reutilise la MEME liste `pure_sources` que
+    `_apply_pure_source_codec_convention` (rules.json -> video ->
+    name_proposal.pure_sources) : un REMUX/BDMV/ISO reste pur peu importe
+    la resolution, seul le prefixe visuel differe. Doit s'executer APRES
+    `_apply_pure_source_codec_convention` : celle-ci doit voir `info["source"]`
+    SANS le prefixe (les valeurs de `pure_sources` sont toutes sans
+    prefixe) -- ne mute donc JAMAIS `pure_sources` lui-meme, seulement
+    `info["source"]`, et seulement apres coup. Mute `info` en place ;
+    no-op si `resolution` est absente/non numerique (aucune exception
+    levee) ou si le prefixe est deja present (idempotent)."""
+    pure_sources = config.get("pure_sources", [])
+    if info["source"] not in pure_sources or info["source"].startswith("UHD."):
+        return
+    try:
+        is_uhd = int(info["resolution"]) >= 2160
+    except (TypeError, ValueError):
+        is_uhd = False
+    if is_uhd:
+        info["source"] = "UHD." + info["source"]
+
+
 def _extract_release_info(text: str, alias_groups: dict[str, dict[str, str]]) -> dict[str, str]:
     """Cherche resolution/codec video/audio/source/langue n'importe ou dans
     `text`. `alias_groups` : {"language": {...}, "source": {...},
@@ -316,6 +344,7 @@ def propose_video_release_name(
         info["video_codec"] = info_from_filename["video_codec"]
     _apply_web_codec_convention(info, config)
     _apply_pure_source_codec_convention(info, config)
+    _apply_uhd_bluray_prefix(info, config)
 
     if not info["language"]:
         for bracket in _BRACKETS_RE.findall(stems[0]) + _BRACKETS_RE.findall(hints[0]):
@@ -440,6 +469,7 @@ def propose_season_pack_name(
     info = _extract_release_info(representative_filename, alias_groups)
     _apply_web_codec_convention(info, config)
     _apply_pure_source_codec_convention(info, config)
+    _apply_uhd_bluray_prefix(info, config)
 
     fields = {
         "title": _normalize_title_text(title),

@@ -58,18 +58,28 @@ def build_options(
     quality_values: dict[str, int] = config.get("quality_values", {})
     source = capture_values.get("source")
     if source:
+        # Audit C411 2026-09-13 (point 3/4, prefixe "UHD." sur les versions
+        # pures 2160p, voir name_proposal._apply_uhd_bluray_prefix) : ce
+        # prefixe n'existe que dans le release_name, jamais dans
+        # `quality_values` (un seul id C411 par source pure, peu importe la
+        # resolution) -- retire-le UNIQUEMENT pour ce lookup, jamais pour le
+        # reste de la fonction (season/langue...), qui n'en a pas besoin.
+        lookup_source = source[len("UHD."):] if source.startswith("UHD.") else source
         if "hdlight" in release_name.lower():
             # HDLight est structurellement une variante basse qualite --
             # jamais 4K en pratique -- donc prioritaire sur la resolution.
-            quality_key = f"{source}.HDLight"
+            quality_key = f"{lookup_source}.HDLight"
         else:
             # Audit croisé code + pages d'aide C411 (table C411_reference,
             # 2026-09-13) : la qualite ne depend pas que de `source`, la
             # resolution compte aussi (ex. id 26 "WEB-DL 4K" vs id 25
             # "WEB-DL 1080", id 10 "BluRay 4K" vs id 11 "BluRay Full"). Pas
             # de variante ".4K" pour REMUX (id 12, toutes resolutions) --
-            # essayer `f"{source}.4K"` d'abord et retomber sur `source` si
-            # le profil ne l'a pas declare couvre ce cas naturellement.
+            # essayer `f"{lookup_source}.4K"` d'abord et retomber sur
+            # `lookup_source` si le profil ne l'a pas declare couvre ce cas
+            # naturellement (c'est aussi ce qui couvre BDMV/ISO 2160p : pas
+            # de variante ".4K" dediee, repli sur la cle simple, ex.
+            # "BluRay.BDMV" -> id "BluRay 4K" si le profil l'y fait pointer).
             resolution = capture_values.get("resolution")
             is_4k = False
             if resolution is not None:
@@ -77,7 +87,10 @@ def build_options(
                     is_4k = int(resolution) >= 2160
                 except ValueError:
                     is_4k = False
-            quality_key = f"{source}.4K" if is_4k and f"{source}.4K" in quality_values else source
+            quality_key = (
+                f"{lookup_source}.4K" if is_4k and f"{lookup_source}.4K" in quality_values
+                else lookup_source
+            )
         if quality_option_id is not None and quality_key in quality_values:
             options[str(quality_option_id)] = quality_values[quality_key]
 

@@ -93,7 +93,7 @@
       },
       {
         "name": "source",
-        "pattern": "\\.(?P<source>BluRay\\.REMUX|BluRay\\.BDMV|BluRay\\.ISO|BluRay|BDRip|WEBRip|WEB\\.[A-Za-z]+|WEB|HDTV|DVDRip)\\.",
+        "pattern": "\\.(?P<source>UHD\\.BluRay\\.REMUX|UHD\\.BluRay\\.BDMV|UHD\\.BluRay\\.ISO|BluRay\\.REMUX|BluRay\\.BDMV|BluRay\\.ISO|BluRay|BDRip|WEBRip|WEB\\.[A-Za-z]+|WEB|HDTV|DVDRip)\\.",
         "level": "recommended",
         "warning": "aucune source reconnue (BluRay/BDRip/WEB/HDTV/DVDRip...) trouvee dans le nom"
       }
