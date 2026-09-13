@@ -269,6 +269,17 @@ def propose_video_release_name(
     info_from_filename = _extract_release_info(stems[0], alias_groups)
     info_from_hint = _extract_release_info(hints[0], alias_groups)
     info = _merge_release_info(info_from_hint, info_from_filename)
+    # Retour reel de moderation (2026-09-13, pack Lucifer S03) : le hint
+    # (tag `Title` embarque dans le fichier, ex. MediaInfo) peut porter le
+    # nom de la release ORIGINALE avant un reencodage (x264-ARK01 avant un
+    # reencodage Frosties en x265) -- un codec perime/mensonger par rapport
+    # au contenu REEL du fichier. Le nom de fichier, lui, reflete toujours
+    # l'encodage effectivement livre : des qu'il annonce un codec, il doit
+    # gagner. Le hint ne sert plus qu'a COMPLETER un codec absent du nom de
+    # fichier (cas historique : nom de fichier generique sans aucune info
+    # technique, voir test_title_hint_fills_gaps_left_by_generic_filename).
+    if info_from_filename["video_codec"]:
+        info["video_codec"] = info_from_filename["video_codec"]
     _apply_web_codec_convention(info, config)
 
     if not info["language"]:

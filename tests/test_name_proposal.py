@@ -191,13 +191,35 @@ def test_title_hint_fills_gaps_left_by_generic_filename():
 
 
 def test_title_hint_takes_priority_over_filename_when_both_present():
+    """Retour reel de moderation (2026-09-13, pack Lucifer S03) : le champ
+    `Title` embarque dans un fichier .m4v peut porter le nom de la release
+    ORIGINALE avant un reencodage (ex. x264-ARK01 avant reencodage Frosties
+    en x265) -- un codec perime/mensonger, jamais fiable a 100% contrairement
+    au nom de fichier REEL. Le hint garde la priorite pour resolution/equipe
+    (texte libre, souvent absent d'un nom de fichier generique), mais plus
+    pour le codec video : voir test_hint_never_overrides_a_codec_detected_
+    in_the_filename ci-dessous."""
     files = ["Show.S01E01.720p.WEBRip.x265-OLDTEAM.mkv"]
     title_hints = ["Show S01 1080p WebDl x264 - NewTeam"]
     proposal = propose_video_release_name(files, CONFIG, title_hints)
     assert proposal.fields["resolution"] == "1080"
-    assert proposal.fields["video_codec"] == "x264"
+    assert proposal.fields["video_codec"] == "x265"
     assert proposal.fields["source"] == "WEB"
     assert proposal.fields["team"] == "NewTeam"
+
+
+def test_hint_never_overrides_a_codec_detected_in_the_filename():
+    """Cas reel (2026-09-13) : Lucifer S03, fichiers .m4v Frosties reencodes
+    en x265 -- le nom de fichier REEL dit '[x265]', mais le tag `Title`
+    embarque (retrouve via `mediainfo --Inform="General;%Title%"`) dit encore
+    'Lucifer.S03E01.MULTi.1080p.AMZN.WEB-DL.x264-ARK01' (la release ORIGINALE
+    avant reencodage, jamais mise a jour). Consequence en cascade avant ce
+    fix : release_name genere avec 'H264' au lieu de 'H265', puis rejet de
+    moderation ("Codec video annonce... different de celui du fichier")."""
+    files = ["Lucifer (2016) - S03E01 - Theyre Back Arent They [WEBDL-1080p][AAC 2.0][x265]-Frosties.m4v"]
+    title_hints = ["Lucifer.S03E01.MULTi.1080p.AMZN.WEB-DL.x264-ARK01"]
+    proposal = propose_video_release_name(files, CONFIG, title_hints)
+    assert proposal.fields["video_codec"] == "x265"
 
 
 def test_title_hints_wrong_length_is_ignored_silently():
