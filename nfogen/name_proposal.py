@@ -489,3 +489,57 @@ def propose_season_pack_name(
     name = re.sub(r"\.{2,}", ".", name).strip(".")
     name = re.sub(r"\.-", "-", name)
     return NameProposal(name, fields, [])
+
+
+def propose_music_release_name(
+    *,
+    artist: str,
+    title: str,
+    year: int | None,
+    codec: str,
+    bit_rate_kbps: int | None,
+    bit_depth: int | None,
+    sample_rate_hz: int | None,
+    team: str,
+    config: dict[str, Any],
+    is_coffret: bool = False,
+) -> NameProposal:
+    """Nom de release pour la categorie Musique (audit de conformite C411,
+    2026-09-13, doc officielle "Le Nommage de l'upload", section Musique).
+    Format structurellement different du gabarit video (suffixe entre
+    crochets dont le contenu depend du type de codec) -- fonction dediee,
+    pas de reutilisation de `propose_video_release_name`."""
+    lossless_codecs = {c.lower() for c in config.get("lossless_codecs", [])}
+    is_lossless = codec.lower() in lossless_codecs
+
+    if is_lossless:
+        if bit_depth is None or sample_rate_hz is None:
+            return NameProposal(
+                None, {},
+                [
+                    "Profondeur (bits) et frequence d'echantillonnage requises "
+                    "pour un codec lossless (rules.json -> audio.name_proposal.lossless_codecs)."
+                ],
+            )
+        khz = sample_rate_hz / 1000
+        khz_str = f"{khz:.1f}".rstrip("0").rstrip(".") if khz != int(khz) else str(int(khz))
+        suffix = f"[{bit_depth}bit.{khz_str}kHz]"
+    else:
+        if bit_rate_kbps is None:
+            return NameProposal(
+                None, {}, ["Bitrate (kbps) requis pour un codec lossy."],
+            )
+        suffix = f"[{bit_rate_kbps}kbps]"
+
+    clean_artist = _normalize_title_text(artist)
+    clean_title = _normalize_title_text(title)
+    coffret_token = ".[COFFRET]" if is_coffret else ""
+    year_str = str(year) if year is not None else ""
+
+    fields = {
+        "artist": clean_artist, "title": clean_title, "year": year_str,
+        "codec": codec, "suffix": suffix, "team": team,
+    }
+    name = f"{clean_artist}.{clean_title}{coffret_token}.{year_str}.{codec}{suffix}-{team}"
+    name = re.sub(r"\.{2,}", ".", name)
+    return NameProposal(name, fields, [])

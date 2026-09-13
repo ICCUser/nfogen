@@ -3,7 +3,11 @@ moteur travaille uniquement sur des NOMS de fichiers (jamais leur contenu),
 c'est ce qui le rend utilisable instantanement avant tout upload."""
 from __future__ import annotations
 
-from nfogen.name_proposal import propose_season_pack_name, propose_video_release_name
+from nfogen.name_proposal import (
+    propose_music_release_name,
+    propose_season_pack_name,
+    propose_video_release_name,
+)
 
 TEMPLATE = "{title}.{identifier}.{language}.{resolution}p.{source}.{audio}.{video_codec}-{team}"
 CONFIG = {
@@ -793,3 +797,44 @@ def test_propose_season_pack_name_remux_2160p_gets_uhd_prefix():
     assert result.name is not None
     assert result.fields["source"] == "UHD.BluRay.REMUX"
     assert ".HEVC-Frosties" in result.name
+
+
+# Music category tests (C411)
+MUSIC_CONFIG = {"lossless_codecs": ["FLAC", "ALAC", "WAV", "WV", "AIF"]}
+
+
+def test_propose_music_release_name_lossless_shows_bit_depth_and_sample_rate():
+    proposal = propose_music_release_name(
+        artist="The Weeknd", title="Blinding Lights", year=2019, codec="FLAC",
+        bit_rate_kbps=None, bit_depth=16, sample_rate_hz=44100, team="NOTAG",
+        config=MUSIC_CONFIG,
+    )
+    assert proposal.name == "The.Weeknd.Blinding.Lights.2019.FLAC[16bit.44.1kHz]-NOTAG"
+
+
+def test_propose_music_release_name_lossy_shows_bitrate():
+    proposal = propose_music_release_name(
+        artist="Demi Lovato", title="Its Not That Deep", year=2025, codec="MP3",
+        bit_rate_kbps=320, bit_depth=None, sample_rate_hz=None, team="NOTAG",
+        config=MUSIC_CONFIG,
+    )
+    assert proposal.name == "Demi.Lovato.Its.Not.That.Deep.2025.MP3[320kbps]-NOTAG"
+
+
+def test_propose_music_release_name_coffret_inserts_tag():
+    proposal = propose_music_release_name(
+        artist="Daft Punk", title="Discovery", year=2001, codec="FLAC",
+        bit_rate_kbps=None, bit_depth=16, sample_rate_hz=44100, team="TEAM",
+        config=MUSIC_CONFIG, is_coffret=True,
+    )
+    assert proposal.name == "Daft.Punk.Discovery.[COFFRET].2001.FLAC[16bit.44.1kHz]-TEAM"
+
+
+def test_propose_music_release_name_missing_technical_info_is_a_warning():
+    proposal = propose_music_release_name(
+        artist="X", title="Y", year=2020, codec="FLAC",
+        bit_rate_kbps=None, bit_depth=None, sample_rate_hz=None, team="NOTAG",
+        config=MUSIC_CONFIG,
+    )
+    assert proposal.name is None
+    assert any("profondeur" in w or "frequence" in w for w in proposal.warnings)
