@@ -141,6 +141,28 @@ def _apply_web_codec_convention(info: dict[str, str], config: dict[str, Any]) ->
         info["video_codec"] = overrides[info["video_codec"]]
 
 
+def _apply_pure_source_codec_convention(info: dict[str, str], config: dict[str, Any]) -> None:
+    """Audit de conformite C411, 2026-09-13 (doc officielle "Films & Videos",
+    section "2. Encodage") : "Le TAG AVC (et non H264) est obligatoire sur
+    les versions pures (REMUX/ISO/BDMV)" / "Le TAG HEVC (et non H265) est
+    obligatoire sur les versions pures (REMUX/ISO/BDMV)" / "x264 / x265 :
+    TAG INTERDIT sur version Pure (REMUX/ISO/BDMV)". Meme logique que
+    `_apply_web_codec_convention` (lookup declaratif, opt-in par profil),
+    mais pour les sources PURES (flux video original du disque, sans
+    reencodage) au lieu des sources WEB. `pure_sources` est une liste
+    explicite de valeurs `source` deja normalisees (rules.json ->
+    source_aliases) plutot qu'un `startswith`/`endswith` : plus sur qu'un
+    test de sous-chaine pour ce cas (ex. "ISO" est delibrement absent ici,
+    trop generique pour une detection fiable -- voir CHANGELOG). Mute
+    `info` en place ; no-op si le profil ne declare pas
+    `pure_source_codec_overrides`/`pure_sources` (rules.json -> video ->
+    name_proposal) ou si la source detectee n'y figure pas."""
+    overrides = config.get("pure_source_codec_overrides", {})
+    pure_sources = config.get("pure_sources", [])
+    if overrides and info["source"] in pure_sources and info["video_codec"] in overrides:
+        info["video_codec"] = overrides[info["video_codec"]]
+
+
 def _extract_release_info(text: str, alias_groups: dict[str, dict[str, str]]) -> dict[str, str]:
     """Cherche resolution/codec video/audio/source/langue n'importe ou dans
     `text`. `alias_groups` : {"language": {...}, "source": {...},
@@ -281,6 +303,7 @@ def propose_video_release_name(
     if info_from_filename["video_codec"]:
         info["video_codec"] = info_from_filename["video_codec"]
     _apply_web_codec_convention(info, config)
+    _apply_pure_source_codec_convention(info, config)
 
     if not info["language"]:
         for bracket in _BRACKETS_RE.findall(stems[0]) + _BRACKETS_RE.findall(hints[0]):
@@ -404,6 +427,7 @@ def propose_season_pack_name(
     }
     info = _extract_release_info(representative_filename, alias_groups)
     _apply_web_codec_convention(info, config)
+    _apply_pure_source_codec_convention(info, config)
 
     fields = {
         "title": _normalize_title_text(title),

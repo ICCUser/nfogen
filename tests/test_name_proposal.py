@@ -500,3 +500,132 @@ def test_real_c411_profile_web_source_uses_h265_not_x265():
     assert result.name is not None
     assert ".H265-Frosties" in result.name
     assert "x265" not in result.name.lower()
+
+
+# --------------------------------------------------------------------------- #
+# pure_source_codec_overrides (audit de conformite C411, 2026-09-13, doc
+# officielle "Films & Videos", section "2. Encodage") : "Le TAG AVC (et non
+# H264) est obligatoire sur les versions pures (REMUX/ISO/BDMV)" / "Le TAG
+# HEVC (et non H265) est obligatoire sur les versions pures (REMUX/ISO/BDMV)"
+# / "x264 / x265 : TAG INTERDIT sur version Pure (REMUX/ISO/BDMV)". Mecanisme
+# symetrique a web_video_codec_overrides, pour les sources pures detectables
+# aujourd'hui (BluRay.REMUX, BluRay.BDMV) -- ISO et le prefixe UHD.
+# volontairement hors perimetre, voir commit associe. Opt-in : sans ces cles
+# dans la config du profil, aucun changement de comportement (voir CONFIG
+# ci-dessus, sans ces cles, dans les tests plus haut).
+# --------------------------------------------------------------------------- #
+CONFIG_WITH_PURE_SOURCE_OVERRIDE = {
+    **CONFIG,
+    "source_aliases": {**CONFIG["source_aliases"], "BluRay.BDMV": "BluRay.BDMV"},
+    "pure_sources": ["BluRay.REMUX", "BluRay.BDMV"],
+    "pure_source_codec_overrides": {
+        "x264": "AVC", "h264": "AVC", "avc": "AVC",
+        "x265": "HEVC", "h265": "HEVC", "hevc": "HEVC",
+    },
+}
+
+
+def test_remux_source_x265_becomes_hevc_when_override_configured():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.BDRemux.AAC.x265-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.name is not None
+    assert ".HEVC-TEAM" in result.name
+    assert "x265" not in result.name.lower()
+    assert "h265" not in result.name.lower()
+
+
+def test_remux_source_x264_becomes_avc_when_override_configured():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.BDRemux.AAC.x264-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.name is not None
+    assert ".AVC-TEAM" in result.name
+    assert "x264" not in result.name.lower()
+    assert "h264" not in result.name.lower()
+
+
+def test_bdmv_source_x265_becomes_hevc_when_override_configured():
+    """Alias 'BDMV' (source_aliases) detecte dans le nom de fichier ->
+    BluRay.BDMV, egalement couvert par la convention pure."""
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.2160p.BluRay.BDMV.AAC.x265-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.name is not None
+    assert ".HEVC-TEAM" in result.name
+    assert "x265" not in result.name.lower()
+
+
+def test_plain_bluray_source_x265_unaffected_by_pure_source_override():
+    """La convention pure ne s'applique PAS a un encode BluRay classique
+    (ni REMUX ni BDMV) -- x264/x265 y restent la convention normale."""
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.BluRay.AAC.x265-TEAM.mkv"], CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+    )
+    assert result.name is not None
+    assert ".x265-TEAM" in result.name
+
+
+def test_web_source_x265_unaffected_by_pure_source_override():
+    """Les deux conventions (WEB et pure) ne s'interferent pas : une source
+    WEB continue de suivre web_video_codec_overrides, jamais la convention
+    pure."""
+    config = {
+        **CONFIG_WITH_PURE_SOURCE_OVERRIDE,
+        "web_video_codec_overrides": {"x264": "H264", "x265": "H265"},
+    }
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.WEBDL.AAC.x265-TEAM.mkv"], config,
+    )
+    assert result.name is not None
+    assert ".H265-TEAM" in result.name
+    assert "hevc" not in result.name.lower()
+
+
+def test_pure_source_override_is_opt_in_absent_by_default():
+    """Sans `pure_source_codec_overrides`/`pure_sources` dans la config du
+    profil (CONFIG, utilise par tous les autres tests de ce fichier) :
+    comportement d'origine inchange, x265 reste x265 meme sur un REMUX."""
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.BDRemux.AAC.x265-TEAM.mkv"], CONFIG,
+    )
+    assert result.name is not None
+    assert ".x265-TEAM" in result.name
+
+
+def test_real_c411_profile_remux_source_uses_hevc_not_x265():
+    """Bout-en-bout contre le VRAI profil livre (nfogen/profiles/c411/rules.json),
+    pas seulement une config de test isolee."""
+    from nfogen.profile_store import read_profile
+
+    config = read_profile("c411")["rules"]["video"]["name_proposal"]
+    result = propose_video_release_name(
+        ["Lucifer.S05E01.MULTI.VFF.1080p.BDRemux.AAC.2.0.x265-Frosties.m4v"], config,
+    )
+    assert result.name is not None
+    assert ".HEVC-Frosties" in result.name
+    assert "x265" not in result.name.lower()
+
+
+def test_real_c411_profile_bdmv_source_uses_avc_not_x264():
+    from nfogen.profile_store import read_profile
+
+    config = read_profile("c411")["rules"]["video"]["name_proposal"]
+    result = propose_video_release_name(
+        ["Lucifer.S05E01.MULTI.VFF.2160p.BluRay.BDMV.AAC.2.0.x264-Frosties.m4v"], config,
+    )
+    assert result.name is not None
+    assert ".AVC-Frosties" in result.name
+    assert "x264" not in result.name.lower()
+
+
+def test_propose_season_pack_name_remux_source_uses_hevc():
+    result = propose_season_pack_name(
+        title="Lucifer", season_numbers=[5, 6], is_full_series=False, team="Frosties",
+        representative_filename="Lucifer.S05E01.FR.1080p.BDRemux.x265-Frosties.mkv",
+        config={**_SEASON_PACK_CONFIG, "pure_sources": ["BluRay.REMUX", "BluRay.BDMV"],
+                "pure_source_codec_overrides": {"x265": "HEVC", "x264": "AVC"}},
+    )
+    assert result.name is not None
+    assert ".HEVC-Frosties" in result.name
+    assert "x265" not in result.name.lower()

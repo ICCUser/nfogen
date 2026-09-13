@@ -140,6 +140,16 @@
           "description": "Remplace le codec video (deja normalise via video_codec_aliases) par la convention attendue par le tracker pour une source WEB (WEB/WEB.DSNP/WEB.NF/WEB.AMZN), distincte de la convention scene BluRay -- retour reel de moderation C411, 2026-09-10 : 'x265' refuse sur une source WEB, 'H265' attendu.",
           "additionalProperties": { "type": "string" }
         },
+        "pure_sources": {
+          "type": "array",
+          "description": "Valeurs `source` (deja normalisees via source_aliases) considerees comme des versions PURES (flux video original du disque, sans reencodage -- ex. BluRay.REMUX, BluRay.BDMV) pour pure_source_codec_overrides -- audit de conformite C411, 2026-09-13 (doc officielle 'Films & Videos'). Absent : convention pure desactivee pour ce profil.",
+          "items": { "type": "string" }
+        },
+        "pure_source_codec_overrides": {
+          "type": "object",
+          "description": "Remplace le codec video (deja normalise via video_codec_aliases) par la convention obligatoire pour une source PURE (pure_sources) -- audit de conformite C411, 2026-09-13 : 'AVC'/'HEVC' obligatoires sur REMUX/BDMV, 'x264'/'x265'/'H264'/'H265' interdits.",
+          "additionalProperties": { "type": "string" }
+        },
         "audio_codec_aliases": {
           "type": "object",
           "additionalProperties": { "type": "string" }

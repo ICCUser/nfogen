@@ -177,6 +177,7 @@
         "WEBRip": "WEB",
         "BDRip": "BDRip",
         "BDRemux": "BluRay.REMUX",
+        "BluRay.BDMV": "BluRay.BDMV",
         "BluRay": "BluRay",
         "HDTV": "HDTV",
         "DVDRip": "DVDRip",
@@ -205,6 +206,15 @@
       "web_video_codec_overrides": {
         "x264": "H264",
         "x265": "H265"
+      },
+      "pure_sources": ["BluRay.REMUX", "BluRay.BDMV"],
+      "pure_source_codec_overrides": {
+        "x264": "AVC",
+        "h264": "AVC",
+        "avc": "AVC",
+        "x265": "HEVC",
+        "h265": "HEVC",
+        "hevc": "HEVC"
       },
       "audio_codec_aliases": {
         "AC3": "AC3",
