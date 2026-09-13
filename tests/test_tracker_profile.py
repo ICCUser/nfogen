@@ -137,10 +137,18 @@ def test_c411_display_name():
 def test_c411_torznab_categories_match_gapscan_md():
     # Verifiees en direct le 2026-08-28 via GET https://c411.org/api?t=caps
     # (voir GAPSCAN.md) -- memes valeurs que l'ancien gapscan._ANIME_CATEGORIES
-    # / _DOCUMENTARY_CATEGORIES, deplacees ici.
+    # / _DOCUMENTARY_CATEGORIES, deplacees ici. Correction du 2026-09-13
+    # (audit de conformite C411) : "5080" a ete retire de "documentaire" --
+    # re-verifie en direct (dump complet, non tronque, de /api?t=caps) et
+    # sa description reelle est "Emission TV", pas "Documentaire" (le nom
+    # technique Torznab "TV/Documentary" est trompeur). Aucun id Torznab
+    # distinct et utilisable n'existe pour "documentaire serie" cote C411
+    # aujourd'hui -- la seule entree candidate ("Serie Documentaire")
+    # reutilise l'id de la categorie parente ("Movies", 2000), qui
+    # matcherait tous les films si on l'utilisait comme filtre.
     assert tracker_profile.torznab_categories("c411") == {
         "anime": ["2060", "5070"],
-        "documentaire": ["2070", "5080"],
+        "documentaire": ["2070"],
     }
 
 

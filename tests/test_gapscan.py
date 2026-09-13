@@ -876,9 +876,13 @@ def test_sort_by_priority_prefers_freeleech_at_equal_status():
 # --------------------------------------------------------------------------- #
 # Genre (Anime/Documentaire) : derive de la categorie C411 du PREMIER match
 # trouve (GAPSCAN.md, "Filtre type/genre + pagination serveur", 2026-08-28).
-# Table verifiee en direct via GET https://c411.org/api?t=caps -- 2030/5000
-# = Film/Serie standard, 2060/5070 = Anime (film/serie), 2070/5080 =
-# Documentaire (film/serie).
+# Table re-verifiee en direct le 2026-09-13 (audit de conformite C411, dump
+# complet et non tronque de GET https://c411.org/api?t=caps) : 2030/5000 =
+# Film/Serie standard, 2060/5070 = Anime (film/serie), 2070 = Documentaire
+# (film uniquement -- "5080" a ete retire, sa vraie description C411 est
+# "Emission TV", pas Documentaire ; aucun id Torznab distinct et
+# utilisable n'existe pour "documentaire serie" aujourd'hui, voir
+# tests/test_tracker_profile.py).
 # --------------------------------------------------------------------------- #
 def _result(status: GapStatus = GapStatus.ABSENT, c411_matches: Optional[list] = None) -> GapResult:
     return GapResult(
@@ -902,11 +906,18 @@ def test_genre_of_anime_for_series_category():
     assert genre_of(result) == "anime"
 
 
-def test_genre_of_documentaire_for_movie_and_series_categories():
+def test_genre_of_documentaire_for_movie_category():
     movie = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="2070")])
-    series = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="5080")])
     assert genre_of(movie) == "documentaire"
-    assert genre_of(series) == "documentaire"
+
+
+def test_genre_of_none_for_emission_tv_category():
+    """"5080" (TV/Documentary cote Torznab) porte en realite la
+    description "Emission TV" chez C411, pas Documentaire (retour
+    d'audit, 2026-09-13, dump direct de /api?t=caps) -- ne doit jamais
+    etre classe comme genre "documentaire"."""
+    result = _result(status=GapStatus.COVERED, c411_matches=[_release("X", category="5080")])
+    assert genre_of(result) is None
 
 
 def test_genre_of_none_for_standard_film_or_series_category():
