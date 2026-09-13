@@ -17,11 +17,13 @@ from nfogen.gapscan import (
     genre_of,
     movie_key,
     run_gapscan,
+    scan_album,
     scan_movie,
     scan_series_season,
     series_key,
     sort_by_priority,
 )
+from nfogen.lidarr_client import LidarrAlbumFile
 from nfogen.quality import ReleaseQuality
 from nfogen.radarr_client import RadarrMovieFile
 from nfogen.sonarr_client import SonarrSeasonFile
@@ -74,6 +76,43 @@ class FakeC411:
         if query is not None and query in self.tv_query_results:
             return self.tv_query_results[query]
         return self.tv_results
+
+
+# --------------------------------------------------------------------------- #
+# scan_album (Musique, Lidarr) -- symetrique de scan_movie, voir gapscan.py
+# --------------------------------------------------------------------------- #
+def _album(**overrides) -> LidarrAlbumFile:
+    base = dict(
+        album_id=10, artist_name="Daft Punk", album_title="Random Access Memories",
+        release_year=2013, musicbrainz_album_id="2c04a86b-3f75-4c50-9b7a-3f5e5e5e5e5e",
+        musicbrainz_artist_id="056e4f3e-d505-4dad-8ec1-d04f521cbb56",
+        remote_path="/music/Daft Punk/RAM", size_bytes=987654321,
+        added_at=1700000000.0, track_count=13,
+    )
+    base.update(overrides)
+    return LidarrAlbumFile(**base)
+
+
+class _FakeC411Music:
+    def __init__(self, releases):
+        self._releases = releases
+
+    def search_music(self, query: str):
+        return self._releases
+
+
+def test_scan_album_absent_when_no_c411_match():
+    result = scan_album(_album(), _FakeC411Music([]))
+    assert result.media_type == "music"
+    assert result.status == GapStatus.ABSENT
+    assert result.title == "Daft Punk - Random Access Memories"
+    assert result.lidarr_album_id == 10
+
+
+def test_scan_album_covered_when_equivalent_release_exists():
+    existing = _release("Daft.Punk.Random.Access.Memories.2013.FLAC", category="3010")
+    result = scan_album(_album(), _FakeC411Music([existing]))
+    assert result.status == GapStatus.COVERED
 
 
 # --------------------------------------------------------------------------- #

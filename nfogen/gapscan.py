@@ -15,6 +15,7 @@ from enum import Enum
 from typing import Callable, Iterable, Optional
 
 from . import tracker_profile
+from .lidarr_client import LidarrAlbumFile
 from .path_mapping import resolve_and_validate
 from .quality import ReleaseQuality, build_quality, is_language_gap, is_quality_upgrade
 from .radarr_client import RadarrClient, RadarrMovieFile
@@ -69,6 +70,10 @@ class GapResult:
     # sous-projet 5, decision 1).
     radarr_movie_id: Optional[int] = None
     sonarr_series_id: Optional[int] = None
+    # Identifiant Lidarr interne de l'album -- meme role que
+    # radarr_movie_id/sonarr_series_id ci-dessus, pour la categorie
+    # Musique (voir scan_album plus bas).
+    lidarr_album_id: Optional[int] = None
 
 
 _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
@@ -222,6 +227,51 @@ def scan_movie(
         has_double_upload_window=any(m.is_double_upload for m in matches),
         checked_at=time.time(),
     )
+
+
+def scan_album(
+    album: LidarrAlbumFile,
+    c411: TorznabClient,
+    *,
+    previous: Optional[GapResult] = None,
+    max_age_seconds: Optional[float] = None,
+) -> GapResult:
+    """Compare UN album Lidarr au catalogue C411 -- pendant de scan_movie
+    pour la categorie Musique, mais volontairement plus simple : pas de
+    recherche par identifiant externe (Lidarr expose bien des MusicBrainz
+    ID, mais C411 n'indexe pas ces identifiants dans ses attributs Torznab,
+    voir la spec de decoupage du sous-projet Musique), donc uniquement une
+    recherche texte via `c411.search_music()` (endpoint Torznab generique
+    `t=search`, qui ne filtre pas par categorie cote serveur -- voir la
+    docstring de TorznabClient.search_music). La requete texte
+    (`f"{artist_name} {album_title}"`) est deja assez specifique en
+    pratique pour ne pas remonter de faux positifs geants ; un filtrage
+    supplementaire cote client pourra s'ajouter ici si des cas reels
+    l'exigent, plutot que d'anticiper une complexite non observee."""
+    title = f"{album.artist_name} - {album.album_title}"
+    local_quality = build_quality(raw_name=f"{album.artist_name}.{album.album_title}.{album.release_year}")
+    if _can_reuse(previous, local_quality, max_age_seconds):
+        return replace(previous, local_paths=previous.local_paths)
+
+    base = dict(
+        media_type="music", title=title, year=album.release_year, season_number=None,
+        imdb_id=None, tmdb_id=None, tvdb_id=None, local_quality=local_quality,
+        lidarr_album_id=album.album_id,
+    )
+    # Meme raisonnement que scan_movie/scan_series_season : une erreur C411
+    # sur CET album ne doit pas interrompre le reste du scan.
+    try:
+        matches = c411.search_music(f"{album.artist_name} {album.album_title}")
+    except TorznabError as exc:
+        return GapResult(**base, status=GapStatus.ERROR, error=str(exc), checked_at=time.time())
+
+    # Pas de _classify() ici (contrairement a scan_movie) : le premier jet
+    # de la categorie Musique ne compare pas encore les qualites audio
+    # (FLAC/MP3/320...) entre elles -- juste "une release existe ou pas".
+    # A affiner si le besoin d'un vrai QUALITY_GAP/LANGUAGE_GAP musical se
+    # confirme (voir limite documentee en tete de la spec de cette tache).
+    status = GapStatus.COVERED if matches else GapStatus.ABSENT
+    return GapResult(**base, status=status, c411_matches=matches, checked_at=time.time())
 
 
 def scan_series_season(
