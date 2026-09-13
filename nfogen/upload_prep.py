@@ -763,7 +763,12 @@ def send_to_tracker(
         })
     subtitle_rows = []
     for t in first_metadata.get("subtitle_tracks", []):
-        name, flag_code = resolve_language(t.get("language"))
+        # Retour reel de moderation, 2026-09-13 (dump MediaInfo reel,
+        # fichier mkvmerge) : certains fichiers ne renseignent JAMAIS le
+        # champ Language formel d'une piste de sous-titres -- seul le
+        # `title` libre porte la langue (ex. "French forced"). Repli geree
+        # par resolve_language() lui-meme (voir languages.py).
+        name, flag_code = resolve_language(t.get("language"), t.get("title"))
         subtitle_rows.append({
             "flag": flagcdn_url(flag_code) if flag_code else None,
             "language": name, "format": t.get("format"),
