@@ -1342,6 +1342,160 @@ def test_send_to_tracker_calls_tmdb_when_key_configured_and_tmdb_id_present(tmp_
     assert calls == ["tmdb-secret"]
 
 
+def test_send_to_tracker_prefers_tmdb_french_overview_over_radarr(tmp_path, monkeypatch):
+    """Retour reel de moderation C411, 2026-09-13 : "le synopsis est en
+    anglais" -- l'overview de Radarr peut etre dans n'importe quelle langue
+    (config metadata Radarr, jamais controlee par nfogen). Des qu'une
+    traduction francaise existe cote TMDB, elle doit gagner sur l'overview
+    Radarr dans la description finale."""
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_radarr",
+        lambda: ("http://radarr.local", "radarr-key"),
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: "tmdb-secret"
+    )
+
+    class FakeRadarrClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_movie_details(self, movie_id):
+            from nfogen.radarr_client import RadarrMovieDetails
+            return RadarrMovieDetails(overview="English synopsis from Radarr.", genres=["Action"])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.RadarrClient", FakeRadarrClient)
+
+    class FakeTMDBClient:
+        def __init__(self, api_key, **kwargs):
+            pass
+
+        def get_movie_extra(self, tmdb_id):
+            return TMDBExtraDetails(overview_fr="Synopsis français depuis TMDB.")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.TMDBClient", FakeTMDBClient)
+
+    captured: dict = {}
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def create_draft(self, **kwargs):
+            captured["create_draft_kwargs"] = kwargs
+            return {"id": 555, "url": "https://c411.org/user/drafts/555"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", radarr_movie_id=42, tmdb_id=603,
+    )
+
+    description = captured["create_draft_kwargs"]["description"]
+    assert "Synopsis français depuis TMDB." in description
+    assert "English synopsis from Radarr." not in description
+
+
+def test_send_to_tracker_keeps_radarr_overview_when_tmdb_has_no_french_translation(tmp_path, monkeypatch):
+    """Repli explicite : si TMDB n'a pas de traduction francaise
+    (`overview_fr=None`), le synopsis Radarr/Sonarr reste affiche -- jamais
+    de section vide a la place."""
+    staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.BluRay-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.BluRay-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker",
+        lambda profile: ("api-key", "https://c411.org"),
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_radarr",
+        lambda: ("http://radarr.local", "radarr-key"),
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: "tmdb-secret"
+    )
+
+    class FakeRadarrClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_movie_details(self, movie_id):
+            from nfogen.radarr_client import RadarrMovieDetails
+            return RadarrMovieDetails(overview="English synopsis from Radarr.", genres=["Action"])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.RadarrClient", FakeRadarrClient)
+
+    class FakeTMDBClient:
+        def __init__(self, api_key, **kwargs):
+            pass
+
+        def get_movie_extra(self, tmdb_id):
+            return TMDBExtraDetails(overview_fr=None)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.TMDBClient", FakeTMDBClient)
+
+    captured: dict = {}
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def create_draft(self, **kwargs):
+            captured["create_draft_kwargs"] = kwargs
+            return {"id": 555, "url": "https://c411.org/user/drafts/555"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    send_to_tracker(
+        release_name="Movie.2020.BluRay-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", radarr_movie_id=42, tmdb_id=603,
+    )
+
+    assert "English synopsis from Radarr." in captured["create_draft_kwargs"]["description"]
+
+
 def test_send_to_tracker_skips_tmdb_when_key_not_configured(tmp_path, monkeypatch):
     staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
     staged.write_bytes(b"video")

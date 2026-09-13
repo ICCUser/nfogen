@@ -84,3 +84,56 @@ def test_network_error_raises_tmdb_error():
 def test_requires_api_key():
     with pytest.raises(TMDBError):
         TMDBClient(api_key="")
+
+
+def test_get_movie_extra_fetches_french_overview_separately():
+    """Retour reel de moderation C411 (2026-09-13) : "Le synopsis est en
+    anglais" -- Radarr/Sonarr renvoient l'overview dans la langue de LEUR
+    propre config metadata (souvent l'anglais par defaut), jamais controle
+    par nfogen. TMDB, lui, sait renvoyer une version localisee via le
+    parametre `language` -- un second appel dedie (`language=fr-FR`) recupere
+    le synopsis francais, sans toucher au reste (pays/note/createurs)."""
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(dict(request.url.params))
+        if request.url.params.get("language") == "fr-FR":
+            return httpx.Response(200, json={"overview": "Synopsis en français."})
+        return httpx.Response(200, json=MOVIE_RESPONSE)
+
+    client = _client(handler)
+    extra = client.get_movie_extra(603)
+
+    assert extra.overview_fr == "Synopsis en français."
+    assert extra.country == "United States of America"  # inchange, vient du 1er appel
+    assert len(calls) == 2
+
+
+def test_get_series_extra_fetches_french_overview_separately():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("language") == "fr-FR":
+            return httpx.Response(200, json={"overview": "Résumé en français."})
+        return httpx.Response(200, json=SERIES_RESPONSE)
+
+    client = _client(handler)
+    extra = client.get_series_extra(63174)
+
+    assert extra.overview_fr == "Résumé en français."
+    assert extra.creators == ["Tom Kapinos"]  # inchange
+
+
+def test_overview_fr_none_when_tmdb_has_no_french_overview():
+    """TMDB renvoie parfois une chaine vide si aucune traduction francaise
+    n'existe -- jamais une chaine vide affichee a la place d'un vrai
+    synopsis, `None` pour laisser le repli existant (overview Radarr/Sonarr)
+    prendre le relais (voir upload_prep.py)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("language") == "fr-FR":
+            return httpx.Response(200, json={"overview": ""})
+        return httpx.Response(200, json=MOVIE_RESPONSE)
+
+    client = _client(handler)
+    extra = client.get_movie_extra(603)
+
+    assert extra.overview_fr is None

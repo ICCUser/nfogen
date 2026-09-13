@@ -700,6 +700,16 @@ def send_to_tracker(
             finally:
                 tmdb_client.close()
             country, tmdb_rating, creators = extra.country, extra.vote_average, extra.creators
+            # Retour reel de moderation C411, 2026-09-13 : "le synopsis est
+            # en anglais" -- `overview` ci-dessus vient de Radarr/Sonarr,
+            # dans la langue de LEUR propre config metadata (souvent
+            # l'anglais par defaut), jamais controlee par nfogen. TMDB sait
+            # renvoyer une version francaise (voir tmdb_client.py) -- on la
+            # prefere des qu'elle existe, sans jamais perdre le synopsis
+            # Radarr/Sonarr si TMDB n'a pas de traduction (`overview_fr`
+            # reste alors `None`, voir TMDBClient._overview_fr).
+            if extra.overview_fr:
+                overview = extra.overview_fr
         except TMDBError:
             pass
 
