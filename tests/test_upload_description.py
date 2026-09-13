@@ -95,6 +95,33 @@ def test_renders_audio_and_subtitle_tables_with_flags():
     assert "FORCÉ" in out
 
 
+def test_renders_langue_s_bullet_from_audio_tracks():
+    """Retour reel de moderation C411, 2026-09-13 : "Description
+    incomplete -- la section 'Langue(s)' doit contenir la liste des
+    pistes audio" -- manquait entierement de la liste "Details
+    techniques", seul le tableau audio detaille listait les langues."""
+    out = render_upload_description("c411", FULL_CONTEXT)
+    assert "[*]Langue(s) : Français" in out
+
+
+def test_langue_s_bullet_joins_multiple_audio_languages():
+    context = {
+        **FULL_CONTEXT,
+        "audio_rows": [
+            {**FULL_CONTEXT["audio_rows"][0], "language": "Français"},
+            {**FULL_CONTEXT["audio_rows"][0], "language": "Anglais"},
+        ],
+    }
+    out = render_upload_description("c411", context)
+    assert "[*]Langue(s) : Français, Anglais" in out
+
+
+def test_no_langue_s_bullet_when_no_audio_tracks():
+    context = {**FULL_CONTEXT, "audio_rows": []}
+    out = render_upload_description("c411", context)
+    assert "Langue(s)" not in out
+
+
 def test_renders_subtitle_format_column():
     """Retour reel de moderation C411, 2026-09-12 (pack Lucifer S05) :
     "0/3 pistes conformes" -- le format de piste (SRT/ASS/PGS/Timed
