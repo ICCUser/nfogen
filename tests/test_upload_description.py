@@ -59,10 +59,22 @@ _ALWAYS_PRESENT = {
 }
 
 
-def test_renders_synopsis_and_poster():
+def test_renders_synopsis():
     out = render_upload_description("c411", FULL_CONTEXT)
     assert "Dom Cobb est un voleur experimente" in out
-    assert "https://image.tmdb.org/t/p/w500/poster.jpg" in out
+
+
+def test_never_renders_a_poster_image():
+    """Retour reel de moderation C411, 2026-09-13 : "L'hebergeur que tu
+    utilises pour la banniere n'est pas accepte sur C411" -- poster_url
+    vient directement de TMDB (image.tmdb.org), hors liste blanche du
+    tracker. Repli explicite le temps de choisir un hebergeur accepte
+    (postimg.cc/pixhost.to/imgur.com/goopics.net/catbox.moe/fastpic.org) :
+    plus AUCUNE image de poster dans la description, quel que soit
+    poster_url -- "quelque chose de classique sans image" (decision
+    utilisateur), jamais une image sur un hebergeur refuse."""
+    out = render_upload_description("c411", FULL_CONTEXT)
+    assert "image.tmdb.org" not in out
 
 
 def test_renders_genres_directors_cast():
