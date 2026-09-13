@@ -250,6 +250,19 @@ class TorznabClient:
             }
         )
 
+    def search_music(self, query: str) -> list[TorznabRelease]:
+        """`t=search` : recherche generique par titre libre -- seul
+        endpoint disponible pour la categorie Musique cote C411 (pas de
+        `t=musicsearch` dedie, verifie en direct via `GET /api/?t=caps` :
+        `<search available="yes" supportedParams="q"/>`, `q` est le SEUL
+        parametre supporte). Contrairement a `search_movie`/`search_tv`,
+        cet endpoint ne filtre PAS par categorie cote serveur -- les
+        resultats peuvent donc inclure des homonymes hors Audio. C'est
+        `scan_album()` (gapscan.py) qui compose la requete texte assez
+        specifique (`f"{artist_name} {album_title}"`) pour limiter le
+        risque de faux positifs en pratique."""
+        return self._search({"t": "search", "q": query})
+
     def download(self, guid: str) -> bytes:
         """`t=get&id={guid}` -- telecharge le .torrent d'une release
         EXISTANTE sur C411 (pas necessairement uploadee par

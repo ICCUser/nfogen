@@ -107,6 +107,25 @@ def test_search_tv_passes_season():
     assert len(releases) == 3
 
 
+def test_search_music_uses_generic_search_endpoint():
+    # `t=search` : pas d'endpoint dedie "musicsearch" cote C411 (confirme
+    # via GET /api/?t=caps), contrairement a movie/tv -- seul `q` est
+    # supporte. On verifie juste que search_music() tape bien cet endpoint
+    # generique avec la requete texte telle quelle.
+    captured = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, text="<rss><channel></channel></rss>")
+
+    http_client = httpx.Client(transport=httpx.MockTransport(_handler))
+    client = TorznabClient("fake-key", http_client=http_client)
+    client.search_music("Daft Punk Random Access Memories")
+
+    assert captured["params"]["t"] == "search"
+    assert captured["params"]["q"] == "Daft Punk Random Access Memories"
+
+
 def test_client_requires_api_key():
     with pytest.raises(TorznabError, match="[Cc]l[eé]"):
         TorznabClient(api_key="")
