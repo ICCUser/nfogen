@@ -365,6 +365,54 @@ it("Uploader directement lance d'abord une verification d'integrite avant sendTo
   expect(await screen.findByText(/Uploadé directement/)).toBeInTheDocument();
 });
 
+it("explique la verification approfondie (decodage complet, uniquement upload direct) pendant qu'elle tourne", async () => {
+  // Retour utilisateur, 2026-09-13 : "cette etape est tres longue, manque
+  // d'info, j'ai zappe pourquoi ca fait ca" -- la barre de progression
+  // n'expliquait ni QUOI (decodage complet) ni POURQUOI (uniquement pour
+  // un envoi direct, jamais un brouillon).
+  const user = userEvent.setup();
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  mockPreview(ONE_GROUP);
+  vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
+  vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
+  vi.mocked(verifyIntegrity).mockResolvedValue({ job_id: "integrity-1" });
+  vi.mocked(integrityJobStatus)
+    .mockResolvedValueOnce({
+      job_id: "integrity-1", state: "verifying", percent: 35,
+      started_at: 1, finished_at: null, error: null, result: null,
+    })
+    .mockResolvedValue({
+      job_id: "integrity-1", state: "done", percent: 100,
+      started_at: 1, finished_at: 2, error: null,
+      result: { passed: true, errors: [], warnings: [] },
+    });
+  vi.mocked(sendToTracker).mockResolvedValue({
+    draft_id: 1, draft_url: "https://c411.org/torrents/1", duplicate_warning: null,
+    presentation_warning: null, seed_warning: null,
+  });
+
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
+  await user.click(await screen.findByRole("button", { name: "Confirmer" }));
+  await waitFor(() => screen.getByText(/BluRay\.AC3\.x264-TEAM$/));
+
+  await user.click(screen.getByRole("button", { name: "Uploader directement" }));
+
+  expect(
+    await screen.findByText(/décodage complet du fichier/i),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/envoi direct/i)).toBeInTheDocument();
+
+  // Le deuxieme poll n'arrive qu'apres le delai reel de 1500ms
+  // (pollIntegrityUntilTerminal) -- le timeout par defaut de waitFor
+  // (1000ms) ne suffit pas ici.
+  await waitFor(
+    () => {
+      expect(sendToTracker).toHaveBeenCalled();
+    },
+    { timeout: 3000 },
+  );
+});
+
 it("bloque l'upload direct si la verification d'integrite echoue, n'appelle jamais sendToTracker", async () => {
   const user = userEvent.setup();
   vi.spyOn(window, "confirm").mockReturnValue(true);

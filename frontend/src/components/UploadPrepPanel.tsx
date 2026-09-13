@@ -495,6 +495,18 @@ export default function UploadPrepPanel({
           )}
           {integrityJobs[index] && (
             <div className="space-y-1">
+              {/* Retour utilisateur, 2026-09-13 : "j'ai zappe pourquoi ca fait
+                  ca" -- la barre affichait un pourcentage sans jamais expliquer
+                  QUOI ni POURQUOI. Decodage COMPLET du fichier (voir
+                  video_integrity.py) pour detecter une corruption/troncature --
+                  volontairement lent sur un gros pack (des heures de contenu a
+                  decoder), et uniquement pour un envoi DIRECT : "Creer un
+                  brouillon" saute cette etape entierement. */}
+              <p className="text-xs text-ink-dim">
+                Vérification approfondie (décodage complet du fichier pour détecter une corruption ou une
+                troncature) — peut prendre plusieurs dizaines de minutes sur un gros pack. Uniquement pour un
+                envoi direct : "Créer un brouillon" saute cette étape.
+              </p>
               <div className="h-2 w-full overflow-hidden rounded bg-surface-2">
                 <div
                   className="h-full bg-accent transition-all"
