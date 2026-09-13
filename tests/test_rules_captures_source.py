@@ -13,6 +13,8 @@ construit le nom depuis un nom de fichier source. Audit C411 2026-09-13 :
   `_detect_via_aliases` qui trie explicitement par longueur de cle."""
 from __future__ import annotations
 
+import pytest
+
 from nfogen import rules as rules_engine
 
 SCHEMA = {
@@ -98,4 +100,47 @@ def test_real_c411_profile_source_capture_uhd_remux():
     schema = read_profile("c411")["rules"]["video"]
     release_name = "Movie.2020.2160p.UHD.BluRay.REMUX.HEVC-TEAM"
     assert rules_engine.captures(release_name, schema)["source"] == "UHD.BluRay.REMUX"
+
+# --------------------------------------------------------------------------- #
+# Point 4/4 : verification finale de coherence -- TOUS les exemples reels de
+# release_name cites dans l audit C411 2026-09-13 (doc officielle
+# "Le Nommage de l upload" + "Films & Videos"), contre le VRAI profil livre.
+# Confirme qu aucune alternative regex n est dans le mauvais ordre (chaque
+# forme composee precede bien les prefixes qui la contiennent).
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ('release_name', 'expected_source'),
+    [
+        ('Roman.Frayssinet.O.Dela.2026.VFF.2160p.WEBRip.EAC3.2.0.x265-SKETCH', 'WEBRip'),
+        ('Mr.Robot.S01.MULTI.VFF.1080p.WEB.EAC3.5.1.H264-FW', 'WEB'),
+        (
+            'Le.Comte.de.Monte.Cristo.2024.VOF.1080p.BluRay.REMUX.DTS.HD.MA.5.1.AVC-ZEKEY',
+            'BluRay.REMUX',
+        ),
+        (
+            'Le.Comte.de.Monte.Cristo.2024.VOF.2160p.UHD.BluRay.REMUX.DV.HDR10PLUS.'
+            'TrueHD.Atmos.7.1.HEVC-ZEKEY',
+            'UHD.BluRay.REMUX',
+        ),
+        (
+            'WALL.E.2008.MULTI.VFF.2160p.UHD.BluRay.BDMV.DV.HDR10PLUS.TrueHD.7.1.HEVC-NOTAG',
+            'UHD.BluRay.BDMV',
+        ),
+        (
+            'WALL.E.2008.MULTI.VFF.2160p.UHD.BluRay.ISO.DV.HDR10PLUS.AC3.5.1.HEVC-NOTAG',
+            'UHD.BluRay.ISO',
+        ),
+        (
+            'Gladiator.2000.MULTI.VFF.2160p.BluRay.HDR10.DTS.HD.MA.5.1.x265-ZEKEY',
+            'BluRay',
+        ),
+    ],
+)
+def test_real_c411_profile_source_capture_all_official_examples(release_name, expected_source):
+    from nfogen.profile_store import read_profile
+
+    schema = read_profile("c411")["rules"]["video"]
+    assert rules_engine.captures(release_name, schema)["source"] == expected_source
 
