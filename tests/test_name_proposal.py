@@ -16,7 +16,7 @@ CONFIG = {
     "source_aliases": {
         "WEBDL": "WEB",
         "WEB-DL": "WEB",
-        "WEBRip": "WEB",
+        "WEBRip": "WEBRip",
         "BDRip": "BDRip",
         "BDRemux": "BluRay.REMUX",
         "BluRay": "BluRay",
@@ -500,6 +500,56 @@ def test_real_c411_profile_web_source_uses_h265_not_x265():
     assert result.name is not None
     assert ".H265-Frosties" in result.name
     assert "x265" not in result.name.lower()
+
+
+# --------------------------------------------------------------------------- #
+# WEBRip vs WEB-DL/WEB (audit C411 2026-09-13, doc officielle "Films & Videos") :
+# "x264 / x265 ... a utiliser pour les encodes (BluRay, WEBrip, DVDrip) et
+# WEB-DL encodes" / "H264 / H265 ... a utiliser pour les WEB-DL untouched".
+# Bug reel corrige ici : source_aliases collapsait "WEBRip" sur "WEB", donc
+# _apply_web_codec_convention (declenchee par source.startswith("WEB"))
+# s'appliquait a tort a un WEBRip, convertissant x264/x265 (correct pour un
+# reencodage) en H264/H265 (reserve au WEB-DL untouched) -- l'inverse exact
+# de la convention officielle.
+# --------------------------------------------------------------------------- #
+def test_webrip_source_x265_stays_x265_not_converted_to_h265():
+    result = propose_video_release_name(
+        ["Movie.2020.1080p.WEBRip.AAC.x265-TEAM.mkv"], CONFIG_WITH_WEB_OVERRIDE,
+    )
+    assert result.name is not None
+    assert ".x265-TEAM" in result.name
+    assert "h265" not in result.name.lower()
+
+
+def test_webrip_source_field_stays_webrip_not_web():
+    result = propose_video_release_name(
+        ["Movie.2020.1080p.WEBRip.AAC.x265-TEAM.mkv"], CONFIG_WITH_WEB_OVERRIDE,
+    )
+    assert result.fields["source"] == "WEBRip"
+
+
+def test_webdl_source_x265_still_becomes_h265_non_regression():
+    result = propose_video_release_name(
+        ["Movie.2020.1080p.WEBDL.AAC.x265-TEAM.mkv"], CONFIG_WITH_WEB_OVERRIDE,
+    )
+    assert result.name is not None
+    assert ".H265-TEAM" in result.name
+    assert "x265" not in result.name.lower()
+
+
+def test_real_c411_profile_webrip_source_stays_x265_not_h265():
+    """Bout-en-bout contre le VRAI profil livre (nfogen/profiles/c411/rules.json) :
+    un WEBRip reel ne doit jamais voir son codec converti en H265."""
+    from nfogen.profile_store import read_profile
+
+    config = read_profile("c411")["rules"]["video"]["name_proposal"]
+    result = propose_video_release_name(
+        ["Movie.2020.1080p.WEBRip.AAC.2.0.x265-TEAM.mkv"], config,
+    )
+    assert result.name is not None
+    assert ".x265-TEAM" in result.name
+    assert "h265" not in result.name.lower()
+    assert result.fields["source"] == "WEBRip"
 
 
 # --------------------------------------------------------------------------- #

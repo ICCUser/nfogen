@@ -135,9 +135,21 @@ def _apply_web_codec_convention(info: dict[str, str], config: dict[str, Any]) ->
     tracker). Mute `info` en place ; no-op si le profil ne declare pas
     `web_video_codec_overrides` (rules.json -> video -> name_proposal) ou
     si la source detectee n'est pas une variante WEB (WEB/WEB.DSNP/
-    WEB.NF/WEB.AMZN, voir source_aliases)."""
+    WEB.NF/WEB.AMZN, voir source_aliases).
+
+    Exclut explicitement "WEBRip" (et toute variante composee qui en
+    commencerait, ex. futur "WEBRip.AMZN") : audit C411 2026-09-13 (doc
+    officielle "Films & Videos", section "2. Encodage") -- "x264 / x265 ...
+    a utiliser pour les encodes (BluRay, WEBrip, DVDrip) et WEB-DL encodes"
+    / "H264 / H265 ... a utiliser pour les WEB-DL untouched". Un WEBRip est
+    un REENCODAGE (x264/x265 corrects), contrairement a un WEB-DL/WEB
+    untouched (H264/H265 requis) -- bug reel corrige ici : avant ce fix,
+    "WEBRip" etait collapse sur "WEB" dans source_aliases, donc ce
+    `startswith("WEB")` s'appliquait a tort a un WEBRip et inversait la
+    convention officielle."""
     overrides = config.get("web_video_codec_overrides", {})
-    if overrides and info["source"].startswith("WEB") and info["video_codec"] in overrides:
+    is_web_variant = info["source"].startswith("WEB") and not info["source"].startswith("WEBRip")
+    if overrides and is_web_variant and info["video_codec"] in overrides:
         info["video_codec"] = overrides[info["video_codec"]]
 
 
