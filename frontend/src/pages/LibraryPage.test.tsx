@@ -194,7 +194,8 @@ describe("LibraryPage", () => {
     expect(screen.getAllByRole("columnheader", { name: "Team" })).toHaveLength(1);
   });
 
-  it("affiche le bloc 'Packs disponibles' quand la bibliotheque en detecte", async () => {
+  it("affiche le bloc packs REPLIE par defaut, deplie au clic (retour utilisateur, 2026-09-13 : trop de place)", async () => {
+    const user = userEvent.setup();
     vi.mocked(libraryResults).mockResolvedValue({
       items: [MATRIX_ITEM], total: 1,
       season_packs: [
@@ -205,15 +206,20 @@ describe("LibraryPage", () => {
       ],
     });
     renderPage();
-    expect(await screen.findByText("Packs disponibles")).toBeInTheDocument();
+
+    const toggle = await screen.findByRole("button", { name: /1 pack disponible/i });
+    expect(screen.queryByText(/Lucifer — INTEGRALE \(Frosties\)/)).not.toBeInTheDocument();
+
+    await user.click(toggle);
+
     expect(screen.getByText(/Lucifer — INTEGRALE \(Frosties\)/)).toBeInTheDocument();
   });
 
-  it("n'affiche pas le bloc 'Packs disponibles' si aucune suggestion", async () => {
+  it("n'affiche pas le bloc packs si aucune suggestion", async () => {
     vi.mocked(libraryResults).mockResolvedValue({ items: [MATRIX_ITEM], total: 1, season_packs: [] });
     renderPage();
     await screen.findByText(/Matrix \(1999\)/);
-    expect(screen.queryByText("Packs disponibles")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /pack.*disponible/i })).not.toBeInTheDocument();
   });
 
   it("affiche le bouton 'Seed possible' quand seed_match est present", async () => {
@@ -307,7 +313,7 @@ describe("LibraryPage", () => {
       ],
     });
     renderPage();
-    await screen.findByText("Packs disponibles");
+    await user.click(await screen.findByRole("button", { name: /pack.*disponible/i }));
 
     await user.click(screen.getByRole("button", { name: "Préparer le pack" }));
 
@@ -330,8 +336,9 @@ describe("LibraryPage", () => {
         },
       ],
     });
+    const user = userEvent.setup();
     renderPage();
-    await screen.findByText("Packs disponibles");
+    await user.click(await screen.findByRole("button", { name: /pack.*disponible/i }));
 
     expect(screen.getByRole("button", { name: "Préparer le pack" })).toBeDisabled();
   });

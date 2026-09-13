@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -171,6 +172,10 @@ export default function LibraryPage() {
   const [items, setItems] = useState<LibraryItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [seasonPacks, setSeasonPacks] = useState<SeasonPackSuggestion[]>([]);
+  // Replie par defaut (retour utilisateur, 2026-09-13 : "prenne trop de
+  // place" -- une bibliotheque bien remplie peut suggerer des dizaines
+  // de packs, chacun sa ligne, poussant le tableau hors ecran).
+  const [packsExpanded, setPacksExpanded] = useState(false);
   // Seed d'une release C411 deja possedee, sans re-upload (retour
   // utilisateur, 2026-09-09) -- cle : LibraryItem.key, comme les autres
   // etats indexes par ligne de ce composant.
@@ -836,59 +841,72 @@ export default function LibraryPage() {
 
       {seasonPacks.length > 0 && (
         <InlineBanner>
-          <p className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-ink-dim">
-            Packs disponibles
-          </p>
-          {seasonPacks.map((pack) => {
-            const seasons = seasonsForPack(pack);
-            const label = pack.is_full_series
-              ? "INTEGRALE"
-              : `S${String(pack.season_numbers[0]).padStart(2, "0")}S${String(
-                  pack.season_numbers[pack.season_numbers.length - 1],
-                ).padStart(2, "0")}`;
-            return (
-              <div
-                key={`${pack.sonarr_series_id}-${pack.season_numbers.join("-")}`}
-                className="flex items-center justify-between px-3 py-2 text-sm"
-              >
-                <span>
-                  {pack.title} — {label} ({pack.team})
-                </span>
-                <button
-                  type="button"
-                  disabled={seasons === null}
-                  title={
-                    seasons === null
-                      ? "Certaines saisons de ce pack ne sont pas visibles dans la page/le filtre actuel."
-                      : undefined
-                  }
-                  onClick={() => {
-                    if (seasons === null) return;
-                    setActiveUpload({
-                      title: `${pack.title} ${label}`,
-                      localPaths: seasons.flatMap((s) => s.local_paths),
-                      mediaType: "series",
-                      radarrMovieId: null,
-                      sonarrSeriesId: pack.sonarr_series_id,
-                      tmdbId: null,
-                      tvdbId: null,
-                      genre: null,
-                      seasonNumber: null,
-                      seasonPack: {
-                        title: pack.title,
-                        team: pack.team,
-                        is_full_series: pack.is_full_series,
-                        seasons,
-                      },
-                    });
-                  }}
-                  className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
-                >
-                  Préparer le pack
-                </button>
-              </div>
-            );
-          })}
+          <button
+            type="button"
+            onClick={() => setPacksExpanded((v) => !v)}
+            aria-expanded={packsExpanded}
+            className="flex w-full items-center justify-between px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-ink-dim hover:text-ink"
+          >
+            <span>
+              {seasonPacks.length} pack{seasonPacks.length > 1 ? "s" : ""} disponible
+              {seasonPacks.length > 1 ? "s" : ""}
+            </span>
+            <ChevronDown size={14} className={packsExpanded ? "rotate-180" : undefined} />
+          </button>
+          {packsExpanded && (
+            <div className="max-h-64 overflow-y-auto">
+              {seasonPacks.map((pack) => {
+                const seasons = seasonsForPack(pack);
+                const label = pack.is_full_series
+                  ? "INTEGRALE"
+                  : `S${String(pack.season_numbers[0]).padStart(2, "0")}S${String(
+                      pack.season_numbers[pack.season_numbers.length - 1],
+                    ).padStart(2, "0")}`;
+                return (
+                  <div
+                    key={`${pack.sonarr_series_id}-${pack.season_numbers.join("-")}`}
+                    className="flex items-center justify-between px-3 py-2 text-sm"
+                  >
+                    <span>
+                      {pack.title} — {label} ({pack.team})
+                    </span>
+                    <button
+                      type="button"
+                      disabled={seasons === null}
+                      title={
+                        seasons === null
+                          ? "Certaines saisons de ce pack ne sont pas visibles dans la page/le filtre actuel."
+                          : undefined
+                      }
+                      onClick={() => {
+                        if (seasons === null) return;
+                        setActiveUpload({
+                          title: `${pack.title} ${label}`,
+                          localPaths: seasons.flatMap((s) => s.local_paths),
+                          mediaType: "series",
+                          radarrMovieId: null,
+                          sonarrSeriesId: pack.sonarr_series_id,
+                          tmdbId: null,
+                          tvdbId: null,
+                          genre: null,
+                          seasonNumber: null,
+                          seasonPack: {
+                            title: pack.title,
+                            team: pack.team,
+                            is_full_series: pack.is_full_series,
+                            seasons,
+                          },
+                        });
+                      }}
+                      className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
+                    >
+                      Préparer le pack
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </InlineBanner>
       )}
 
