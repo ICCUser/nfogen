@@ -32,7 +32,7 @@ UPLOAD_RULES = {
                 "series": 7, "series:anime": 2,
             },
             "language_option_id": 1,
-            "language_values": {"VFF": 2, "MULTI.VFF": 4},
+            "language_values": {"VFF": 2, "MULTI.VFF": 4, "VFQ": 6, "MULTI.VF2": 422},
             "quality_option_id": 2,
             "quality_values": {
                 "BluRay": 11, "BluRay.4K": 10, "BluRay.HDLight": 413,
@@ -104,6 +104,23 @@ def test_build_options_empty_dict_when_profile_has_no_upload_config():
     ps.write_profile("bare", rules={}, templates={})
     result = options_engine.build_options("bare", {"source": "BluRay"}, "Movie.2020.BluRay-TEAM")
     assert result == {}
+
+
+# --- VFQ / MULTI.VF2 -- audit de conformite C411, 2026-09-13, point 4 ------ #
+def test_build_options_quebec_only_language_uses_vfq_id():
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "BluRay", "language": "VFQ"}
+    release_name = "Movie.2020.VFQ.1080p.BluRay.AC3.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["1"] == [6]
+
+
+def test_build_options_france_and_quebec_language_uses_multi_vf2_id():
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "BluRay", "language": "MULTI.VF2"}
+    release_name = "Movie.2020.MULTI.VF2.1080p.BluRay.AC3.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["1"] == [422]
 
 
 # --- Bug du 2026-09-13 : la qualite ne doit pas ignorer la resolution ------

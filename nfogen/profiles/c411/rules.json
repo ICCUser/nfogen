@@ -8,7 +8,11 @@
     "audio_language_codes": {
       "fr": "FR", "fre": "FR", "fra": "FR", "french": "FR",
       "en": "EN", "eng": "EN", "english": "EN",
-      "ja": "JA", "jpn": "JA", "japanese": "JA"
+      "ja": "JA", "jpn": "JA", "japanese": "JA",
+      "french (ca)": "FRQ",
+      "fr-ca": "FRQ", "fre-ca": "FRQ", "fra-ca": "FRQ",
+      "french (canada)": "FRQ",
+      "québécois": "FRQ", "quebecois": "FRQ"
     },
     "min_request_interval_seconds": 4.5,
     "tmdb_language": "fr-FR",
@@ -27,7 +31,7 @@
         "series": 7, "series:anime": 2, "series:documentaire": 4
       },
       "language_option_id": 1,
-      "language_values": {"VFF": 2, "MULTI.VFF": 4, "VO": 1, "VOSTFR": 8},
+      "language_values": {"VFF": 2, "MULTI.VFF": 4, "VO": 1, "VOSTFR": 8, "VFQ": 6, "MULTI.VF2": 422},
       "quality_option_id": 2,
       "quality_values": {
         "BluRay.HDLight": 413, "BluRay": 11, "BluRay.4K": 10, "BluRay.REMUX": 12,
@@ -157,6 +161,11 @@
         "EN+FR": "MULTI.VFF",
         "FR+JA": "MULTI.VFF",
         "JA+FR": "MULTI.VFF",
+        "FRQ": "VFQ",
+        "FR+FRQ": "MULTI.VF2",
+        "FRQ+FR": "MULTI.VF2",
+        "FRQ+EN": "MULTI.VFQ",
+        "EN+FRQ": "MULTI.VFQ",
         "VO": "VO",
         "VOSTFR": "VOSTFR",
         "EN+VOSTFR": "VOSTFR"

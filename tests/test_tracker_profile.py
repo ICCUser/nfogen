@@ -149,6 +149,18 @@ def test_c411_audio_language_codes_match_upload_prep_history():
         "fr": "FR", "fre": "FR", "fra": "FR", "french": "FR",
         "en": "EN", "eng": "EN", "english": "EN",
         "ja": "JA", "jpn": "JA", "japanese": "JA",
+        # VFQ (Version Francaise Quebecoise, C411 "Le Nommage de l'upload") --
+        # "french (ca)" est CONFIRME par un vrai dump pymediainfo fourni par
+        # l'utilisateur le 2026-09-13 (fichier reel deja accepte par C411,
+        # piste `Language: French (CA)`) : pymediainfo renvoie bien cette
+        # chaine exacte pour `t.language` sur une piste VFQ. Les autres
+        # variantes minuscules restent des replis DEFENSIFS NON testes sur
+        # un fichier reel (jamais rencontres, a ajuster/retirer si un futur
+        # retour utilisateur montre une valeur differente).
+        "french (ca)": "FRQ",
+        "fr-ca": "FRQ", "fre-ca": "FRQ", "fra-ca": "FRQ",
+        "french (canada)": "FRQ",
+        "québécois": "FRQ", "quebecois": "FRQ",
     }
 
 
@@ -188,7 +200,12 @@ def test_c411_upload_category_and_subcategory_ids():
 def test_c411_upload_language_values():
     upload = tracker_profile.upload_config("c411")
     assert upload["language_option_id"] == 1
-    assert upload["language_values"] == {"VFF": 2, "MULTI.VFF": 4, "VO": 1, "VOSTFR": 8}
+    # VFQ=6 (Quebecois) / MULTI.VF2=422 (Multi VF2 (FR+QC)) -- table C411_reference
+    # "Type 1 : Langue" ; voir aussi test_c411_audio_language_codes_match_upload_prep_history
+    # pour la limite honnete sur le mapping audio_language_codes correspondant.
+    assert upload["language_values"] == {
+        "VFF": 2, "MULTI.VFF": 4, "VO": 1, "VOSTFR": 8, "VFQ": 6, "MULTI.VF2": 422,
+    }
 
 
 def test_c411_upload_quality_values():

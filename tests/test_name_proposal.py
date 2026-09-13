@@ -8,7 +8,11 @@ from nfogen.name_proposal import propose_season_pack_name, propose_video_release
 TEMPLATE = "{title}.{identifier}.{language}.{resolution}p.{source}.{audio}.{video_codec}-{team}"
 CONFIG = {
     "template": TEMPLATE,
-    "language_aliases": {"FR+JA": "MULTI.VFF", "FR": "VFF"},
+    "language_aliases": {
+        "FR+JA": "MULTI.VFF", "FR": "VFF",
+        "FR+FRQ": "MULTI.VF2", "FRQ+FR": "MULTI.VF2", "FRQ": "VFQ",
+        "FRQ+EN": "MULTI.VFQ", "EN+FRQ": "MULTI.VFQ",
+    },
     "source_aliases": {
         "WEBDL": "WEB",
         "WEB-DL": "WEB",
@@ -69,6 +73,35 @@ def test_no_filenames_is_a_soft_warning_not_a_crash():
     proposal = propose_video_release_name([], CONFIG)
     assert proposal.name is None
     assert proposal.warnings
+
+
+# --------------------------------------------------------------------------- #
+# VFQ / MULTI.VF2 -- audit de conformite C411, 2026-09-13, point 4. Le hint de
+# langue ("FR+FRQ") vient ici du nom de fichier/hint (comme "[FR+JA]" pour
+# ONE_PIECE_FILES ci-dessus), pas d'une vraie piste MediaInfo -- voir
+# tests/test_upload_prep.py pour la construction du hint a partir des
+# vraies pistes audio.
+# --------------------------------------------------------------------------- #
+def test_quebec_only_language_hint_maps_to_vfq():
+    filenames = ["Movie.2020.1080p.WEB.[FRQ].x264-TEAM.mkv"]
+    proposal = propose_video_release_name(filenames, CONFIG)
+    assert "VFQ" in proposal.fields["language"]
+    assert "MULTI" not in proposal.fields["language"]
+
+
+def test_france_and_quebec_language_hint_maps_to_multi_vf2():
+    filenames = ["Movie.2020.1080p.WEB.[FR+FRQ].x264-TEAM.mkv"]
+    proposal = propose_video_release_name(filenames, CONFIG)
+    assert proposal.fields["language"] == "MULTI.VF2"
+
+
+def test_quebec_and_english_language_hint_maps_to_multi_vfq():
+    # Cas reel confirme par l'utilisateur (2026-09-13) : une seule piste FR
+    # (Quebec) + une piste EN -> MULTI.VFQ, distinct de MULTI.VF2 (qui exige
+    # VFF+VFQ ensemble).
+    filenames = ["Movie.2020.1080p.WEB.[FRQ+EN].x264-TEAM.mkv"]
+    proposal = propose_video_release_name(filenames, CONFIG)
+    assert proposal.fields["language"] == "MULTI.VFQ"
 
 
 def test_missing_template_config_is_a_soft_warning():

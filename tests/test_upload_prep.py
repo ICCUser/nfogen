@@ -777,6 +777,14 @@ _C411_AUDIO_LANGUAGE_CODES = {
     "fr": "FR", "fre": "FR", "fra": "FR", "french": "FR",
     "en": "EN", "eng": "EN", "english": "EN",
     "ja": "JA", "jpn": "JA", "japanese": "JA",
+    # VFQ -- "french (ca)" confirme par un vrai dump pymediainfo (fichier reel
+    # deja accepte par C411, 2026-09-13) ; les autres variantes restent des
+    # replis defensifs non testes -- voir
+    # tests/test_tracker_profile.py::test_c411_audio_language_codes_match_upload_prep_history.
+    "french (ca)": "FRQ",
+    "fr-ca": "FRQ", "fre-ca": "FRQ", "fra-ca": "FRQ",
+    "french (canada)": "FRQ",
+    "québécois": "FRQ", "quebecois": "FRQ",
 }
 
 
@@ -804,6 +812,44 @@ def test_language_hint_empty_when_nothing_recognized():
 def test_language_hint_empty_when_profile_declares_no_codes():
     # Profil sans audio_language_codes declare : jamais d'indice devine.
     assert _language_hint_from_audio_tracks(["fre", "eng"], {}) == ""
+
+
+# --------------------------------------------------------------------------- #
+# VFQ (Version Francaise Quebecoise) -- audit de conformite C411, 2026-09-13,
+# point 4 : "Lorsque VFF et VFQ sont present alors le TAG MULTI.VF2 est
+# obligatoire." AUCUN dump MediaInfo reel disponible pour une piste VFQ (voir
+# test_tracker_profile.py::test_c411_audio_language_codes_match_upload_prep_history) --
+# "French (CA)" est la variante testee ici car c'est l'exemple illustratif de
+# l'exemple NFO officiel C411 ("Mufasa"), a ajuster si un vrai fichier VFQ
+# produit une valeur `Language` pymediainfo differente.
+# --------------------------------------------------------------------------- #
+def test_language_hint_single_quebec_track():
+    assert _language_hint_from_audio_tracks(["French (CA)"], _C411_AUDIO_LANGUAGE_CODES) == "FRQ"
+
+
+def test_language_hint_france_then_quebec_keeps_track_order():
+    assert (
+        _language_hint_from_audio_tracks(["French", "French (CA)"], _C411_AUDIO_LANGUAGE_CODES)
+        == "FR+FRQ"
+    )
+
+
+def test_language_hint_quebec_then_france_keeps_track_order():
+    assert (
+        _language_hint_from_audio_tracks(["French (CA)", "French"], _C411_AUDIO_LANGUAGE_CODES)
+        == "FRQ+FR"
+    )
+
+
+def test_language_hint_quebec_and_english_tracks():
+    # Cas reel confirme par l'utilisateur (2026-09-13) : fichier deja accepte
+    # par C411 avec 2 pistes FR-Quebec + EN (une seule piste FR au total) ->
+    # doit rester "FRQ+EN" (pas de VFF impliquee), le profil (language_aliases)
+    # le traduit ensuite en tag MULTI.VFQ.
+    assert (
+        _language_hint_from_audio_tracks(["French (CA)", "English"], _C411_AUDIO_LANGUAGE_CODES)
+        == "FRQ+EN"
+    )
 
 
 def test_preview_upload_uses_real_audio_tracks_when_filename_has_no_language_tag():
