@@ -175,7 +175,8 @@ def test_c411_upload_quality_values():
     upload = tracker_profile.upload_config("c411")
     assert upload["quality_option_id"] == 2
     assert upload["quality_values"] == {
-        "BluRay.HDLight": 413, "BluRay": 11, "BluRay.REMUX": 12, "WEB": 25, "WEB.4K": 26,
+        "BluRay.HDLight": 413, "BluRay": 11, "BluRay.4K": 10, "BluRay.REMUX": 12,
+        "WEB": 25, "WEB.4K": 26,
     }
 
 

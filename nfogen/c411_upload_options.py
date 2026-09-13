@@ -58,7 +58,26 @@ def build_options(
     quality_values: dict[str, int] = config.get("quality_values", {})
     source = capture_values.get("source")
     if source:
-        quality_key = f"{source}.HDLight" if "hdlight" in release_name.lower() else source
+        if "hdlight" in release_name.lower():
+            # HDLight est structurellement une variante basse qualite --
+            # jamais 4K en pratique -- donc prioritaire sur la resolution.
+            quality_key = f"{source}.HDLight"
+        else:
+            # Audit croisé code + pages d'aide C411 (table C411_reference,
+            # 2026-09-13) : la qualite ne depend pas que de `source`, la
+            # resolution compte aussi (ex. id 26 "WEB-DL 4K" vs id 25
+            # "WEB-DL 1080", id 10 "BluRay 4K" vs id 11 "BluRay Full"). Pas
+            # de variante ".4K" pour REMUX (id 12, toutes resolutions) --
+            # essayer `f"{source}.4K"` d'abord et retomber sur `source` si
+            # le profil ne l'a pas declare couvre ce cas naturellement.
+            resolution = capture_values.get("resolution")
+            is_4k = False
+            if resolution is not None:
+                try:
+                    is_4k = int(resolution) >= 2160
+                except ValueError:
+                    is_4k = False
+            quality_key = f"{source}.4K" if is_4k and f"{source}.4K" in quality_values else source
         if quality_option_id is not None and quality_key in quality_values:
             options[str(quality_option_id)] = quality_values[quality_key]
 

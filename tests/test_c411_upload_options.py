@@ -34,7 +34,10 @@ UPLOAD_RULES = {
             "language_option_id": 1,
             "language_values": {"VFF": 2, "MULTI.VFF": 4},
             "quality_option_id": 2,
-            "quality_values": {"BluRay": 11, "BluRay.HDLight": 413, "WEB": 25},
+            "quality_values": {
+                "BluRay": 11, "BluRay.4K": 10, "BluRay.HDLight": 413,
+                "BluRay.REMUX": 12, "WEB": 25, "WEB.4K": 26,
+            },
             "season_option_id": 7,
             "season_values": {"INTEGRALE": 118, "S01": 121, "S02": 122},
             "episode_option_id": 6,
@@ -101,3 +104,92 @@ def test_build_options_empty_dict_when_profile_has_no_upload_config():
     ps.write_profile("bare", rules={}, templates={})
     result = options_engine.build_options("bare", {"source": "BluRay"}, "Movie.2020.BluRay-TEAM")
     assert result == {}
+
+
+# --- Bug du 2026-09-13 : la qualite ne doit pas ignorer la resolution ------
+# Audit croisé code + pages d'aide C411 (table C411_reference, quality_option
+# id 2) : 10=BluRay 4K, 11=BluRay Full (1080p), 12=BluRay Remux (toutes
+# resolutions, pas de variante 4K séparée), 25=WEB-DL 1080, 26=WEB-DL 4K.
+# `quality_key` ne dependait que de `source` -- un WEB-DL 2160p envoyait
+# l'id "WEB-DL 1080" au lieu de "WEB-DL 4K", et un BluRay 2160p pur n'avait
+# meme pas d'id configure.
+
+def test_build_options_web_2160p_uses_4k_quality_id():
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "WEB", "language": "VFF", "resolution": "2160"}
+    release_name = "Movie.2020.VFF.2160p.WEB.AC3.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 26
+
+
+def test_build_options_web_1080p_still_uses_plain_web_quality_id():
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "WEB", "language": "VFF", "resolution": "1080"}
+    release_name = "Movie.2020.VFF.1080p.WEB.AC3.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 25
+
+
+def test_build_options_bluray_2160p_pure_uses_4k_quality_id():
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "BluRay", "language": "VFF", "resolution": "2160"}
+    release_name = "Movie.2020.VFF.2160p.BluRay.AC3.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 10
+
+
+def test_build_options_bluray_1080p_pure_still_uses_plain_bluray_quality_id():
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "BluRay", "language": "VFF", "resolution": "1080"}
+    release_name = "Movie.2020.VFF.1080p.BluRay.AC3.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 11
+
+
+def test_build_options_bluray_remux_2160p_has_no_4k_variant():
+    # Piege : il n'existe PAS de "BluRay.REMUX.4K" dans la doc officielle --
+    # meme a 2160p, un REMUX doit rester sur la cle REMUX simple.
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "BluRay.REMUX", "language": "VFF", "resolution": "2160"}
+    release_name = "Movie.2020.VFF.2160p.BluRay.REMUX.DTS.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 12
+
+
+def test_build_options_bluray_hdlight_stays_hdlight_even_if_resolution_says_2160():
+    # HDLight est structurellement une variante basse qualite -- jamais 4K en
+    # pratique, mais le marqueur HDLight doit rester prioritaire sur toute
+    # logique de resolution meme si `resolution` est incoherente/absente.
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "BluRay", "language": "VFF", "resolution": "2160"}
+    release_name = "Movie.2020.VFF.2160p.BluRay.HDLight.AC3.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 413
+
+
+def test_build_options_quality_without_resolution_falls_back_to_plain_key():
+    # `resolution` absent de capture_values -- comportement inchange, pas de
+    # crash, repli sur la cle simple.
+    ps.write_profile("up", rules=UPLOAD_RULES, templates={})
+    captures = {"source": "BluRay", "language": "VFF"}
+    release_name = "Movie.2020.VFF.BluRay.AC3.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 11
+
+
+def test_build_options_2160p_falls_back_to_plain_key_when_4k_variant_not_configured():
+    # Profil de test qui ne declare pas de variante ".4K" pour cette source --
+    # repli propre sur la cle simple, jamais de crash ni d'omission a tort.
+    rules_without_4k = {
+        "tracker": {
+            "upload": {
+                "quality_option_id": 2,
+                "quality_values": {"HDTV": 30},
+            }
+        }
+    }
+    ps.write_profile("up", rules=rules_without_4k, templates={})
+    captures = {"source": "HDTV", "language": "VFF", "resolution": "2160"}
+    release_name = "Movie.2020.VFF.2160p.HDTV.AC3.x264-TEAM"
+    result = options_engine.build_options("up", captures, release_name)
+    assert result["2"] == 30
