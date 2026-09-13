@@ -64,6 +64,7 @@ def write(
     tracker_api_key: Optional[str] = None,
     tracker_base_url: Optional[str] = None,
     tracker_announce_url: Optional[str] = None,
+    tracker_backup_announce_url: Optional[str] = None,
     sonarr_url: Optional[str] = None,
     sonarr_api_key: Optional[str] = None,
     radarr_url: Optional[str] = None,
@@ -107,6 +108,7 @@ def write(
         "api_key": tracker_api_key,
         "base_url": tracker_base_url,
         "announce_url": tracker_announce_url,
+        "backup_announce_url": tracker_backup_announce_url,
     }
     if any(value is not None for value in tracker_updates.values()):
         trackers = data.setdefault("trackers", {})
@@ -172,6 +174,20 @@ def effective_tracker_announce_url(profile: str = "c411") -> Optional[str]:
     if not url and profile == "c411":
         url = data.get("c411_announce_url")
     return url or None
+
+
+def effective_tracker_backup_announce_url(profile: str = "c411") -> Optional[str]:
+    """URL d'annonce de SECOURS pour CE profil (page d'aide "Integrations
+    API" C411, 2026-09-13 : meme passkey que l'adresse principale, mais sur
+    un domaine distinct -- `tk.c411.tw` -- pour que le client bascule seul
+    si l'adresse principale devient injoignable). Aussi sensible que
+    `tracker_announce_url` (passkey inclus), jamais renvoyee en clair par
+    `status()`. `None` si non configuree -- champ entierement nouveau, donc
+    aucun repli legacy a gerer (contrairement a `effective_tracker_announce_url`
+    et son repli sur `c411_announce_url`)."""
+    data = _load()
+    bucket = (data.get("trackers") or {}).get(profile, {})
+    return bucket.get("backup_announce_url") or None
 
 
 def effective_sonarr() -> Optional[tuple[str, str]]:
@@ -254,6 +270,7 @@ def status(profile: str = "c411") -> dict[str, Any]:
         "sonarr_path_mappings": effective_sonarr_path_mappings(),
         "radarr_path_mappings": effective_radarr_path_mappings(),
         "tracker_announce_url_configured": effective_tracker_announce_url(profile) is not None,
+        "tracker_backup_announce_url_configured": effective_tracker_backup_announce_url(profile) is not None,
         "staging_dir": effective_staging_dir(),
         "qbittorrent_configured": qbittorrent is not None,
         "qbittorrent_url": qbittorrent[0] if qbittorrent else None,

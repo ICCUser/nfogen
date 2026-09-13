@@ -729,6 +729,7 @@ class GapscanConfigWriteRequest(BaseModel):
     tracker_api_key: Optional[str] = None
     tracker_base_url: Optional[str] = None
     tracker_announce_url: Optional[str] = None
+    tracker_backup_announce_url: Optional[str] = None
     sonarr_url: Optional[str] = None
     sonarr_api_key: Optional[str] = None
     radarr_url: Optional[str] = None

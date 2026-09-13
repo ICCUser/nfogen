@@ -586,7 +586,30 @@ def test_resolve_staging_config_returns_staging_dir_and_announce_url(monkeypatch
         "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
         lambda profile: "https://c411.example/announce/abc123",
     )
-    assert resolve_staging_config("c411") == ("/staging", "https://c411.example/announce/abc123")
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_backup_announce_url",
+        lambda profile: None,
+    )
+    assert resolve_staging_config("c411") == (
+        "/staging", "https://c411.example/announce/abc123", None,
+    )
+
+
+def test_resolve_staging_config_includes_backup_announce_url_when_configured(monkeypatch):
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: "/staging"
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_backup_announce_url",
+        lambda profile: "https://tk.c411.example/announce/abc123",
+    )
+    assert resolve_staging_config("c411") == (
+        "/staging", "https://c411.example/announce/abc123", "https://tk.c411.example/announce/abc123",
+    )
 
 
 def test_resolve_staging_config_raises_without_staging_dir(monkeypatch):
@@ -646,6 +669,39 @@ def test_commit_upload_without_hooks_behaves_exactly_as_before(tmp_path, monkeyp
 
     assert isinstance(result, CommitResult)
     assert _Path(result.staged_path).is_file()
+
+
+def test_commit_upload_passes_backup_announce_url_to_build_torrent(tmp_path, monkeypatch):
+    """Meme mecanisme que test_commit_upload_sets_torrent_source_from_profile :
+    on relit le .torrent genere plutot que d'espionner l'appel, pour tester
+    le comportement observable de bout en bout."""
+    import torf
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_announce_url",
+        lambda profile: "https://c411.example/announce/abc123",
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tracker_backup_announce_url",
+        lambda profile: "https://tk.c411.example/announce/abc123",
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.extract.extract_video_text", lambda path: "General\nFormat : Matroska\n"
+    )
+    source = _make_source(tmp_path, "source.mkv")
+    files = [ProposedFile(source_path=source, staged_name="Movie.2020.1080p.x264-TEAM.mkv")]
+
+    result = commit_upload("Movie.2020.1080p.x264-TEAM", files, profile="c411")
+
+    reloaded = torf.Torrent.read(result.torrent_path)
+    assert reloaded.trackers == [
+        ["https://c411.example/announce/abc123", "https://tk.c411.example/announce/abc123"]
+    ]
 
 
 def test_commit_upload_sets_torrent_source_from_profile(tmp_path, monkeypatch):

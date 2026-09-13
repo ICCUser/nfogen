@@ -55,6 +55,7 @@ def build_torrent(
     threads: Optional[int] = None,
     overwrite: bool = False,
     source: Optional[str] = None,
+    backup_announce_url: Optional[str] = None,
 ) -> None:
     """Construit un .torrent prive a partir de `staged_path` (fichier ou
     dossier -- un dossier pour un pack multi-fichiers -- deja mis en scene
@@ -87,9 +88,22 @@ def build_torrent(
     seed (voir AUTOMATION.md, sous-projet 6). `None` par defaut : aucun
     tag ajoute, comportement inchange pour un profil qui n'en declare pas."""
     total_bytes = _total_size(staged_path)
+    # `backup_announce_url` (page d'aide "Integrations API" C411, 2026-09-13) :
+    # adresse de secours (`tk.c411.tw`, meme passkey), a ajouter au MEME
+    # niveau (tier BEP12) que l'adresse principale -- "sur une nouvelle
+    # ligne, juste sous l'adresse existante et sans ligne vide entre les
+    # deux", pour que le client bascule seul dessus si la principale devient
+    # injoignable, plutot que de l'interroger EN PLUS (ce qu'un second tier,
+    # cree par une ligne vide, ferait). torf construit un tier separe pour
+    # CHAQUE element d'une liste plate passee a `trackers=` -- un seul tier
+    # avec les deux adresses exige donc de les regrouper dans une sous-liste.
+    if backup_announce_url:
+        trackers: list = [[announce_url, backup_announce_url]]
+    else:
+        trackers = [announce_url]
     torrent = torf.Torrent(
         path=staged_path,
-        trackers=[announce_url],
+        trackers=trackers,
         private=True,
         piece_size=piece_size_for(total_bytes, piece_sizes),
         source=source,

@@ -211,6 +211,33 @@ def test_status_announce_url_flag_false_by_default():
     assert store.status("c411")["tracker_announce_url_configured"] is False
 
 
+def test_tracker_backup_announce_url_defaults_to_none():
+    assert store.effective_tracker_backup_announce_url("c411") is None
+
+
+def test_write_then_read_tracker_backup_announce_url():
+    store.write(profile="c411", tracker_backup_announce_url="https://tk.c411.tw/announce/SECRET")
+    assert store.effective_tracker_backup_announce_url("c411") == "https://tk.c411.tw/announce/SECRET"
+
+
+def test_tracker_backup_announce_url_namespaced_by_profile():
+    # Meme namespacage que tracker_announce_url : un profil ne voit jamais
+    # l'adresse de secours d'un autre.
+    store.write(profile="c411", tracker_backup_announce_url="https://tk.c411.tw/announce/SECRET")
+    assert store.effective_tracker_backup_announce_url("ygg") is None
+
+
+def test_status_exposes_backup_announce_url_as_a_flag_not_the_secret_itself():
+    store.write(profile="c411", tracker_backup_announce_url="https://tk.c411.tw/announce/SECRET")
+    status = store.status("c411")
+    assert status["tracker_backup_announce_url_configured"] is True
+    assert "SECRET" not in str(status)
+
+
+def test_status_backup_announce_url_flag_false_by_default():
+    assert store.status("c411")["tracker_backup_announce_url_configured"] is False
+
+
 def test_status_includes_staging_dir():
     store.write(staging_dir="/data/staging")
     assert store.status("c411")["staging_dir"] == "/data/staging"

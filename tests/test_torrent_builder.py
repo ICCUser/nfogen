@@ -102,6 +102,41 @@ def test_build_torrent_creates_a_valid_private_torrent(tmp_path):
     assert reloaded.piece_size == piece_size_for(100, _C411_PIECE_SIZES)
 
 
+def test_build_torrent_without_backup_announce_url_keeps_a_single_tracker(tmp_path):
+    # Non-regression explicite : omettre backup_announce_url (comportement
+    # par defaut) ne doit rien changer a la structure des trackers.
+    staged = tmp_path / "Release.Name.mkv"
+    staged.write_bytes(b"x" * 100)
+    output = tmp_path / "output.torrent"
+
+    build_torrent(str(staged), "https://c411.org/announce/SECRET", str(output), _C411_PIECE_SIZES)
+
+    reloaded = torf.Torrent.read(str(output))
+    assert reloaded.trackers == [["https://c411.org/announce/SECRET"]]
+
+
+def test_build_torrent_with_backup_announce_url_uses_the_same_tier(tmp_path):
+    """Page d'aide "Integrations API" C411, 2026-09-13 : adresse de secours
+    (`tk.c411.tw`, meme passkey) sur le MEME tier BEP12 que l'adresse
+    principale -- "sans ligne vide entre les deux" -- pour que le client
+    bascule seul dessus en cas de panne, plutot que de l'interroger EN PLUS
+    (ce qu'un second tier ferait)."""
+    staged = tmp_path / "Release.Name.mkv"
+    staged.write_bytes(b"x" * 100)
+    output = tmp_path / "output.torrent"
+
+    build_torrent(
+        str(staged), "https://c411.org/announce/SECRET", str(output), _C411_PIECE_SIZES,
+        backup_announce_url="https://tk.c411.tw/announce/SECRET",
+    )
+
+    reloaded = torf.Torrent.read(str(output))
+    # Un seul tier contenant les deux adresses (pas deux tiers separes).
+    assert reloaded.trackers == [
+        ["https://c411.org/announce/SECRET", "https://tk.c411.tw/announce/SECRET"]
+    ]
+
+
 def test_build_torrent_sets_source_when_given(tmp_path):
     """Retour C411, 2026-09-07 : "le plus simple c'est de le generer
     correctement de ton cote, en precisant source=C411" -- plus besoin de

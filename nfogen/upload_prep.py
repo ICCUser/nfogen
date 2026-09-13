@@ -453,13 +453,16 @@ def preview_upload(
     return proposals
 
 
-def resolve_staging_config(profile: str = "c411") -> tuple[str, str]:
+def resolve_staging_config(profile: str = "c411") -> tuple[str, str, Optional[str]]:
     """Verifications rapides (config uniquement, aucune I/O lourde) --
     faites AVANT de demarrer une tache de fond (voir
     commit_job_runner.start(), sous-projet 4c), pour que les erreurs de
     configuration restent visibles IMMEDIATEMENT (comme avant sous-projet
     4c), pas seulement apres coup dans l'etat d'une tache. Renvoie
-    `(staging_dir, announce_url)`."""
+    `(staging_dir, announce_url, backup_announce_url)` -- ce dernier `None`
+    si non configure, JAMAIS une erreur (adresse de secours optionnelle,
+    voir torrent_builder.build_torrent, contrairement a `announce_url` qui
+    reste obligatoire)."""
     if not _TORRENT_BUILDER_AVAILABLE:
         raise RuntimeError(
             "Génération de .torrent indisponible : pip install nfogen[automation]"
@@ -475,7 +478,8 @@ def resolve_staging_config(profile: str = "c411") -> tuple[str, str]:
             f"Adresse d'annonce non configurée pour le profil '{profile}' "
             "(PUT /gapscan/config, champ tracker_announce_url)."
         )
-    return staging_dir, announce_url
+    backup_announce_url = gapscan_config_store.effective_tracker_backup_announce_url(profile)
+    return staging_dir, announce_url, backup_announce_url
 
 
 def commit_upload(
@@ -515,7 +519,7 @@ def commit_upload(
     plutot que d'ecraser silencieusement (l'integration qBittorrent/
     Transmission, sous-projet 6, n'existe pas encore pour verifier
     reellement l'etat de seed)."""
-    staging_dir, announce_url = resolve_staging_config(profile)
+    staging_dir, announce_url, backup_announce_url = resolve_staging_config(profile)
     _validate_known_source_paths([f.source_path for f in files])
 
     history_key = upload_history_store.processed_key(
@@ -590,6 +594,7 @@ def commit_upload(
             staged_path, announce_url, torrent_path, piece_sizes,
             on_progress=_torrent_progress if on_progress else None, cancel_event=cancel_event,
             overwrite=overwrite, source=tracker_profile.torrent_source(profile),
+            backup_announce_url=backup_announce_url,
         )
     except FileExistsError as exc:
         when = ""

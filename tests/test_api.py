@@ -1187,6 +1187,7 @@ def test_gapscan_config_reports_which_services_are_configured(reload_api):
         "sonarr_path_mappings": {},
         "radarr_path_mappings": {},
         "tracker_announce_url_configured": False,
+        "tracker_backup_announce_url_configured": False,
         "staging_dir": None,
         "qbittorrent_configured": False,
         "qbittorrent_url": None,
@@ -1332,6 +1333,25 @@ def test_gapscan_config_write_then_read_back_announce_url_and_staging_dir(reload
     status = client.get("/gapscan/config").json()
     assert status["tracker_announce_url_configured"] is True
     assert status["staging_dir"] == "/data/staging"
+
+
+def test_gapscan_config_write_then_read_back_backup_announce_url(reload_api, tmp_path):
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_GAPSCAN_CONFIG_FILE=str(tmp_path / "gapscan_config.json"),
+    )
+    client = TestClient(mod.app)
+
+    put = client.put(
+        "/gapscan/config",
+        json={"tracker_backup_announce_url": "https://tk.c411.tw/announce/SECRET"},
+    )
+    assert put.status_code == 200
+    assert put.json()["tracker_backup_announce_url_configured"] is True
+    assert "SECRET" not in put.text  # jamais l'URL en clair, meme dans la reponse du PUT
+
+    status = client.get("/gapscan/config").json()
+    assert status["tracker_backup_announce_url_configured"] is True
 
 
 def test_gapscan_config_write_then_read_back_qbittorrent(reload_api, tmp_path):
