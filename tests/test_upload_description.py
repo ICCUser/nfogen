@@ -6,13 +6,6 @@ from __future__ import annotations
 
 from nfogen.upload_description import render_upload_description
 
-_BANNERS = {
-    "banner_informations": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/informations.webp",
-    "banner_synopsis": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/synopsis.webp",
-    "banner_details_techniques": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/details-techniques.webp",
-    "banner_telechargement": "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/telechargement.webp",
-}
-
 FULL_CONTEXT = {
     "title": "Inception",
     "overview": "Dom Cobb est un voleur experimente...",
@@ -46,7 +39,6 @@ FULL_CONTEXT = {
     "team": "TEAM",
     "file_count": 1,
     "total_size_bytes": 21474836480,
-    **_BANNERS,
 }
 
 # Champs TOUJOURS presents en conditions reelles (calcules par
@@ -55,7 +47,6 @@ FULL_CONTEXT = {
 # tout context de test doit les inclure, meme minimal.
 _ALWAYS_PRESENT = {
     "release_name": "X.2020.1080p.BluRay-TEAM", "file_count": 1, "total_size_bytes": 1_000_000_000,
-    **_BANNERS,
 }
 
 
@@ -84,12 +75,19 @@ def test_renders_genres_directors_cast():
     assert "Leonardo DiCaprio" in out
 
 
-def test_renders_banners():
+def test_renders_plain_text_section_headers_no_images():
+    """Retour reel de moderation C411, 2026-09-13 : d'abord le poster
+    TMDB, puis "enleve les bannieres, github n'est pas accepte non plus"
+    -- les 4 bannieres de section (Informations/Synopsis/Details
+    techniques/Telechargement) etaient des images hebergees sur
+    raw.githubusercontent.com, meme probleme que le poster. Remplacees
+    par du texte simple, plus AUCUNE image dans toute la description."""
     out = render_upload_description("c411", FULL_CONTEXT)
-    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/informations.webp" in out
-    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/synopsis.webp" in out
-    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/details-techniques.webp" in out
-    assert "raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners/telechargement.webp" in out
+    assert "raw.githubusercontent.com" not in out
+    assert "[b][size=120]Informations[/size][/b]" in out
+    assert "[b][size=120]Synopsis[/size][/b]" in out
+    assert "[b][size=120]Détails techniques[/size][/b]" in out
+    assert "[b][size=120]Téléchargement[/size][/b]" in out
 
 
 def test_renders_country_creators_rating_imdb():

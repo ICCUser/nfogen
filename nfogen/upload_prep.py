@@ -41,16 +41,6 @@ from .sonarr_client import SonarrClient
 from .tmdb_client import TMDBClient, TMDBError
 from .upload_description import render_upload_description
 
-# Bannieres de section du template d'upload (assets statiques, voir
-# scripts/generate_upload_banners.py + docs/superpowers/specs/
-# 2026-09-07-template-charte-tmdb-design.md) -- pas une config
-# utilisateur, ce sont des assets nfogen commites dans le repo.
-_BANNER_BASE_URL = "https://raw.githubusercontent.com/ICCUser/nfogen/main/assets/banners"
-_BANNER_INFORMATIONS = f"{_BANNER_BASE_URL}/informations.webp"
-_BANNER_SYNOPSIS = f"{_BANNER_BASE_URL}/synopsis.webp"
-_BANNER_DETAILS_TECHNIQUES = f"{_BANNER_BASE_URL}/details-techniques.webp"
-_BANNER_TELECHARGEMENT = f"{_BANNER_BASE_URL}/telechargement.webp"
-
 try:
     from . import torrent_builder
 
@@ -780,6 +770,14 @@ def send_to_tracker(
             "type": _classify_subtitle_type(t.get("forced", False), t.get("title")),
         })
 
+    # Retour reel de moderation C411, 2026-09-13 : "L'hebergeur que tu
+    # utilises pour la banniere n'est pas accepte" (poster TMDB) puis
+    # "enleve les bannieres, github n'est pas accepte non plus" (les 4
+    # bannieres de section, hebergees sur raw.githubusercontent.com) --
+    # le template C411 (upload_description.j2) n'affiche plus d'image
+    # nulle part : titres de section en texte simple ([b][size=...]),
+    # decision volontaire ("quelque chose de classique sans image"),
+    # jamais une image sur un hebergeur non accepte par le tracker.
     description = render_upload_description(
         profile,
         {
@@ -799,10 +797,6 @@ def send_to_tracker(
             "distributor": distributor, "certification": certification,
             "release_name": release_name, "team": team,
             "file_count": file_count, "total_size_bytes": total_size_bytes,
-            "banner_informations": _BANNER_INFORMATIONS,
-            "banner_synopsis": _BANNER_SYNOPSIS,
-            "banner_details_techniques": _BANNER_DETAILS_TECHNIQUES,
-            "banner_telechargement": _BANNER_TELECHARGEMENT,
         },
     )
 

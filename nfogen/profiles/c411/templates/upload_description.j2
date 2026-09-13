@@ -1,6 +1,6 @@
 [center][size=150]{{ title }}[/size][/center]
 
-[img]{{ banner_informations }}[/img]
+[b][size=120]Informations[/size][/b]
 {% if genres %}[b]Genres :[/b] {{ genres|join(", ") }}
 {% endif %}{% if country %}[b]Pays :[/b] {{ country }}
 {% endif %}{% if release_date %}[b]Date de sortie :[/b] {{ release_date }}
@@ -13,10 +13,10 @@
 {% endif %}{% if imdb_url %}[b]IMDB :[/b] [url={{ imdb_url }}]Fiche[/url]
 {% endif %}{% if cast %}[b]Acteurs :[/b] {{ cast|join(", ") }}
 {% endif %}
-[img]{{ banner_synopsis }}[/img]
+[b][size=120]Synopsis[/size][/b]
 {% if overview %}{{ overview }}{% else %}(synopsis non disponible){% endif %}
 
-[img]{{ banner_details_techniques }}[/img]
+[b][size=120]Détails techniques[/size][/b]
 [list]
 [*]Vidéo : {{ video_codec }} {{ resolution }}p ({{ source }}){% if hdr_format %} {{ hdr_format }}{% endif %}
 {% if video_bit_rate_kbps %}[*]Débit vidéo : {{ video_bit_rate_kbps }} kb/s
@@ -30,7 +30,7 @@
 {% for s in subtitle_rows %}[tr][td]{{ loop.index }}[/td][td]{% if s.flag %}[img=20x15]{{ s.flag }}[/img] {% endif %}{{ s.language }}[/td][td]{{ s.format }}[/td][td]{{ s.type }}[/td][/tr]
 {% endfor %}[/table]
 {% endif %}
-[img]{{ banner_telechargement }}[/img]
+[b][size=120]Téléchargement[/size][/b]
 [b]Release :[/b] {{ release_name }}
 {% if team %}[b]Team :[/b] {{ team }}
 {% endif %}[b]Nombre de fichier(s) :[/b] {{ file_count }}
