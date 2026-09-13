@@ -692,10 +692,16 @@ def send_to_tracker(
     if tmdb_api_key and tmdb_id:
         try:
             tmdb_client = TMDBClient(tmdb_api_key)
+            # Langue du synopsis TMDB configurable PAR PROFIL (retour
+            # utilisateur, 2026-09-13 : "il faudrait pouvoir choisir la
+            # langue du tracker afin de recuperer les info TMDB [...] en
+            # FR, EN etc.") -- voir tracker_profile.tmdb_language(),
+            # "fr-FR" par defaut (comportement historique).
+            tmdb_language = tracker_profile.tmdb_language(profile)
             try:
                 extra = (
-                    tmdb_client.get_movie_extra(int(tmdb_id)) if media_type == "movie"
-                    else tmdb_client.get_series_extra(int(tmdb_id))
+                    tmdb_client.get_movie_extra(int(tmdb_id), language=tmdb_language) if media_type == "movie"
+                    else tmdb_client.get_series_extra(int(tmdb_id), language=tmdb_language)
                 )
             finally:
                 tmdb_client.close()
@@ -704,12 +710,12 @@ def send_to_tracker(
             # en anglais" -- `overview` ci-dessus vient de Radarr/Sonarr,
             # dans la langue de LEUR propre config metadata (souvent
             # l'anglais par defaut), jamais controlee par nfogen. TMDB sait
-            # renvoyer une version francaise (voir tmdb_client.py) -- on la
+            # renvoyer une version localisee (voir tmdb_client.py) -- on la
             # prefere des qu'elle existe, sans jamais perdre le synopsis
-            # Radarr/Sonarr si TMDB n'a pas de traduction (`overview_fr`
-            # reste alors `None`, voir TMDBClient._overview_fr).
-            if extra.overview_fr:
-                overview = extra.overview_fr
+            # Radarr/Sonarr si TMDB n'a pas de traduction (`overview_localized`
+            # reste alors `None`, voir TMDBClient._overview_localized).
+            if extra.overview_localized:
+                overview = extra.overview_localized
         except TMDBError:
             pass
 

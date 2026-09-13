@@ -835,7 +835,7 @@ def test_send_to_tracker_no_presentation_warning_when_tmdb_key_configured(tmp_pa
         "nfogen.upload_prep.TMDBClient",
         lambda *a, **k: type(
             "F", (), {
-                "get_movie_extra": lambda self, tmdb_id: TMDBExtraDetails(country="France"),
+                "get_movie_extra": lambda self, tmdb_id, language="fr-FR": TMDBExtraDetails(country="France"),
                 "close": lambda self: None,
             },
         )(),
@@ -1325,7 +1325,7 @@ def test_send_to_tracker_calls_tmdb_when_key_configured_and_tmdb_id_present(tmp_
         def __init__(self, api_key, **kwargs):
             calls.append(api_key)
 
-        def get_movie_extra(self, tmdb_id):
+        def get_movie_extra(self, tmdb_id, language="fr-FR"):
             return TMDBExtraDetails(country="France", vote_average=7.8, creators=[])
 
         def close(self):
@@ -1384,8 +1384,8 @@ def test_send_to_tracker_prefers_tmdb_french_overview_over_radarr(tmp_path, monk
         def __init__(self, api_key, **kwargs):
             pass
 
-        def get_movie_extra(self, tmdb_id):
-            return TMDBExtraDetails(overview_fr="Synopsis français depuis TMDB.")
+        def get_movie_extra(self, tmdb_id, language="fr-FR"):
+            return TMDBExtraDetails(overview_localized="Synopsis français depuis TMDB.")
 
         def close(self):
             pass
@@ -1423,7 +1423,7 @@ def test_send_to_tracker_prefers_tmdb_french_overview_over_radarr(tmp_path, monk
 
 def test_send_to_tracker_keeps_radarr_overview_when_tmdb_has_no_french_translation(tmp_path, monkeypatch):
     """Repli explicite : si TMDB n'a pas de traduction francaise
-    (`overview_fr=None`), le synopsis Radarr/Sonarr reste affiche -- jamais
+    (`overview_localized=None`), le synopsis Radarr/Sonarr reste affiche -- jamais
     de section vide a la place."""
     staged = tmp_path / "Movie.2020.BluRay-TEAM.mkv"
     staged.write_bytes(b"video")
@@ -1461,8 +1461,8 @@ def test_send_to_tracker_keeps_radarr_overview_when_tmdb_has_no_french_translati
         def __init__(self, api_key, **kwargs):
             pass
 
-        def get_movie_extra(self, tmdb_id):
-            return TMDBExtraDetails(overview_fr=None)
+        def get_movie_extra(self, tmdb_id, language="fr-FR"):
+            return TMDBExtraDetails(overview_localized=None)
 
         def close(self):
             pass
@@ -1540,7 +1540,7 @@ def test_send_to_tracker_tmdb_failure_does_not_block_send(tmp_path, monkeypatch)
         def __init__(self, api_key, **kwargs):
             pass
 
-        def get_movie_extra(self, tmdb_id):
+        def get_movie_extra(self, tmdb_id, language="fr-FR"):
             raise TMDBError("boom")
 
         def close(self):

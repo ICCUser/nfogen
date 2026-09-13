@@ -104,9 +104,30 @@ def test_get_movie_extra_fetches_french_overview_separately():
     client = _client(handler)
     extra = client.get_movie_extra(603)
 
-    assert extra.overview_fr == "Synopsis en français."
+    assert extra.overview_localized == "Synopsis en français."
     assert extra.country == "United States of America"  # inchange, vient du 1er appel
     assert len(calls) == 2
+
+
+def test_get_movie_extra_uses_the_language_argument_when_given():
+    """Retour utilisateur, 2026-09-13 : "il faudrait pouvoir choisir la
+    langue du tracker afin de recuperer les info TMDB [...] en FR, EN
+    etc." -- voir tracker_profile.tmdb_language(), qui alimente ce
+    parametre depuis rules.json (fr-FR n'est qu'un defaut, pas fige)."""
+    requested_languages = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_languages.append(request.url.params.get("language"))
+        if request.url.params.get("language") == "en-US":
+            return httpx.Response(200, json={"overview": "English synopsis."})
+        return httpx.Response(200, json=MOVIE_RESPONSE)
+
+    client = _client(handler)
+    extra = client.get_movie_extra(603, language="en-US")
+
+    assert extra.overview_localized == "English synopsis."
+    assert "en-US" in requested_languages
+    assert "fr-FR" not in requested_languages
 
 
 def test_get_series_extra_fetches_french_overview_separately():
@@ -118,11 +139,11 @@ def test_get_series_extra_fetches_french_overview_separately():
     client = _client(handler)
     extra = client.get_series_extra(63174)
 
-    assert extra.overview_fr == "Résumé en français."
+    assert extra.overview_localized == "Résumé en français."
     assert extra.creators == ["Tom Kapinos"]  # inchange
 
 
-def test_overview_fr_none_when_tmdb_has_no_french_overview():
+def test_overview_localized_none_when_tmdb_has_no_french_overview():
     """TMDB renvoie parfois une chaine vide si aucune traduction francaise
     n'existe -- jamais une chaine vide affichee a la place d'un vrai
     synopsis, `None` pour laisser le repli existant (overview Radarr/Sonarr)
@@ -136,4 +157,4 @@ def test_overview_fr_none_when_tmdb_has_no_french_overview():
     client = _client(handler)
     extra = client.get_movie_extra(603)
 
-    assert extra.overview_fr is None
+    assert extra.overview_localized is None

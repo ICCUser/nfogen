@@ -54,6 +54,17 @@ def min_request_interval_seconds(profile: str) -> float:
     return float(_tracker_section(profile).get("min_request_interval_seconds", 0.0))
 
 
+def tmdb_language(profile: str) -> str:
+    """Code langue TMDB (ex. "fr-FR", "en-US") pour le synopsis recupere
+    via TMDBClient (voir upload_prep.py -- retour utilisateur, 2026-09-13 :
+    "il faudrait pouvoir choisir la langue du tracker afin de recuperer
+    les info TMDB [...] en FR, EN etc."). Repli sur "fr-FR" si non declare
+    -- comportement historique de nfogen avant que ce reglage existe,
+    jamais une regression silencieuse pour un profil qui ne l'a pas
+    encore."""
+    return _tracker_section(profile).get("tmdb_language") or "fr-FR"
+
+
 def torrent_piece_sizes(profile: str) -> list[dict[str, int]]:
     """Bareme de taille de piece torrent (voir
     torrent_builder.piece_size_for) -- liste vide si non declare

@@ -15,6 +15,7 @@ FULL_TRACKER_RULES = {
         "torznab_categories": {"anime": ["2060", "5070"], "documentaire": ["2070"]},
         "audio_language_codes": {"fre": "FR", "eng": "EN", "jpn": "JA"},
         "min_request_interval_seconds": 4.5,
+        "tmdb_language": "en-US",
         "torrent_piece_sizes": [
             {"max_bytes": 1073741824, "piece_size": 1048576},
             {"piece_size": 16777216},
@@ -44,6 +45,7 @@ def test_reads_every_declared_field():
     }
     assert tracker_profile.audio_language_codes("full") == {"fre": "FR", "eng": "EN", "jpn": "JA"}
     assert tracker_profile.min_request_interval_seconds("full") == 4.5
+    assert tracker_profile.tmdb_language("full") == "en-US"
     assert tracker_profile.torrent_piece_sizes("full") == [
         {"max_bytes": 1073741824, "piece_size": 1048576},
         {"piece_size": 16777216},
@@ -71,6 +73,15 @@ def test_min_request_interval_seconds_zero_when_undeclared():
     assert tracker_profile.min_request_interval_seconds("bare4") == 0.0
 
 
+def test_tmdb_language_defaults_to_fr_fr_when_undeclared():
+    """Retour utilisateur, 2026-09-13 : "il faudrait pouvoir choisir la
+    langue du tracker afin de recuperer les info TMDB [...] en FR, EN
+    etc." -- fr-FR reste le repli par defaut (comportement historique de
+    nfogen avant que ce reglage existe)."""
+    ps.write_profile("bare4b", rules={}, templates={})
+    assert tracker_profile.tmdb_language("bare4b") == "fr-FR"
+
+
 def test_torrent_piece_sizes_empty_list_when_undeclared():
     ps.write_profile("bare5", rules={}, templates={})
     assert tracker_profile.torrent_piece_sizes("bare5") == []
@@ -88,6 +99,7 @@ def test_degrades_gracefully_for_a_profile_that_does_not_exist_at_all():
     assert tracker_profile.torznab_categories("does-not-exist") == {}
     assert tracker_profile.audio_language_codes("does-not-exist") == {}
     assert tracker_profile.min_request_interval_seconds("does-not-exist") == 0.0
+    assert tracker_profile.tmdb_language("does-not-exist") == "fr-FR"
     assert tracker_profile.torrent_piece_sizes("does-not-exist") == []
     assert tracker_profile.torrent_source("does-not-exist") is None
     assert tracker_profile.display_name("does-not-exist") == "does-not-exist"
@@ -124,6 +136,10 @@ def test_c411_min_request_interval_seconds():
     # Limite confirmee par les admins C411 (2026-08-27) : 15 requetes/min
     # -> 4.5s par defaut (marge de securite), voir GAPSCAN.md.
     assert tracker_profile.min_request_interval_seconds("c411") == 4.5
+
+
+def test_c411_tmdb_language_is_french():
+    assert tracker_profile.tmdb_language("c411") == "fr-FR"
 
 
 def test_c411_torrent_piece_sizes():

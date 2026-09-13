@@ -11,6 +11,7 @@
       "ja": "JA", "jpn": "JA", "japanese": "JA"
     },
     "min_request_interval_seconds": 4.5,
+    "tmdb_language": "fr-FR",
     "torrent_piece_sizes": [
       {"max_bytes": 1073741824, "piece_size": 1048576},
       {"max_bytes": 2147483648, "piece_size": 2097152},

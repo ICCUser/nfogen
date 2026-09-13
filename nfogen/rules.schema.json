@@ -26,6 +26,10 @@
           "additionalProperties": { "type": "string" }
         },
         "min_request_interval_seconds": { "type": "number" },
+        "tmdb_language": {
+          "type": "string",
+          "description": "Code langue TMDB (ex. \"fr-FR\", \"en-US\") pour le synopsis recupere via TMDBClient (voir upload_prep.py) -- absent : repli sur \"fr-FR\"."
+        },
         "torrent_piece_sizes": {
           "type": "array",
           "items": {

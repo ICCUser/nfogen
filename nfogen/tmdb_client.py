@@ -2,11 +2,13 @@
 seule -- complete Radarr/Sonarr pour les champs absents des deux API
 (confirme par des dumps reels, voir docs/superpowers/specs/
 2026-09-07-template-charte-tmdb-design.md) : pays de production,
-createur(s) (series), note TMDB, et desormais un synopsis EN FRANCAIS
-(retour reel de moderation C411, 2026-09-13 : "le synopsis est en
-anglais" -- l'overview de upload_prep.py vient de Radarr/Sonarr, dans la
-langue de LEUR propre config metadata, jamais controlee par nfogen ;
-TMDB, lui, sait renvoyer une version localisee via `language=fr-FR`).
+createur(s) (series), note TMDB, et un synopsis DANS LA LANGUE DU
+TRACKER (retour reel de moderation C411, 2026-09-13 : "le synopsis est
+en anglais" -- l'overview de upload_prep.py vient de Radarr/Sonarr, dans
+la langue de LEUR propre config metadata, jamais controlee par nfogen ;
+TMDB, lui, sait renvoyer une version localisee via `language=...`, code
+configurable par profil -- voir tracker_profile.tmdb_language(),
+"fr-FR" par defaut).
 Best-effort par construction : toute erreur leve `TMDBError`, a
 l'appelant (upload_prep.send_to_tracker) de l'attraper et de continuer
 sans ces champs -- jamais silencieux ici."""
@@ -29,7 +31,7 @@ class TMDBExtraDetails:
     country: Optional[str] = None
     vote_average: Optional[float] = None
     creators: list[str] = field(default_factory=list)
-    overview_fr: Optional[str] = None
+    overview_localized: Optional[str] = None
 
 
 class TMDBClient:
@@ -67,12 +69,13 @@ class TMDBClient:
             raise TMDBError(f"Appel TMDB échoué ({path}) : {exc}") from exc
         return response.json()
 
-    def _overview_fr(self, path: str) -> Optional[str]:
-        """Synopsis en francais, ou `None` si TMDB n'a pas de traduction
-        pour ce titre (chaine vide) -- jamais une chaine vide affichee a la
-        place d'un vrai synopsis, laisse le repli existant (overview
-        Radarr/Sonarr, voir upload_prep.py) prendre le relais dans ce cas."""
-        data = self._get(path, language="fr-FR")
+    def _overview_localized(self, path: str, language: str) -> Optional[str]:
+        """Synopsis dans `language` (code TMDB, ex. "fr-FR"), ou `None` si
+        TMDB n'a pas de traduction pour ce titre dans cette langue (chaine
+        vide) -- jamais une chaine vide affichee a la place d'un vrai
+        synopsis, laisse le repli existant (overview Radarr/Sonarr, voir
+        upload_prep.py) prendre le relais dans ce cas."""
+        data = self._get(path, language=language)
         return data.get("overview") or None
 
     @staticmethod
@@ -85,17 +88,17 @@ class TMDBClient:
         value = data.get("vote_average")
         return round(value, 1) if value else None  # 0/None traites comme "jamais note"
 
-    def get_movie_extra(self, tmdb_id: int) -> TMDBExtraDetails:
+    def get_movie_extra(self, tmdb_id: int, language: str = "fr-FR") -> TMDBExtraDetails:
         data = self._get(f"/movie/{tmdb_id}")
         return TMDBExtraDetails(
             country=self._country(data), vote_average=self._vote_average(data),
-            overview_fr=self._overview_fr(f"/movie/{tmdb_id}"),
+            overview_localized=self._overview_localized(f"/movie/{tmdb_id}", language),
         )
 
-    def get_series_extra(self, tmdb_id: int) -> TMDBExtraDetails:
+    def get_series_extra(self, tmdb_id: int, language: str = "fr-FR") -> TMDBExtraDetails:
         data = self._get(f"/tv/{tmdb_id}")
-        creators = [c["name"] for c in data.get("created_by", []) if c.get("name")]
+        creators = [cr["name"] for cr in data.get("created_by", []) if cr.get("name")]
         return TMDBExtraDetails(
             country=self._country(data), vote_average=self._vote_average(data), creators=creators,
-            overview_fr=self._overview_fr(f"/tv/{tmdb_id}"),
+            overview_localized=self._overview_localized(f"/tv/{tmdb_id}", language),
         )
