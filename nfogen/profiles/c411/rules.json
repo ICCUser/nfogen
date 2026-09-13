@@ -175,6 +175,11 @@
         "NF": "WEB.NF",
         "AMZN": "WEB.AMZN"
       },
+      "vod_platform_names": {
+        "AMZN": "Amazon Prime Video",
+        "NF": "Netflix",
+        "DSNP": "Disney+"
+      },
       "video_codec_aliases": {
         "x264": "x264",
         "x265": "x265",

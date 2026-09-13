@@ -20,6 +20,7 @@ FULL_CONTEXT = {
     "resolution": "2160",
     "source": "BluRay",
     "video_codec": "hevc",
+    "vod_platform": None,
     "audio_rows": [
         {"flag": "https://flagcdn.com/20x15/fr.png", "language": "Français",
          "channels": "5.1", "codec": "AC-3", "bit_rate_kbps": 448, "sampling_khz": 48.0},
@@ -97,6 +98,21 @@ def test_renders_country_creators_rating_imdb():
     assert "United States of America" in out
     assert "8.4/10" in out
     assert "https://www.imdb.com/title/tt1375666/" in out
+
+
+def test_renders_vod_platform_when_present():
+    """Audit de conformite C411, 2026-09-13 -- page "Description & NFO" :
+    "Plateforme VOD source" obligatoire si la source est WEB/WEB-DL ; page
+    "Films & Videos" : absence de la mention -> refus de la TP."""
+    context = {**FULL_CONTEXT, "vod_platform": "Netflix"}
+    out = render_upload_description("c411", context)
+    assert "[b]Plateforme VOD :[/b] Netflix" in out
+
+
+def test_omits_vod_platform_line_when_absent():
+    context = {**FULL_CONTEXT, "vod_platform": None}
+    out = render_upload_description("c411", context)
+    assert "Plateforme VOD" not in out
 
 
 def test_renders_audio_and_subtitle_tables_with_flags():
@@ -182,6 +198,7 @@ def test_renders_without_optional_fields():
         "genres": [], "directors": [], "cast": [], "country": None,
         "creators": [], "tmdb_rating": None, "imdb_url": None,
         "resolution": "2160", "source": "BluRay", "video_codec": "hevc",
+        "vod_platform": None,
         "audio_rows": [], "subtitle_rows": [], "video_bit_rate_kbps": None,
         "container": None, "hdr_format": None,
         "release_date": None, "runtime_display": None,
@@ -204,6 +221,7 @@ def test_output_meets_c411_minimum_length():
         "genres": [], "directors": [], "cast": [], "country": None,
         "creators": [], "tmdb_rating": None, "imdb_url": None,
         "resolution": "1080", "source": "WEB", "video_codec": "x264",
+        "vod_platform": None,
         "audio_rows": [], "subtitle_rows": [], "video_bit_rate_kbps": None,
         "container": None, "hdr_format": None,
         "release_date": None, "runtime_display": None,

@@ -126,6 +126,11 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
+        "vod_platform_names": {
+          "type": "object",
+          "description": "Suffixe de source normalise (source_aliases, ex. \"AMZN\"/\"NF\"/\"DSNP\") -> nom de plateforme VOD affichable (ex. \"Amazon Prime Video\") -- audit de conformite C411, 2026-09-13 : mention obligatoire dans la description pour une source WEB/WEB-DL (voir upload_prep.py, `_vod_platform_from_source`). Absent : aucune plateforme n'est jamais devinee.",
+          "additionalProperties": { "type": "string" }
+        },
         "video_codec_aliases": {
           "type": "object",
           "additionalProperties": { "type": "string" }

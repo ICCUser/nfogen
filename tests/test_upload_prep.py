@@ -850,6 +850,123 @@ def test_send_to_tracker_no_presentation_warning_when_tmdb_key_configured(tmp_pa
     assert result.presentation_warning is None
 
 
+def test_send_to_tracker_warns_when_web_source_without_detectable_platform(tmp_path, monkeypatch):
+    """Audit de conformite C411, 2026-09-13 -- page "Description & NFO" :
+    "Plateforme VOD source" obligatoire si la source est WEB/WEB-DL ; page
+    "Films & Videos", section "Les Sources" : absence de la mention ->
+    refus de la TP. Cle TMDB configuree ici pour isoler ce SEUL
+    avertissement (pas melange avec celui de la cle TMDB manquante)."""
+    staged = tmp_path / "Movie.2020.1080p.WEB.AC3.x264-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.1080p.WEB.AC3.x264-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.1080p.WEB.AC3.x264-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    _basic_send_to_tracker_mocks(monkeypatch)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: "tmdb-secret"
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.TMDBClient",
+        lambda *a, **k: type(
+            "F", (), {
+                "get_movie_extra": lambda self, tmdb_id, language="fr-FR": TMDBExtraDetails(country="France"),
+                "close": lambda self: None,
+            },
+        )(),
+    )
+
+    result = send_to_tracker(
+        release_name="Movie.2020.1080p.WEB.AC3.x264-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603,
+    )
+
+    assert result.presentation_warning is not None
+    assert "Plateforme VOD" in result.presentation_warning
+    assert "TMDB" not in result.presentation_warning
+
+
+def test_send_to_tracker_no_vod_warning_and_platform_in_description_when_detected(tmp_path, monkeypatch):
+    """Source WEB.NF (deja normalisee par name_proposal.source_aliases,
+    voir rules.json) : la plateforme est detectable -- aucun avertissement,
+    et la description doit mentionner "Netflix" (vod_platform_names)."""
+    staged = tmp_path / "Movie.2020.1080p.WEB.NF.AC3.x264-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.1080p.WEB.NF.AC3.x264-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.1080p.WEB.NF.AC3.x264-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    _basic_send_to_tracker_mocks(monkeypatch)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: "tmdb-secret"
+    )
+    monkeypatch.setattr(
+        "nfogen.upload_prep.TMDBClient",
+        lambda *a, **k: type(
+            "F", (), {
+                "get_movie_extra": lambda self, tmdb_id, language="fr-FR": TMDBExtraDetails(country="France"),
+                "close": lambda self: None,
+            },
+        )(),
+    )
+    captured = {}
+
+    class FakeUploadClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def check_duplicates(self, tmdb_id, tmdb_type):
+            return []
+
+        def create_draft(self, **kwargs):
+            captured.update(kwargs)
+            return {"id": 900, "url": "https://c411.org/user/drafts/900"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("nfogen.upload_prep.C411UploadClient", FakeUploadClient)
+
+    result = send_to_tracker(
+        release_name="Movie.2020.1080p.WEB.NF.AC3.x264-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603,
+    )
+
+    assert result.presentation_warning is None
+    assert "[b]Plateforme VOD :[/b] Netflix" in captured["description"]
+
+
+def test_send_to_tracker_no_vod_warning_for_non_web_source(tmp_path, monkeypatch):
+    """Non-regression : une source non-WEB (ex. BluRay) ne doit jamais
+    declencher l'avertissement "Plateforme VOD", meme sans cle TMDB
+    configuree (les deux avertissements sont independants)."""
+    staged = tmp_path / "Movie.2020.1080p.BluRay.AC3.x264-TEAM.mkv"
+    staged.write_bytes(b"video")
+    torrent = tmp_path / "Movie.2020.1080p.BluRay.AC3.x264-TEAM.torrent"
+    torrent.write_bytes(b"torrent")
+    nfo = tmp_path / "Movie.2020.1080p.BluRay.AC3.x264-TEAM.nfo"
+    nfo.write_text("General\nFormat : Matroska", encoding="utf-8")
+
+    _basic_send_to_tracker_mocks(monkeypatch)
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_tmdb_api_key", lambda: None
+    )
+
+    result = send_to_tracker(
+        release_name="Movie.2020.1080p.BluRay.AC3.x264-TEAM",
+        staged_path=str(staged), torrent_path=str(torrent), nfo_path=str(nfo),
+        profile="c411", media_type="movie", tmdb_id=603,
+    )
+
+    assert result.presentation_warning is not None
+    assert "Plateforme VOD" not in result.presentation_warning
+    assert "TMDB" in result.presentation_warning
+
+
 def test_send_to_tracker_movie_creates_a_draft(tmp_path, monkeypatch):
     staged = tmp_path / "Movie.2020.MULTI.VFF.1080p.BluRay.HDLight.AC3.x264-TEAM.mkv"
     staged.write_bytes(b"video")

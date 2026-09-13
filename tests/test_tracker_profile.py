@@ -92,6 +92,26 @@ def test_torrent_source_none_when_undeclared():
     assert tracker_profile.torrent_source("bare6") is None
 
 
+def test_vod_platform_names_reads_declared_map():
+    """rules.json -> video -> name_proposal -> vod_platform_names (audit de
+    conformite C411, 2026-09-13 -- page "Films & Videos" : mention obligatoire
+    de la plateforme VOD source pour une release WEB/WEB-DL)."""
+    vod_platform_names = {"NF": "Netflix", "AMZN": "Amazon Prime Video"}
+    ps.write_profile(
+        "bare7",
+        rules={"video": {"name_proposal": {"vod_platform_names": vod_platform_names}}},
+        templates={},
+    )
+    assert tracker_profile.vod_platform_names("bare7") == {
+        "NF": "Netflix", "AMZN": "Amazon Prime Video"
+    }
+
+
+def test_vod_platform_names_empty_dict_when_undeclared():
+    ps.write_profile("bare8", rules={}, templates={})
+    assert tracker_profile.vod_platform_names("bare8") == {}
+
+
 def test_degrades_gracefully_for_a_profile_that_does_not_exist_at_all():
     # Pas juste "sans section tracker" (cas ci-dessus) -- un nom de profil
     # qui n'existe carrement pas (ni utilisateur, ni livre) ne doit jamais

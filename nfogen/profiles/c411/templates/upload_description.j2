@@ -4,6 +4,7 @@
 
 {% endif %}[b][size=120]Informations[/size][/b]
 {% if genres %}[b]Genres :[/b] {{ genres|join(", ") }}
+{% endif %}{% if vod_platform %}[b]Plateforme VOD :[/b] {{ vod_platform }}
 {% endif %}{% if country %}[b]Pays :[/b] {{ country }}
 {% endif %}{% if release_date %}[b]Date de sortie :[/b] {{ release_date }}
 {% endif %}{% if runtime_display %}[b]Durée :[/b] {{ runtime_display }}

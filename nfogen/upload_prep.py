@@ -67,6 +67,22 @@ _SUBTITLE_TYPE_KEYWORDS = (
 )
 
 
+def _vod_platform_from_source(source: str, vod_platform_names: dict[str, str]) -> Optional[str]:
+    """Nom de plateforme VOD affichable a partir du tag `source` DEJA
+    normalise par `name_proposal.source_aliases` (ex. "WEB.AMZN") -- audit
+    de conformite C411, 2026-09-13 : page "Description & NFO" -- "Plateforme
+    VOD source" obligatoire si la source est WEB/WEB-DL ; page "Films &
+    Videos", section "Les Sources" -- absence de la mention = refus de la
+    TP. Le suffixe apres le DERNIER point (ex. "AMZN") est cherche dans
+    `vod_platform_names` (voir tracker_profile.vod_platform_names) ; `None`
+    si `source` n'a pas de suffixe (ex. simple "WEB") ou si le suffixe n'est
+    pas reconnu -- jamais devine."""
+    if "." not in source:
+        return None
+    suffix = source.rsplit(".", 1)[-1]
+    return vod_platform_names.get(suffix)
+
+
 def _classify_subtitle_type(forced: bool, title: Optional[str]) -> str:
     """Type C411 d'une piste de sous-titres (FORCÉ/SDH/CC/COMPLET) --
     utilise le flag structurel MediaInfo `forced` quand il est fiable, et
@@ -674,11 +690,17 @@ def send_to_tracker(
     # Retour C411, 2026-09-07 : tous les elements de la presentation
     # doivent y figurer ("c'est obligatoire") -- sans cle TMDB, Pays/
     # Createur(s)/Note/IMDB seront absents de la description generee.
-    presentation_warning = (
-        "Description incomplète : clé API TMDB non configurée — Pays, "
-        "créateur(s), note TMDB et lien IMDB seront absents (voir Réglages)."
-        if not tmdb_api_key else None
-    )
+    # Liste d'avertissements individuels (audit de conformite C411,
+    # 2026-09-13 : un second avertissement, independant de celui-ci, peut
+    # s'y ajouter pour la plateforme VOD manquante -- voir plus bas) --
+    # jointe en une seule chaine a la fin, `presentation_warning` reste un
+    # simple `Optional[str]` (forme inchangee de `SendResult`).
+    presentation_warnings: list[str] = []
+    if not tmdb_api_key:
+        presentation_warnings.append(
+            "Description incomplète : clé API TMDB non configurée — Pays, "
+            "créateur(s), note TMDB et lien IMDB seront absents (voir Réglages)."
+        )
     if tmdb_api_key and tmdb_id:
         try:
             tmdb_client = TMDBClient(tmdb_api_key)
@@ -775,6 +797,23 @@ def send_to_tracker(
             "type": _classify_subtitle_type(t.get("forced", False), t.get("title")),
         })
 
+    # Plateforme VOD source (audit de conformite C411, 2026-09-13 -- page
+    # "Description & NFO" : "Plateforme VOD source" obligatoire si la
+    # source est WEB/WEB-DL ; page "Films & Videos", section "Les Sources" :
+    # absence de la mention = refus de la TP). Extraite du tag `source` DEJA
+    # normalise (ex. "WEB.AMZN" -> "Amazon Prime Video", voir
+    # name_proposal.source_aliases) -- jamais devinee autrement, aucune
+    # saisie manuelle ici (suivi separe, volontairement hors perimetre).
+    source_value = capture_values.get("source", "")
+    vod_platform = _vod_platform_from_source(source_value, tracker_profile.vod_platform_names(profile))
+    if source_value.startswith("WEB") and not vod_platform:
+        presentation_warnings.append(
+            "Plateforme VOD non détectée dans le nom de fichier — mention "
+            "obligatoire dans la présentation pour une source WEB/WEB-DL "
+            "(voir Films & Vidéos, règle 'Les Sources') : à compléter manuellement."
+        )
+    presentation_warning = "\n".join(presentation_warnings) or None
+
     # Retour reel de moderation C411, 2026-09-13 : "L'hebergeur que tu
     # utilises pour la banniere n'est pas accepte" (poster TMDB) puis
     # "enleve les bannieres, github n'est pas accepte non plus" (les 4
@@ -791,7 +830,8 @@ def send_to_tracker(
             "country": country, "creators": creators, "tmdb_rating": tmdb_rating,
             "imdb_url": imdb_url,
             "resolution": capture_values.get("resolution", ""),
-            "source": capture_values.get("source", ""),
+            "source": source_value,
+            "vod_platform": vod_platform,
             "video_codec": capture_values.get("video_codec", ""),
             "audio_languages": audio_languages,
             "subtitle_languages": subtitle_languages,

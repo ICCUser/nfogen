@@ -25,6 +25,16 @@ def _tracker_section(profile: str) -> dict[str, Any]:
     return rules.get("tracker", {})
 
 
+def _video_name_proposal_section(profile: str) -> dict[str, Any]:
+    try:
+        rules = profile_store.read_profile(profile)["rules"]
+    except profile_store.ProfileStoreError:
+        # Meme repli neutre que _tracker_section ci-dessus : jamais de
+        # plantage pour un nom de profil inconnu.
+        return {}
+    return rules.get("video", {}).get("name_proposal", {})
+
+
 def display_name(profile: str) -> str:
     """Nom lisible du tracker (affiche cote frontend) -- repli sur le nom
     du profil lui-meme si non declare."""
@@ -92,3 +102,15 @@ def upload_config(profile: str) -> dict[str, Any]:
     5) -- dictionnaire vide si non déclaré : aucun envoi n'est alors
     possible pour ce profil, jamais deviné."""
     return _tracker_section(profile).get("upload", {})
+
+
+def vod_platform_names(profile: str) -> dict[str, str]:
+    """Suffixe de source normalise (rules.json -> video -> name_proposal ->
+    source_aliases, ex. "AMZN"/"NF"/"DSNP") -> nom de plateforme VOD
+    affichable (ex. "Amazon Prime Video") -- audit de conformite C411,
+    2026-09-13 : page "Description & NFO" -- "Plateforme VOD source"
+    obligatoire si la source est WEB/WEB-DL ; page "Films & Videos",
+    section "Les Sources" -- absence de la mention = refus de la TP.
+    Dictionnaire vide si non declare : aucune plateforme n'est alors
+    jamais devinee (voir upload_prep.py, `_vod_platform_from_source`)."""
+    return _video_name_proposal_section(profile).get("vod_platform_names", {})
