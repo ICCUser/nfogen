@@ -93,7 +93,7 @@
       },
       {
         "name": "source",
-        "pattern": "\\.(?P<source>BluRay\\.REMUX|BluRay|BDRip|WEBRip|WEB\\.[A-Za-z]+|WEB|HDTV|DVDRip)\\.",
+        "pattern": "\\.(?P<source>BluRay\\.REMUX|BluRay\\.BDMV|BluRay\\.ISO|BluRay|BDRip|WEBRip|WEB\\.[A-Za-z]+|WEB|HDTV|DVDRip)\\.",
         "level": "recommended",
         "warning": "aucune source reconnue (BluRay/BDRip/WEB/HDTV/DVDRip...) trouvee dans le nom"
       }
@@ -178,6 +178,7 @@
         "BDRip": "BDRip",
         "BDRemux": "BluRay.REMUX",
         "BluRay.BDMV": "BluRay.BDMV",
+        "BluRay.ISO": "BluRay.ISO",
         "BluRay": "BluRay",
         "HDTV": "HDTV",
         "DVDRip": "DVDRip",
@@ -207,7 +208,7 @@
         "x264": "H264",
         "x265": "H265"
       },
-      "pure_sources": ["BluRay.REMUX", "BluRay.BDMV"],
+      "pure_sources": ["BluRay.REMUX", "BluRay.BDMV", "BluRay.ISO"],
       "pure_source_codec_overrides": {
         "x264": "AVC",
         "h264": "AVC",

@@ -3,8 +3,14 @@ video -> tokens) : ce regex sert a RE-EXTRAIRE/VALIDER le champ `source`
 depuis un release_name DEJA CONFIRME (voir c411_upload_options.build_options),
 un mecanisme distinct de `_detect_via_aliases` (name_proposal.py) qui
 construit le nom depuis un nom de fichier source. Audit C411 2026-09-13 :
-ce regex n'incluait pas "WEBRip" (le nom entier restait capture par
-l'alternative "WEB", moins specifique) -- corrige ici (point 1/4)."""
+- point 1/4 : "WEBRip" n'etait pas capture (le nom entier retombait sur
+  l'alternative "WEB", moins specifique).
+- point 2/4 : "BluRay.BDMV" (ajoute a source_aliases par un audit
+  precedent) et "BluRay.ISO" (nouveau, point 2) n'etaient/ne sont capturees
+  qu'en partie ("BluRay" seul) si les alternatives composees ne sont pas
+  placees AVANT leur prefixe "BluRay" dans le regex -- les alternatives
+  regex Python sont essayees dans l'ordre ECRIT, contrairement a
+  `_detect_via_aliases` qui trie explicitement par longueur de cle."""
 from __future__ import annotations
 
 from nfogen import rules as rules_engine
@@ -13,7 +19,10 @@ SCHEMA = {
     "tokens": [
         {
             "name": "source",
-            "pattern": r"\.(?P<source>BluRay\.REMUX|BluRay|BDRip|WEBRip|WEB\.[A-Za-z]+|WEB|HDTV|DVDRip)\.",
+            "pattern": (
+                r"\.(?P<source>BluRay\.REMUX|BluRay\.BDMV|BluRay\.ISO|BluRay|BDRip"
+                r"|WEBRip|WEB\.[A-Za-z]+|WEB|HDTV|DVDRip)\."
+            ),
         },
     ]
 }
@@ -36,3 +45,29 @@ def test_real_c411_profile_source_capture_webrip():
     schema = read_profile("c411")["rules"]["video"]
     release_name = "Movie.2020.1080p.WEBRip.x265-TEAM"
     assert rules_engine.captures(release_name, schema)["source"] == "WEBRip"
+
+def test_captures_source_bluray_bdmv_stays_composed_not_truncated_to_bluray():
+    release_name = "Movie.2020.2160p.BluRay.BDMV.HEVC-TEAM"
+    assert rules_engine.captures(release_name, SCHEMA) == {"source": "BluRay.BDMV"}
+
+
+def test_captures_source_bluray_iso_stays_composed_not_truncated_to_bluray():
+    release_name = "Movie.2020.2160p.BluRay.ISO.HEVC-TEAM"
+    assert rules_engine.captures(release_name, SCHEMA) == {"source": "BluRay.ISO"}
+
+
+def test_real_c411_profile_source_capture_bluray_bdmv():
+    from nfogen.profile_store import read_profile
+
+    schema = read_profile("c411")["rules"]["video"]
+    release_name = "Movie.2020.2160p.BluRay.BDMV.HEVC-TEAM"
+    assert rules_engine.captures(release_name, schema)["source"] == "BluRay.BDMV"
+
+
+def test_real_c411_profile_source_capture_bluray_iso():
+    from nfogen.profile_store import read_profile
+
+    schema = read_profile("c411")["rules"]["video"]
+    release_name = "Movie.2020.2160p.BluRay.ISO.HEVC-TEAM"
+    assert rules_engine.captures(release_name, schema)["source"] == "BluRay.ISO"
+
