@@ -1,6 +1,8 @@
 [center][size=150]{{ title }}[/size][/center]
 
-[b][size=120]Informations[/size][/b]
+{% if poster_url %}[center][img]{{ poster_url }}[/img][/center]
+
+{% endif %}[b][size=120]Informations[/size][/b]
 {% if genres %}[b]Genres :[/b] {{ genres|join(", ") }}
 {% endif %}{% if country %}[b]Pays :[/b] {{ country }}
 {% endif %}{% if release_date %}[b]Date de sortie :[/b] {{ release_date }}
