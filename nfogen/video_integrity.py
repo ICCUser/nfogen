@@ -87,8 +87,21 @@ def verify_video_file(
     audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
 
     errors: list[str] = []
+    # Retour utilisateur reel (2026-09-13, pack Lucifer S03, fichiers
+    # .m4v/tx3g) : `-map 0` mappe AUSSI les pistes de sous-titres --
+    # certains codecs de sous-titres (ex. tx3g) n'ont pas d'encodeur par
+    # defaut pour le format `null`, ffmpeg echoue immediatement
+    # ("Automatic encoder selection failed [...] Default encoder for
+    # format null (codec none) is probably disabled") sans decoder une
+    # seule frame. Consequence en cascade : `out_time_ms` reste a 0,
+    # faussement interprete plus bas comme "fichier probablement
+    # tronque" -- alors que le fichier est parfaitement valide (reproduit
+    # et corrige avec un vrai fichier .m4v reel). On ne s'interesse
+    # qu'a l'integrite video/audio ici, jamais aux sous-titres -- `?`
+    # rend chaque type de piste optionnel (jamais d'echec si l'un des
+    # deux est absent, ex. un fichier audio seul).
     proc = subprocess.Popen(
-        ["ffmpeg", "-v", "error", "-xerror", "-i", path, "-map", "0",
+        ["ffmpeg", "-v", "error", "-xerror", "-i", path, "-map", "0:v?", "-map", "0:a?",
          "-f", "null", "-progress", "pipe:1", "-nostats", "-"],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )

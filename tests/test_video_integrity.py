@@ -87,6 +87,38 @@ def test_verify_video_file_passes_when_decode_is_clean(monkeypatch):
     assert report.errors == []
 
 
+def test_verify_video_file_only_maps_video_and_audio_streams(monkeypatch):
+    """Retour utilisateur reel (2026-09-13, pack Lucifer S03, vrais
+    fichiers .m4v/tx3g) : `-map 0` mappait AUSSI les pistes de
+    sous-titres -- certains codecs (tx3g) n'ont pas d'encodeur par defaut
+    pour le format `null`, ffmpeg echouait immediatement sans decoder une
+    seule frame ("Automatic encoder selection failed [...] Default
+    encoder for format null (codec none) is probably disabled"), ce qui
+    etait ensuite faussement interprete comme un fichier tronque
+    (out_time_ms reste a 0). Reproduit et corrige avec un vrai fichier
+    .m4v reel (voir commit) -- ce test verrouille la vraie commande
+    passee a ffmpeg, jamais un simple `-map 0`."""
+    monkeypatch.setattr(
+        "nfogen.video_integrity._probe_streams",
+        lambda path: json.loads(_fake_ffprobe_json(duration="10.000000")),
+    )
+    captured_args: list = []
+
+    def fake_popen(args, **kwargs):
+        captured_args.append(args)
+        return _FakePopen(out_time_ms_lines=[5_000_000, 10_000_000], returncode=0)
+
+    monkeypatch.setattr("subprocess.Popen", fake_popen)
+
+    video_integrity.verify_video_file("clean.m4v")
+
+    args = captured_args[0]
+    assert "-map" in args
+    map_values = [args[i + 1] for i, a in enumerate(args) if a == "-map"]
+    assert map_values == ["0:v?", "0:a?"]
+    assert "0" not in map_values  # jamais le -map 0 brut qui incluait les sous-titres
+
+
 def test_verify_video_file_fails_when_ffprobe_cannot_read_file(monkeypatch):
     def _raise(path):
         raise RuntimeError("moov atom not found")
