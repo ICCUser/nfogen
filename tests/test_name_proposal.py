@@ -9,13 +9,18 @@ from nfogen.name_proposal import (
     propose_video_release_name,
 )
 
-TEMPLATE = "{title}.{identifier}.{language}.{resolution}p.{source}.{audio}.{video_codec}-{team}"
+TEMPLATE = "{title}.{identifier}.{language}.{resolution}p.{source}.{hdr}.{audio}.{video_codec}-{team}"
 CONFIG = {
     "template": TEMPLATE,
     "language_aliases": {
         "FR+JA": "MULTI.VFF", "FR": "VFF",
         "FR+FRQ": "MULTI.VF2", "FRQ+FR": "MULTI.VF2", "FRQ": "VFQ",
         "FRQ+EN": "MULTI.VFQ", "EN+FRQ": "MULTI.VFQ",
+    },
+    "hdr_aliases": {
+        "HDR10PLUS": "HDR10PLUS", "HDR10+": "HDR10PLUS",
+        "HDR10": "HDR10", "HDR": "HDR10",
+        "DOVI": "DV", "DolbyVision": "DV", "Dolby Vision": "DV", "DV": "DV",
     },
     "source_aliases": {
         "WEBDL": "WEB",
@@ -519,6 +524,55 @@ def test_real_c411_profile_web_source_uses_h265_not_x265():
     )
     assert result.name is not None
     assert ".H265-Frosties" in result.name
+
+
+def test_hdr_detected_from_filename_appears_after_source():
+    """Retour reel de moderation C411 (2026-09-15, rejet "Madagascar 2") :
+    "Les details video DV/HDR detectes dans le NFO/fichier doivent aussi
+    etre presents dans le titre de release [...] HDR10 Detectes dans NFO/
+    fichier: HDR10 Presents dans le titre: (aucun)". Position officielle :
+    juste apres la source (doc "Films & Videos", ex.
+    Gladiator.2000.MULTI.VFF.2160p.BluRay.HDR10.DTS.HD.MA.5.1.x265-ZEKEY)."""
+    files = ["Movie.2020.2160p.BluRay.HDR10.DTS.HD.MA.5.1.x265-TEAM.mkv"]
+    proposal = propose_video_release_name(files, CONFIG)
+    assert ".BluRay.HDR10.DTS" in proposal.name
+
+
+def test_hdr_absent_from_filename_leaves_no_dangling_dot():
+    """Non-regression : un fichier SDR (aucun tag HDR ni dans le nom ni
+    dans le hint) ne doit jamais laisser de point vide entre la source et
+    l'audio."""
+    files = ["Movie.2020.1080p.BluRay.DTS.5.1.x264-TEAM.mkv"]
+    proposal = propose_video_release_name(files, CONFIG)
+    assert ".." not in proposal.name
+    assert proposal.name == "Movie.2020.1080p.BluRay.DTS.5.1.x264-TEAM"
+
+
+def test_hdr_detected_from_real_metadata_hint_fills_gap_left_by_filename():
+    """Le cas REEL du rejet Madagascar 2 : le nom de fichier ne mentionne
+    PAS le HDR (aucune raison de le faire, ce n'est pas une convention de
+    nommage scene systematique), mais le fichier EST reellement HDR10
+    (detecte par MediaInfo, achemine ici via le hint -- voir
+    upload_prep.py, meme mecanisme deja utilise pour la langue/le
+    codec). Le hint doit COMBLER ce trou, jamais l'inverse."""
+    files = ["Movie.2020.2160p.BluRay.AC3.5.1.x265-UHD.mkv"]
+    title_hints = ["HDR10"]
+    proposal = propose_video_release_name(files, CONFIG, title_hints)
+    assert ".BluRay.HDR10.AC3" in proposal.name
+
+
+def test_real_c411_profile_hdr10_from_hint_appears_in_title():
+    """Bout-en-bout contre le VRAI profil livre -- reproduction directe du
+    rejet Madagascar 2."""
+    from nfogen.profile_store import read_profile
+
+    config = read_profile("c411")["rules"]["video"]["name_proposal"]
+    result = propose_video_release_name(
+        ["Madagascar.2.2008.VFF.2160p.WEB.AC3.5.1.h265-UHD.mkv"], config,
+        title_hints=["HDR10"],
+    )
+    assert result.name is not None
+    assert ".HDR10." in result.name
     assert "x265" not in result.name.lower()
 
 

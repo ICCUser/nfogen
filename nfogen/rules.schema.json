@@ -126,6 +126,11 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
+        "hdr_aliases": {
+          "type": "object",
+          "description": "Marqueur HDR/DV brut (nom de fichier ou hint issu du MediaInfo reel, ex. hdr_format) -> tag HDR officiel C411 (HDR10/HDR10PLUS/DV) -- audit de conformite C411, 2026-09-15, retour reel de moderation (rejet \"Madagascar 2\") : \"Les details video DV/HDR detectes dans le NFO/fichier doivent aussi etre presents dans le titre de release.\" Absent : aucun tag HDR n'est jamais insere dans le nom de release.",
+          "additionalProperties": { "type": "string" }
+        },
         "vod_platform_names": {
           "type": "object",
           "description": "Suffixe de source normalise (source_aliases, ex. \"AMZN\"/\"NF\"/\"DSNP\") -> nom de plateforme VOD affichable (ex. \"Amazon Prime Video\") -- audit de conformite C411, 2026-09-13 : mention obligatoire dans la description pour une source WEB/WEB-DL (voir upload_prep.py, `_vod_platform_from_source`). Absent : aucune plateforme n'est jamais devinee.",

@@ -153,7 +153,7 @@
       }
     ],
     "name_proposal": {
-      "template": "{title}.{identifier}.{language}.{resolution}p.{source}.{audio}.{video_codec}-{team}",
+      "template": "{title}.{identifier}.{language}.{resolution}p.{source}.{hdr}.{audio}.{video_codec}-{team}",
       "language_aliases": {
         "FR": "VFF",
         "VF": "VFF",
@@ -203,6 +203,11 @@
         "MPEG-2": "mpeg-2",
         "MPEG2": "mpeg2",
         "AV1": "AV1"
+      },
+      "hdr_aliases": {
+        "HDR10PLUS": "HDR10PLUS", "HDR10+": "HDR10PLUS",
+        "HDR10": "HDR10", "HDR": "HDR10",
+        "DOVI": "DV", "DolbyVision": "DV", "Dolby Vision": "DV", "DV": "DV"
       },
       "web_video_codec_overrides": {
         "x264": "H264",

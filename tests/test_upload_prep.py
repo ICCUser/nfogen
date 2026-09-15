@@ -96,6 +96,7 @@ def _fake_metadata(**overrides):
         "video_height": None, "video_width": None, "video_format": None,
         "video_bit_rate": None, "frame_rate": None,
         "audio_languages": [], "subtitle_languages": [], "general_title": None,
+        "hdr_format": None,
     }
     base.update(overrides)
     return base
@@ -112,6 +113,21 @@ def test_single_movie_file_proposes_a_name_and_matching_staged_file():
     assert len(group.files) == 1
     assert group.files[0].source_path == "/media/Kaamelott.2005.VFF.1080p.BluRay.AC3.x264-Dam.mkv"
     assert group.files[0].staged_name == f"{group.release_name}.mkv"
+
+
+def test_hdr_from_real_mediainfo_is_added_to_the_release_name():
+    """Retour reel de moderation C411, 2026-09-15 (rejet "Madagascar 2") :
+    le nom de fichier source ne mentionne jamais le HDR (pas une
+    convention de nommage scene systematique), seul le VRAI MediaInfo du
+    fichier (hdr_format) le sait -- doit se retrouver dans le nom de
+    release genere, jamais silencieusement perdu."""
+    with patch(
+        "nfogen.upload_prep.extract.extract_video_metadata",
+        return_value=_fake_metadata(hdr_format="HDR10"),
+    ):
+        proposals = preview_upload(["/media/Madagascar.2.2008.VFF.2160p.WEB.AC3.5.1.h265-UHD.mkv"])
+    assert len(proposals) == 1
+    assert ".HDR10." in proposals[0].release_name
 
 
 def test_season_pack_same_team_produces_one_group_with_per_file_names():

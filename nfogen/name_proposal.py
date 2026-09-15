@@ -212,11 +212,15 @@ def _apply_uhd_bluray_prefix(info: dict[str, str], config: dict[str, Any]) -> No
 
 
 def _extract_release_info(text: str, alias_groups: dict[str, dict[str, str]]) -> dict[str, str]:
-    """Cherche resolution/codec video/audio/source/langue n'importe ou dans
-    `text`. `alias_groups` : {"language": {...}, "source": {...},
-    "video_codec": {...}, "audio_codec": {...}} -- vocabulaire et
-    normalisation entierement pilotes par le profil."""
-    info = {"language": "", "resolution": "", "video_codec": "", "audio": "", "source": ""}
+    """Cherche resolution/codec video/audio/source/langue/HDR n'importe ou
+    dans `text`. `alias_groups` : {"language": {...}, "source": {...},
+    "video_codec": {...}, "audio_codec": {...}, "hdr": {...}} --
+    vocabulaire et normalisation entierement pilotes par le profil.
+    `hdr` (retour reel de moderation C411, 2026-09-15, rejet "Madagascar
+    2" : "Les details video DV/HDR detectes dans le NFO/fichier doivent
+    aussi etre presents dans le titre de release") : cle optionnelle,
+    absente ou vide si le profil ne declare pas `hdr_aliases`."""
+    info = {"language": "", "resolution": "", "video_codec": "", "audio": "", "source": "", "hdr": ""}
     if not text:
         return info
 
@@ -236,6 +240,8 @@ def _extract_release_info(text: str, alias_groups: dict[str, dict[str, str]]) ->
             info["audio"] += f".{channels_match.group(1)}"
 
     info["source"] = _detect_via_aliases(text, alias_groups["source"])
+
+    info["hdr"] = _detect_via_aliases(text, alias_groups.get("hdr", {}))
 
     return info
 
@@ -278,6 +284,7 @@ def propose_video_release_name(
         "source": config.get("source_aliases", {}),
         "video_codec": config.get("video_codec_aliases", {}),
         "audio_codec": config.get("audio_codec_aliases", {}),
+        "hdr": config.get("hdr_aliases", {}),
     }
 
     warnings: list[str] = []
@@ -397,6 +404,7 @@ def propose_video_release_name(
         "video_codec": info["video_codec"],
         "audio": info["audio"],
         "source": info["source"],
+        "hdr": info["hdr"],
         "team": team,
     }
 
@@ -473,6 +481,7 @@ def propose_season_pack_name(
         "source": config.get("source_aliases", {}),
         "video_codec": config.get("video_codec_aliases", {}),
         "audio_codec": config.get("audio_codec_aliases", {}),
+        "hdr": config.get("hdr_aliases", {}),
     }
     info = _extract_release_info(representative_filename, alias_groups)
     _apply_web_codec_convention(info, config)
@@ -487,6 +496,7 @@ def propose_season_pack_name(
         "video_codec": info["video_codec"],
         "audio": info["audio"],
         "source": info["source"],
+        "hdr": info["hdr"],
         "team": team,
     }
     try:

@@ -402,7 +402,16 @@ def preview_upload(
     for m in metas:
         title_tag = m.get("general_title") or ""
         audio_hint = _language_hint_from_audio_tracks(m.get("audio_languages") or [], language_codes)
-        combined = " ".join(part for part in (title_tag, audio_hint) if part)
+        # Retour reel de moderation C411, 2026-09-15 (rejet "Madagascar 2") :
+        # "Les details video DV/HDR detectes dans le NFO/fichier doivent
+        # aussi etre presents dans le titre de release" -- le nom de
+        # fichier source n'a aucune raison de mentionner le HDR (ce n'est
+        # pas une convention de nommage scene systematique), seul le VRAI
+        # MediaInfo du fichier (hdr_format, deja extrait pour la
+        # description) le sait. Achemine ici via le hint, meme mecanisme
+        # deja utilise pour combler un nom de fichier muet sur la langue.
+        hdr_hint = m.get("hdr_format") or ""
+        combined = " ".join(part for part in (title_tag, audio_hint, hdr_hint) if part)
         hints.append(combined or None)
     validator = get_validator(profile, "video")
 
