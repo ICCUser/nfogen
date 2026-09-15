@@ -351,6 +351,22 @@ def test_title_override_strips_apostrophes():
     assert proposal.fields["title"] == "LAssocie.Du.Diable"
 
 
+def test_title_override_converts_parentheses_to_dot_separators():
+    """Retour reel de moderation C411 (2026-09-15, rejets "Rent A Man" et
+    "Madagascar 2" point 2 -- "il ne faut pas de caracteres speciaux dans
+    le titre... il faut les remplacer par des '.'") : contrairement a la
+    ponctuation "naturelle" (virgule/apostrophe, retiree entierement),
+    une parenthese a l'interieur d'un mot doit devenir un SEPARATEUR de
+    mot (point), pas rester telle quelle ("Tou(T)S", caractere non
+    standard laisse tel quel -- exactement ce que la TP a signale) ni
+    disparaitre en collant les lettres ("TouTS", perte d'information)."""
+    files = ["Movie.2020.1080p.WEB.x264-TEAM.mkv"]
+    proposal = propose_video_release_name(
+        files, CONFIG, title_override="Gigolo à tou(t)s prix"
+    )
+    assert proposal.fields["title"] == "Gigolo.A.Tou.T.S.Prix"
+
+
 def test_empty_title_override_falls_back_to_filename_derived_title():
     """Une chaine vide/blanche ne doit jamais ecraser le titre deduit --
     meme comportement que si le parametre n'etait pas fourni du tout."""

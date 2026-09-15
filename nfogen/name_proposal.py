@@ -76,12 +76,20 @@ def _normalize_title_text(text: str) -> str:
     (`title_override`, AUTOMATION.md sous-projet 5). Ponctuation naturelle
     (virgule, apostrophe...) retiree ENTIEREMENT, jamais convertie en point
     -- confirme aupres du support C411, 2026-08-28 ("Un Gars, Une Fille" ->
-    "Un.Gars.Une.Fille", pas "Un.Gars,.Une.Fille")."""
+    "Un.Gars.Une.Fille", pas "Un.Gars,.Une.Fille"). Les parentheses, elles,
+    sont traitees comme un SEPARATEUR de mot (converties en point), pas
+    retirees entierement -- retour reel de moderation C411, 2026-09-15
+    ("il ne faut pas de caracteres speciaux dans le titre... il faut les
+    remplacer par des '.'", rejets "Rent A Man"/"Madagascar 2") : une
+    parenthese a l'interieur d'un mot ("tou(t)s") doit devenir "Tou.T.S",
+    jamais "Tou(T)S" (caractere non standard laisse tel quel) ni "TouTS"
+    (mots colles, perte d'information)."""
     stripped = text.strip(" -._")
     ascii_title = _fold_accents_to_ascii(stripped)
     capitalized = _capitalize_each_word(ascii_title)
     no_punctuation = _TITLE_PUNCTUATION_RE.sub("", capitalized)
-    cleaned = re.sub(r"[\s_]+", ".", no_punctuation.strip())
+    no_parentheses = re.sub(r"[()]", " ", no_punctuation)
+    cleaned = re.sub(r"[\s_]+", ".", no_parentheses.strip())
     return re.sub(r"\.+", ".", cleaned).strip(".")
 
 
