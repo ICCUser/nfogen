@@ -211,7 +211,9 @@
       },
       "web_video_codec_overrides": {
         "x264": "H264",
-        "x265": "H265"
+        "x265": "H265",
+        "h264": "H264",
+        "h265": "H265"
       },
       "pure_sources": ["BluRay.REMUX", "BluRay.BDMV", "BluRay.ISO"],
       "pure_source_codec_overrides": {

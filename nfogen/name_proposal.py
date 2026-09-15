@@ -346,17 +346,25 @@ def propose_video_release_name(
     info_from_filename = _extract_release_info(stems[0], alias_groups)
     info_from_hint = _extract_release_info(hints[0], alias_groups)
     info = _merge_release_info(info_from_hint, info_from_filename)
-    # Retour reel de moderation (2026-09-13, pack Lucifer S03) : le hint
-    # (tag `Title` embarque dans le fichier, ex. MediaInfo) peut porter le
-    # nom de la release ORIGINALE avant un reencodage (x264-ARK01 avant un
-    # reencodage Frosties en x265) -- un codec perime/mensonger par rapport
-    # au contenu REEL du fichier. Le nom de fichier, lui, reflete toujours
-    # l'encodage effectivement livre : des qu'il annonce un codec, il doit
-    # gagner. Le hint ne sert plus qu'a COMPLETER un codec absent du nom de
-    # fichier (cas historique : nom de fichier generique sans aucune info
-    # technique, voir test_title_hint_fills_gaps_left_by_generic_filename).
-    if info_from_filename["video_codec"]:
-        info["video_codec"] = info_from_filename["video_codec"]
+    # Retour reel de moderation (2026-09-13, pack Lucifer S03 ; etendu
+    # 2026-09-15, retour reel "Madagascar 2") : le hint (tag `Title`
+    # embarque dans le fichier, ex. MediaInfo) peut porter la release
+    # ORIGINALE avant un reencodage/remux (ex. "BluRay"+"TrueHD" dans le
+    # Title embarque d'un fichier reellement remuxe en WEB+AC3 par la
+    # team UHD) -- une valeur perimee/mensongere par rapport au contenu
+    # REEL du fichier, pour N'IMPORTE LEQUEL des champs TECHNIQUES
+    # (codec/source/audio). Le nom de fichier, lui, reflete toujours
+    # l'encodage effectivement livre : des qu'il annonce une valeur pour
+    # un de ces champs, elle doit gagner. Le hint ne sert plus qu'a
+    # COMPLETER un champ absent du nom de fichier (cas historique : nom
+    # de fichier generique sans aucune info technique, voir
+    # test_title_hint_fills_gaps_left_by_generic_filename). La langue,
+    # elle, reste prioritaire au hint : construite a partir d'une VRAIE
+    # analyse des pistes audio (voir _language_hint_from_audio_tracks
+    # dans upload_prep.py), pas du Title embarque perime.
+    for _technical_field in ("video_codec", "source", "audio"):
+        if info_from_filename[_technical_field]:
+            info[_technical_field] = info_from_filename[_technical_field]
     _apply_web_codec_convention(info, config)
     _apply_pure_source_codec_convention(info, config)
     _apply_uhd_bluray_prefix(info, config)

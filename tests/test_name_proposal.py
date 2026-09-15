@@ -233,20 +233,26 @@ def test_title_hint_fills_gaps_left_by_generic_filename():
 
 
 def test_title_hint_takes_priority_over_filename_when_both_present():
-    """Retour reel de moderation (2026-09-13, pack Lucifer S03) : le champ
-    `Title` embarque dans un fichier .m4v peut porter le nom de la release
-    ORIGINALE avant un reencodage (ex. x264-ARK01 avant reencodage Frosties
-    en x265) -- un codec perime/mensonger, jamais fiable a 100% contrairement
-    au nom de fichier REEL. Le hint garde la priorite pour resolution/equipe
-    (texte libre, souvent absent d'un nom de fichier generique), mais plus
-    pour le codec video : voir test_hint_never_overrides_a_codec_detected_
-    in_the_filename ci-dessous."""
+    """Retour reel de moderation (2026-09-13, pack Lucifer S03 ; etendu
+    2026-09-15, "Madagascar 2") : le champ `Title` embarque dans un
+    fichier peut porter le nom de la release ORIGINALE avant un
+    reencodage/remux -- une valeur perimee/mensongere, jamais fiable a
+    100% contrairement au nom de fichier REEL, pour AUCUN champ
+    TECHNIQUE (codec/source/audio). Le hint garde la priorite pour
+    resolution/equipe (texte libre, souvent absent d'un nom de fichier
+    generique), mais plus pour ces champs techniques : voir
+    test_hint_never_overrides_a_codec_detected_in_the_filename et les
+    tests source/audio equivalents ci-dessous. "WEBRip" (le VRAI nom de
+    fichier) l'emporte desormais sur "WebDl" (le hint, perime/imprecis) :
+    avant cette extension, ce test attendait "WEB" (hint gagnant), ce qui
+    aurait masque une vraie distinction WEBRip/WEB-DL (voir l'audit de
+    conformite C411 du 2026-09-13 sur ce sujet)."""
     files = ["Show.S01E01.720p.WEBRip.x265-OLDTEAM.mkv"]
     title_hints = ["Show S01 1080p WebDl x264 - NewTeam"]
     proposal = propose_video_release_name(files, CONFIG, title_hints)
     assert proposal.fields["resolution"] == "1080"
     assert proposal.fields["video_codec"] == "x265"
-    assert proposal.fields["source"] == "WEB"
+    assert proposal.fields["source"] == "WEBRip"
     assert proposal.fields["team"] == "NewTeam"
 
 
@@ -262,6 +268,73 @@ def test_hint_never_overrides_a_codec_detected_in_the_filename():
     title_hints = ["Lucifer.S03E01.MULTi.1080p.AMZN.WEB-DL.x264-ARK01"]
     proposal = propose_video_release_name(files, CONFIG, title_hints)
     assert proposal.fields["video_codec"] == "x265"
+
+
+def test_web_source_lowercase_h265_becomes_uppercase_h265():
+    """Retour reel de moderation C411 (2026-09-15, "Madagascar 2") : le
+    fichier source utilisait deja la notation "h265" (style H264/H265,
+    pas "x265" style encodeur) -- `web_video_codec_overrides` ne mappait
+    QUE "x264"/"x265" (formes normalisees quand le nom de fichier utilise
+    la notation encodeur), jamais "h264"/"h265" (formes normalisees
+    quand le nom de fichier utilise DEJA la notation H264/H265, juste
+    avec la mauvaise casse) -- le nom genere gardait donc "h265" en
+    minuscule au lieu de "H265"."""
+    files = ["Movie.2020.1080p.WEBDL.AC3.5.1.h265-TEAM.mkv"]
+    config_with_override = {
+        **CONFIG,
+        "web_video_codec_overrides": {"x264": "H264", "x265": "H265", "h264": "H264", "h265": "H265"},
+    }
+    proposal = propose_video_release_name(files, config_with_override)
+    assert proposal.fields["video_codec"] == "H265"
+
+
+def test_hint_never_overrides_the_source_detected_in_the_filename():
+    """Meme classe de bug que le codec (voir test ci-dessus), etendue au
+    23e-16 apres un retour reel de moderation (2026-09-15, "Madagascar 2") :
+    le nom de fichier REEL dit ".WEB.", mais le tag Title embarque (release
+    originale, avant remux par la team UHD) dit encore "...2160p.BluRay...".
+    Sans ce fix, le nom genere annoncerait a tort une source BluRay pour un
+    fichier reellement WEB."""
+    files = ["Movie.2020.2160p.WEBDL.AC3.5.1.x265-UHD.mkv"]
+    title_hints = ["Movie.2020.MULTI.HDR.2160p.BluRay.TrueHD.AC3-OldTeam"]
+    proposal = propose_video_release_name(files, CONFIG, title_hints)
+    assert proposal.fields["source"] == "WEB"
+
+
+def test_hint_never_overrides_the_audio_codec_detected_in_the_filename():
+    """Meme classe de bug, etendue a l'audio -- retour reel (2026-09-15,
+    "Madagascar 2") : nom de fichier REEL ".AC3.5.1.", tag Title embarque
+    encore "...TrueHD.AC3-OldTeam" (mention TrueHD de la release
+    d'origine). Sans ce fix, le nom genere annoncerait a tort TRUEHD pour
+    un fichier dont la piste audio reelle est AC3."""
+    files = ["Movie.2020.2160p.WEB.AC3.5.1.x265-UHD.mkv"]
+    title_hints = ["Movie.2020.MULTI.HDR.2160p.BluRay.TrueHD.AC3-OldTeam"]
+    proposal = propose_video_release_name(files, CONFIG, title_hints)
+    assert proposal.fields["audio"] == "AC3.5.1"
+
+
+def test_real_c411_profile_madagascar_2_reproduction_source_audio_hdr():
+    """Bout-en-bout contre le VRAI profil livre, reproduction DIRECTE du
+    cas reel "Madagascar 2" (2026-09-15) avec le vrai nom de fichier et le
+    vrai tag Title embarque (dump MediaInfo fourni par l'utilisateur) :
+    source WEB (pas BluRay du hint perime), audio AC3.5.1 (pas TrueHD du
+    hint perime), HDR10 present (achemine depuis le vrai MediaInfo)."""
+    from nfogen.profile_store import read_profile
+
+    config = read_profile("c411")["rules"]["video"]["name_proposal"]
+    result = propose_video_release_name(
+        ["Madagascar.2.2008.VFF.2160p.WEB.AC3.5.1.h265-UHD.mkv"], config,
+        title_hints=[
+            "Madagascar.Escape.2.Africa.2008.MULTI.HDR.2160p.BluRay.TrueHD.AC3-ChrisVPS "
+            "SMPTE ST 2086, HDR10 compatible"
+        ],
+    )
+    assert result.name is not None
+    assert ".WEB." in result.name
+    assert "BluRay" not in result.name
+    assert ".HDR10." in result.name
+    assert ".AC3.5.1." in result.name
+    assert "TRUEHD" not in result.name.upper()
 
 
 def test_title_hints_wrong_length_is_ignored_silently():
