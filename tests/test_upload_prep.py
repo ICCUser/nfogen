@@ -375,7 +375,13 @@ def test_commit_single_file_stages_and_builds_torrent(tmp_path, monkeypatch):
     assert result.torrent_path == str(staging_dir / "Movie.2020.1080p.x264-TEAM.torrent")
     assert _Path(result.torrent_path).is_file()
     assert result.nfo_path == str(staging_dir / "Movie.2020.1080p.x264-TEAM.nfo")
-    assert "General" in _Path(result.nfo_path).read_text(encoding="utf-8")
+    nfo_text = _Path(result.nfo_path).read_text(encoding="utf-8")
+    assert "General" in nfo_text
+    # Retour reel de moderation C411 (2026-09-15) : un rejet "-TEAM ou
+    # -NOTAG manquant" pour l'equipe UHD s'est revele porter sur le .nfo, pas
+    # le nom de fichier -- le .nfo doit donc mentionner explicitement le nom
+    # de release complet (donc l'equipe), pas seulement le dump MediaInfo brut.
+    assert "Movie.2020.1080p.x264-TEAM" in nfo_text
 
 
 def test_commit_multi_file_group_stages_into_a_folder(tmp_path, monkeypatch):

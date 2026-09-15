@@ -43,7 +43,14 @@ def _make_render_video(profile: str) -> Callable[[RenderContext], str]:
             full = bool(ctx.options.get("full", False))
             extractor = extract.extract_video_dir_text if ctx.source.is_dir() else extract.extract_video_text
             raw = extractor(ctx.source, full=full)
-        return render_template(profile, "video", {"raw_text": raw})
+        # Retour reel de moderation C411 (2026-09-15, equipe UHD) : un rejet
+        # "-TEAM ou -NOTAG manquant" portait en realite sur le .nfo, qui ne
+        # mentionnait jamais explicitement le nom de release -- desormais
+        # transmis au template des qu'il est present dans le contexte
+        # d'appel (deja obligatoire pour les profils qui l'exigent, ex.
+        # c411 : voir `requires_field` dans rules.json).
+        context = {"raw_text": raw, "release_name": ctx.data.get("release_name")}
+        return render_template(profile, "video", context)
 
     return render_video
 

@@ -67,8 +67,23 @@ def test_video_raw_text_passthrough():
         category="video",
         data={"raw_text": "General\nFormat : Matroska", "release_name": VALID_RELEASE_NAME},
     )
-    assert nfo.startswith("General")
+    assert "General" in nfo
     assert nfo.endswith("\n")
+
+
+def test_video_nfo_states_the_release_name_explicitly():
+    """Retour reel de moderation C411 (2026-09-15) : un upload de l'equipe
+    UHD a ete rejete pour "-TEAM ou -NOTAG manquant" alors que le nom de
+    release finissait bien par "-UHD" -- le vrai probleme etait que le .nfo
+    (un dump MediaInfo brut) ne mentionnait jamais explicitement le nom de
+    release/l'equipe nulle part, seulement implicitement via "Complete
+    name". Le .nfo doit desormais l'indiquer explicitement."""
+    nfo = nfogen.generate(
+        category="video",
+        data={"raw_text": "General\nFormat : Matroska", "release_name": VALID_RELEASE_NAME},
+    )
+    assert VALID_RELEASE_NAME in nfo
+    assert nfo.index(VALID_RELEASE_NAME) < nfo.index("General")
 
 
 def test_extract_video_text_stays_fast_when_video_metadata_already_complete(tmp_path: Path, monkeypatch):

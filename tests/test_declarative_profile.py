@@ -45,6 +45,16 @@ def _profile_templates(tmp_path, monkeypatch):
     (tmp_path / PROFILE).mkdir()
     template = "{{ title|default('') }} [{{ release_name }}]"
     (tmp_path / PROFILE / "game.j2").write_text(template, encoding="utf-8")
+    # Meme entete conditionnelle que le vrai template c411 (voir
+    # nfogen/profiles/c411/templates/video.j2) : sert a verifier que le
+    # renderer video declaratif ne plante jamais (StrictUndefined) quand
+    # 'release_name' est absent du contexte, cas d'un profil qui n'exige
+    # pas ce champ pour la categorie video.
+    video_template = (
+        "{% if release_name is defined and release_name %}\nRelease : {{ release_name }}\n\n"
+        "{% endif %}{{ raw_text }}"
+    )
+    (tmp_path / PROFILE / "video.j2").write_text(video_template, encoding="utf-8")
     monkeypatch.setenv("NFOGEN_TEMPLATES", str(tmp_path))
     from nfogen.render import _env
 
@@ -155,3 +165,25 @@ def test_external_profile_overrides_shipped_profile_of_same_name(tmp_path, monke
         unregister_profile("c411")
         importlib.reload(c411_module)  # restaure le profil livre d'origine
         _env.cache_clear()
+
+
+def test_video_render_never_raises_without_release_name():
+    """Le renderer video declaratif est partage par tous les profils : un
+    profil qui n'exige pas 'release_name' pour sa categorie video (ex.
+    celui-ci, RULES ne definit que 'game') ne doit jamais faire planter le
+    rendu Jinja (StrictUndefined) quand la variable est absente -- elle est
+    simplement transmise comme None/absente et le template doit la gerer via
+    une garde (voir nfogen/profiles/c411/templates/video.j2)."""
+    register_declarative_profile(PROFILE, RULES)
+    nfo = nfogen.generate(profile=PROFILE, category="video", data={"raw_text": "General"})
+    assert "General" in nfo
+    assert "Release :" not in nfo
+
+
+def test_video_render_includes_release_name_when_present():
+    register_declarative_profile(PROFILE, RULES)
+    nfo = nfogen.generate(
+        profile=PROFILE, category="video", data={"raw_text": "General", "release_name": "Mon.Jeu-TEAM"}
+    )
+    assert "Release : Mon.Jeu-TEAM" in nfo
+    assert nfo.index("Release :") < nfo.index("General")
