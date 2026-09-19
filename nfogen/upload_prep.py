@@ -311,6 +311,7 @@ def _preview_season_pack(
     warnings: list[str] = []
     files: list[ProposedFile] = []
     representative_filename: Optional[str] = None
+    representative_meta: dict = {}
     total = len(all_source_paths)
     processed = 0
     for season in season_pack.seasons:
@@ -321,7 +322,9 @@ def _preview_season_pack(
             if representative_filename is None:
                 representative_filename = filename
             try:
-                extract.extract_video_metadata(Path(source_path))
+                meta = extract.extract_video_metadata(Path(source_path))
+                if filename == representative_filename:
+                    representative_meta = meta
             except Exception:
                 warnings.append(_extraction_warning(filename))
             files.append(
@@ -341,6 +344,11 @@ def _preview_season_pack(
     proposal = propose_season_pack_name(
         title=season_pack.title, season_numbers=season_numbers, is_full_series=season_pack.is_full_series,
         team=season_pack.team, representative_filename=representative_filename, config=config,
+        audio_override=best_audio_label(
+            representative_meta.get("audio_tracks") or [],
+            tracker_profile.audio_language_codes(profile), config,
+        ) or None,
+        reencoded=bool(representative_meta.get("video_reencoded")),
     )
     warnings = warnings + list(proposal.warnings)
 
@@ -451,6 +459,7 @@ def preview_upload(
     audio_labels: list[Optional[str]] = [
         best_audio_label(m.get("audio_tracks") or [], language_codes, name_config) or None for m in metas
     ]
+    reencoded_flags: list[bool] = [bool(m.get("video_reencoded")) for m in metas]
     validator = get_validator(profile, "video")
 
     proposals: list[GroupProposal] = []
@@ -460,13 +469,14 @@ def preview_upload(
         group_hints = [hints[i] for i in index_group]
         group_metas = [metas[i] for i in index_group]
         group_audio = [audio_labels[i] for i in index_group]
+        group_reencoded = [reencoded_flags[i] for i in index_group]
         group_extraction_warnings = [
             extraction_warning_by_index[i] for i in index_group if i in extraction_warning_by_index
         ]
 
         pack = propose_release_name(
             category="video", profile=profile, filenames=group_filenames, title_hints=group_hints,
-            title_override=title_override, audio_overrides=group_audio,
+            title_override=title_override, audio_overrides=group_audio, reencoded=group_reencoded,
         )
         warnings = group_extraction_warnings + list(pack.warnings)
 
@@ -475,10 +485,12 @@ def preview_upload(
             continue
 
         files: list[ProposedFile] = []
-        for path, filename, hint, audio in zip(group_paths, group_filenames, group_hints, group_audio):
+        for path, filename, hint, audio, reenc in zip(
+            group_paths, group_filenames, group_hints, group_audio, group_reencoded,
+        ):
             single = propose_release_name(
                 category="video", profile=profile, filenames=[filename], title_hints=[hint],
-                title_override=title_override, audio_overrides=[audio],
+                title_override=title_override, audio_overrides=[audio], reencoded=[reenc],
             )
             base_name = single.name or pack.name
             files.append(ProposedFile(source_path=path, staged_name=base_name + Path(filename).suffix))

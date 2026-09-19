@@ -1050,3 +1050,48 @@ def test_best_audio_label_accepts_channels_already_formatted_as_layout():
 
     tracks = [_track("fr", "AC-3", "5.1"), _track("fr", "AAC", "2.0")]
     assert best_audio_label(tracks, AUDIO_LANGS, AUDIO_CONFIG) == "AC3.5.1"
+
+
+REENCODE_CONFIG = {
+    **AUDIO_CONFIG,
+    "web_video_codec_overrides": {"x264": "H264", "x265": "H265", "h264": "H264", "h265": "H265"},
+    "reencode_video_codec_overrides": {"H264": "x264", "H265": "x265"},
+}
+
+
+def test_reencoded_web_file_becomes_webrip_with_x264():
+    """Rejet reel C411 (pack FBI Duo Tres Special) : Encoding settings dans
+    le NFO + source WEB -> WEBRip + x264/x265, pas WEB.H264."""
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.WEBDL.AC3.x264-TEAM.mkv"], REENCODE_CONFIG, reencoded=[True],
+    )
+    assert result.name is not None
+    assert ".WEBRip." in result.name
+    assert ".x264-TEAM" in result.name
+    assert "H264" not in result.name
+
+
+def test_untouched_web_file_stays_web_h264():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.WEBDL.AC3.x264-TEAM.mkv"], REENCODE_CONFIG, reencoded=[False],
+    )
+    assert ".WEB." in result.name
+    assert ".H264-TEAM" in result.name
+
+
+def test_season_pack_uses_real_audio_and_reencode():
+    from nfogen.name_proposal import propose_season_pack_name
+
+    config = {
+        **REENCODE_CONFIG,
+        "season_pack": {"range_format": "S{start:02d}S{end:02d}", "integrale_tag": "INTEGRALE"},
+    }
+    result = propose_season_pack_name(
+        title="FBI Duo", season_numbers=[1], is_full_series=False, team="CiELOS",
+        representative_filename="Show.S01E01.FR.1080p.WEBDL.AC3.x264-TEAM.mkv", config=config,
+        audio_override="EAC3.5.1", reencoded=True,
+    )
+    assert result.name is not None
+    assert ".WEBRip." in result.name
+    assert ".EAC3.5.1." in result.name
+    assert ".x264-CiELOS" in result.name

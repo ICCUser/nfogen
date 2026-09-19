@@ -2349,3 +2349,13 @@ def test_fallback_title_used_when_tmdb_has_no_title(monkeypatch):
             tmdb_id=1, media_type="tv", fallback_title="Titre Sonarr",
         )
     assert proposals[0].release_name.startswith("Titre.Sonarr.")
+
+
+def test_reencoded_web_file_is_named_webrip_x264():
+    """Rejet reel C411 (2026-09-19) : Encoding settings + source WEB."""
+    meta = _fake_metadata(video_reencoded=True)
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=meta):
+        proposals = preview_upload(["/media/Show.S01E01.1080p.WEBDL.AC3.x264-TEAM.mkv"])
+    name = proposals[0].release_name
+    assert ".WEBRip." in name
+    assert ".x264-TEAM" in name

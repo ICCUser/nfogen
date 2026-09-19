@@ -131,6 +131,9 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
         # (contenu SDR, ou version de MediaInfo qui ne l'expose pas).
         "container": source.suffix.lstrip(".").upper() or None,
         "hdr_format": (getattr(video, "hdr_format", None) or None) if video is not None else None,
+        # Reglages d'encodeur (x264/x265 "Encoding settings") presents dans la
+        # piste video : le fichier est un REENCODAGE, pas un WEB-DL untouched.
+        "video_reencoded": bool(getattr(video, "encoding_settings", None)) if video is not None else False,
         # Detail par piste (retour utilisateur, 2026-09-07 : tableau BBCode
         # audio/sous-titres avec canaux/codec/debit/sample rate, voir
         # upload_prep.py) -- vient s'ajouter a audio_languages/

@@ -251,6 +251,7 @@
         "MPEG Audio": "MP3",
         "Opus": "OPUS"
       },
+      "reencode_video_codec_overrides": {"H264": "x264", "H265": "x265", "h264": "x264", "h265": "x265"},
       "lossless_audio_codecs": ["TRUEHD", "DTS.HD.MA", "FLAC"],
       "audio_channel_labels": {"1": "1.0", "2": "2.0", "3": "2.1", "6": "5.1", "7": "6.1", "8": "7.1"},
       "audio_reference_language_codes": ["FR", "FRQ"],

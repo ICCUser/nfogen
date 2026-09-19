@@ -132,6 +132,26 @@ def _detect_via_aliases(text: str, aliases: dict[str, str]) -> str:
     return ""
 
 
+def _apply_reencode_convention(info: dict[str, str], config: dict[str, Any], reencoded: bool) -> None:
+    """Retour reel C411 (2026-09-19, pack FBI Duo Tres Special) : "Le NFO
+    contient des parametres d'encodage (Encoding settings) avec une source
+    WEB [...] la source devrait etre WEBRip" et "le codec devrait etre
+    x264 ou x265 (pas H264)". Un fichier dont la piste video porte de vrais
+    reglages d'encodeur est un reencodage : source WEB -> WEBRip (suffixe
+    de plateforme conserve), codec H264/H265 -> x264/x265. No-op sans
+    `reencode_video_codec_overrides` dans le profil ou si la source n'est
+    pas une variante WEB non-Rip."""
+    if not reencoded:
+        return
+    source = info["source"]
+    if not source.startswith("WEB") or source.startswith("WEBRip"):
+        return
+    info["source"] = "WEBRip" + source[len("WEB"):]
+    overrides = config.get("reencode_video_codec_overrides", {})
+    if info["video_codec"] in overrides:
+        info["video_codec"] = overrides[info["video_codec"]]
+
+
 def _apply_web_codec_convention(info: dict[str, str], config: dict[str, Any]) -> None:
     """C411 (retour reel de moderation, 2026-09-10, pack Lucifer S05) :
     "Une source WEB ne peut pas avoir ce CodecVideo [x265] -- pour une
@@ -300,6 +320,7 @@ def propose_video_release_name(
     title_hints: list[str | None] | None = None,
     title_override: str | None = None,
     audio_overrides: list[str | None] | None = None,
+    reencoded: list[bool] | None = None,
 ) -> NameProposal:
     """Construit une proposition de `release_name` (1 fichier = episode/film,
     plusieurs = pack saison). `config` vient de `rules.json -> video ->
@@ -416,6 +437,7 @@ def propose_video_release_name(
     # une autre piste, ex. AAC 2.0 alors que le fichier a aussi de l'EAC3 5.1).
     if audio_overrides and audio_overrides[0]:
         info["audio"] = audio_overrides[0]
+    _apply_reencode_convention(info, config, bool(reencoded and reencoded[0]))
     _apply_web_codec_convention(info, config)
     _apply_pure_source_codec_convention(info, config)
     _apply_uhd_bluray_prefix(info, config)
@@ -489,6 +511,8 @@ def propose_season_pack_name(
     team: str,
     representative_filename: str,
     config: dict[str, Any],
+    audio_override: str | None = None,
+    reencoded: bool = False,
 ) -> NameProposal:
     """Construit un release_name pour un pack MULTI-SAISONS deja valide
     par l'appelant (memes equipe garantie, saisons consecutives -- voir
@@ -543,6 +567,9 @@ def propose_season_pack_name(
         "hdr": config.get("hdr_aliases", {}),
     }
     info = _extract_release_info(representative_filename, alias_groups)
+    if audio_override:
+        info["audio"] = audio_override
+    _apply_reencode_convention(info, config, reencoded)
     _apply_web_codec_convention(info, config)
     _apply_pure_source_codec_convention(info, config)
     _apply_uhd_bluray_prefix(info, config)

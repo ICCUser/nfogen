@@ -96,6 +96,7 @@ def propose_release_name(
     title_hints: list[str | None] | None = None,
     title_override: str | None = None,
     audio_overrides: list[str | None] | None = None,
+    reencoded: list[bool] | None = None,
 ) -> NameProposal:
     """Propose un `release_name` a partir des seuls noms de fichiers (+
     `title_hints` optionnels, cf. `nfogen.name_proposal`). `title_override` :
@@ -108,8 +109,8 @@ def propose_release_name(
             f"Aucune proposition de nom disponible pour profil='{profile}' categorie='{category}' "
             "(name_proposal non configure dans rules.json)."
         )
-    if audio_overrides:
-        return rule(filenames, title_hints, title_override, audio_overrides)
+    if audio_overrides or reencoded:
+        return rule(filenames, title_hints, title_override, audio_overrides, reencoded)
     return rule(filenames, title_hints, title_override)
 
 

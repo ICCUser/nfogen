@@ -164,6 +164,11 @@
           "description": "Format MediaInfo de la vraie piste audio (Format + Format_Commercial_IfAny) -> codec du titre. Retour reel de moderation C411, 2026-09-19 : codec/canaux du titre = meilleure piste audio FR du NFO.",
           "additionalProperties": { "type": "string" }
         },
+        "reencode_video_codec_overrides": {
+          "type": "object",
+          "description": "Codec video (H264/H265) -> codec d'encodeur (x264/x265) pour un WEB reencode (Encoding settings presents) -- retour reel C411, 2026-09-19.",
+          "additionalProperties": { "type": "string" }
+        },
         "lossless_audio_codecs": { "type": "array", "items": { "type": "string" } },
         "audio_channel_labels": {
           "type": "object",
