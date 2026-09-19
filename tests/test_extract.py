@@ -48,7 +48,10 @@ def test_extract_video_metadata_returns_audio_tracks_detail(monkeypatch):
     meta = extract.extract_video_metadata(Path("fake.mkv"))
 
     assert meta["audio_tracks"] == [
-        {"language": "fre", "channels": "5.1", "codec": "AC-3", "bit_rate_kbps": 448, "sampling_khz": 48.0},
+        {
+            "language": "fre", "channels": "5.1", "codec": "AC-3", "commercial": None,
+            "bit_rate_kbps": 448, "sampling_khz": 48.0,
+        },
     ]
 
 

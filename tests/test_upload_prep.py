@@ -2296,3 +2296,46 @@ def test_classify_subtitle_type_keyword_inside_another_word_is_not_a_false_posit
     """"cc" ne doit matcher que le mot "CC", jamais un sous-mot -- voir
     _SUBTITLE_TYPE_KEYWORDS (limites `\\b`)."""
     assert _classify_subtitle_type(False, "Accessible") == "COMPLET"
+
+
+def test_audio_in_release_name_comes_from_best_real_french_track():
+    """Rejet reel C411 (White Collar, 2026-09-19) : le titre disait AAC.2.0
+    alors que la meilleure piste FR du NFO etait EAC3 5.1."""
+    meta = _fake_metadata(
+        audio_languages=["fr", "fr"],
+        audio_tracks=[
+            {"language": "fr", "channels": 2, "codec": "AAC", "commercial": None},
+            {"language": "fr", "channels": 6, "codec": "E-AC-3", "commercial": "Dolby Digital Plus"},
+        ],
+    )
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=meta):
+        proposals = preview_upload(["/media/White.Collar.S01E01.1080p.WEBDL.AAC.2.0.x264-TEAM.mkv"])
+    name = proposals[0].release_name
+    assert ".EAC3.5.1." in name
+    assert "AAC" not in name
+    assert proposals[0].files[0].staged_name.startswith(name)
+
+
+def test_preview_uses_tmdb_localized_title_when_not_overridden(monkeypatch):
+    """Rejet reel C411 : le titre doit etre le titre TMDB en francais
+    (White Collar -> Fbi Duo Tres Special)."""
+    monkeypatch.setattr(
+        "nfogen.upload_prep._tmdb_localized_title", lambda *a, **k: "FBI : Duo tr\u00e8s sp\u00e9cial"
+    )
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(
+            ["/media/White.Collar.S01E01.1080p.WEBDL.AAC.x264-TEAM.mkv"], tmdb_id=1, media_type="tv",
+        )
+    # "FBI" garde sa casse (acronyme, voir _capitalize_each_word) ; le
+    # moderateur C411 ecrit "Fbi" dans sa suggestion automatique.
+    assert proposals[0].release_name.startswith("FBI.Duo.Tres.Special.")
+
+
+def test_explicit_title_override_beats_tmdb_title(monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep._tmdb_localized_title", lambda *a, **k: "Titre TMDB")
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(
+            ["/media/White.Collar.S01E01.1080p.WEBDL.AAC.x264-TEAM.mkv"],
+            title_override="Mon Titre", tmdb_id=1, media_type="tv",
+        )
+    assert proposals[0].release_name.startswith("Mon.Titre.")

@@ -251,11 +251,55 @@ def _merge_release_info(primary: dict[str, str], fallback: dict[str, str]) -> di
     return {key: primary.get(key) or fallback.get(key, "") for key in fallback}
 
 
+def best_audio_label(
+    tracks: list[dict[str, Any]], language_codes: dict[str, str], config: dict[str, Any],
+) -> str:
+    """Etiquette audio du titre ("EAC3.5.1", "TRUEHD.5.1") issue de la
+    meilleure piste audio FR reelle (regle C411 : sans lossless, codec et
+    canaux du titre = meilleure piste FR ; avec lossless, ce codec, avec ses
+    canaux). Piste retenue : lossless d'abord, puis le plus de canaux, puis
+    la premiere. Sans piste FR, toutes les pistes sont candidates. Chaine
+    vide si config absente ou format non reconnu -- jamais devine."""
+    formats = config.get("mediainfo_audio_formats", {})
+    if not formats or not tracks:
+        return ""
+    lossless = set(config.get("lossless_audio_codecs", []))
+    channel_labels = config.get("audio_channel_labels", {})
+    reference = set(config.get("audio_reference_language_codes", []))
+
+    candidates = []
+    for track in tracks:
+        text = f"{track.get('commercial') or ''} {track.get('codec') or ''}"
+        codec = _detect_via_aliases(text, formats)
+        if not codec:
+            continue
+        lang = language_codes.get((track.get("language") or "").strip().lower(), "")
+        raw_channels = str(track.get("channels") or "").strip()
+        if "." in raw_channels:
+            # Deja une etiquette ("5.1") plutot qu'un nombre de canaux.
+            label = raw_channels
+            channels = round(float(raw_channels) + 0.5) if raw_channels.replace(".", "").isdigit() else 0
+        else:
+            try:
+                channels = int(raw_channels or 0)
+            except ValueError:
+                channels = 0
+            label = channel_labels.get(str(channels)) or (f"{channels}.0" if channels else "")
+        candidates.append((lang in reference, codec, channels, label))
+    if not candidates:
+        return ""
+    if any(c[0] for c in candidates):
+        candidates = [c for c in candidates if c[0]]
+    _, codec, _, label = max(candidates, key=lambda c: (c[1] in lossless, c[2]))
+    return f"{codec}.{label}" if label else codec
+
+
 def propose_video_release_name(
     filenames: list[str],
     config: dict[str, Any],
     title_hints: list[str | None] | None = None,
     title_override: str | None = None,
+    audio_overrides: list[str | None] | None = None,
 ) -> NameProposal:
     """Construit une proposition de `release_name` (1 fichier = episode/film,
     plusieurs = pack saison). `config` vient de `rules.json -> video ->
@@ -365,6 +409,13 @@ def propose_video_release_name(
     for _technical_field in ("video_codec", "source", "audio"):
         if info_from_filename[_technical_field]:
             info[_technical_field] = info_from_filename[_technical_field]
+    # Retour reel de moderation C411 (2026-09-19, White Collar / Madagascar
+    # 2) : codec + canaux audio du titre doivent correspondre a la meilleure
+    # piste audio FR du NFO (voir best_audio_label) -- la VRAIE analyse des
+    # pistes l'emporte donc meme sur le nom de fichier (qui peut annoncer
+    # une autre piste, ex. AAC 2.0 alors que le fichier a aussi de l'EAC3 5.1).
+    if audio_overrides and audio_overrides[0]:
+        info["audio"] = audio_overrides[0]
     _apply_web_codec_convention(info, config)
     _apply_pure_source_codec_convention(info, config)
     _apply_uhd_bluray_prefix(info, config)

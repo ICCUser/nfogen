@@ -159,6 +159,21 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
+        "mediainfo_audio_formats": {
+          "type": "object",
+          "description": "Format MediaInfo de la vraie piste audio (Format + Format_Commercial_IfAny) -> codec du titre. Retour reel de moderation C411, 2026-09-19 : codec/canaux du titre = meilleure piste audio FR du NFO.",
+          "additionalProperties": { "type": "string" }
+        },
+        "lossless_audio_codecs": { "type": "array", "items": { "type": "string" } },
+        "audio_channel_labels": {
+          "type": "object",
+          "description": "Nombre de canaux MediaInfo -> etiquette du titre (6 -> 5.1).",
+          "additionalProperties": { "type": "string" }
+        },
+        "audio_reference_language_codes": {
+          "type": "array", "items": { "type": "string" },
+          "description": "Codes de langue courts (voir audio_language_codes) dont la meilleure piste fait foi pour l'audio du titre."
+        },
         "season_pack": {
           "type": "object",
           "description": "Convention de nommage pour un pack multi-saisons (retour utilisateur, 2026-09-08 -- voir gapscan_library.detect_season_packs). Propre au tracker, jamais codee en dur en Python. Absent : fonctionnalite pack desactivee pour ce profil.",

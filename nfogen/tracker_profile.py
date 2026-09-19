@@ -35,6 +35,11 @@ def _video_name_proposal_section(profile: str) -> dict[str, Any]:
     return rules.get("video", {}).get("name_proposal", {})
 
 
+def video_name_proposal_config(profile: str) -> dict[str, Any]:
+    """rules.json -> video -> name_proposal (dict vide si inconnu)."""
+    return _video_name_proposal_section(profile)
+
+
 def display_name(profile: str) -> str:
     """Nom lisible du tracker (affiche cote frontend) -- repli sur le nom
     du profil lui-meme si non declare."""

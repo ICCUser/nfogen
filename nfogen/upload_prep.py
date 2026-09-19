@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -31,7 +31,7 @@ from .cancellation import OperationCancelled
 from .engine import propose_release_name
 from .languages import flagcdn_url, resolve_language
 from .models import RenderContext
-from .name_proposal import extract_team_tag, propose_season_pack_name, strip_ext
+from .name_proposal import best_audio_label, extract_team_tag, propose_season_pack_name, strip_ext
 from .profile_store import read_profile
 from .qbittorrent_client import QBittorrentClient, QBittorrentError
 from .radarr_client import RadarrClient
@@ -350,11 +350,31 @@ def _preview_season_pack(
     return GroupProposal(release_name=proposal.name, files=files, warnings=warnings, blocked=False)
 
 
+def _tmdb_localized_title(tmdb_id: int, media_type: str, profile: str) -> Optional[str]:
+    """Titre TMDB dans la langue du tracker, ou None (cle absente, erreur
+    reseau, pas de traduction) -- l'apercu retombe alors sur le titre deduit
+    du nom de fichier, jamais bloque."""
+    api_key = gapscan_config_store.effective_tmdb_api_key()
+    if not api_key:
+        return None
+    try:
+        client = TMDBClient(api_key)
+        try:
+            return client.get_localized_title(
+                tmdb_id, media_type, language=tracker_profile.tmdb_language(profile),
+            )
+        finally:
+            client.close()
+    except TMDBError:
+        return None
+
+
 def preview_upload(
     local_paths: list[str], profile: str = "c411", title_override: Optional[str] = None,
     season_pack: Optional[SeasonPackRequest] = None,
     on_progress: Optional[Callable[[int, int], None]] = None,
     cancel_event: Optional[threading.Event] = None,
+    tmdb_id: Optional[int] = None, media_type: Optional[str] = None,
 ) -> list[GroupProposal]:
     """Sans aucune ecriture disque : extrait les metadonnees (best-effort --
     une extraction illisible devient un avertissement, jamais un
@@ -370,7 +390,15 @@ def preview_upload(
     court-circuite tout ce qui precede -- `local_paths` est alors ignore,
     voir `_preview_season_pack`. `on_progress`/`cancel_event` : voir
     `_preview_season_pack` -- meme role ici, pour upload_preview_job_runner.py."""
+    if not (title_override and title_override.strip()) and tmdb_id and media_type:
+        # Retour reel de moderation C411 (2026-09-19) : "Le Titre de la
+        # release doit etre en Francais" (= titre TMDB dans la langue du
+        # tracker), pas le titre Radarr/Sonarr souvent anglais.
+        title_override = _tmdb_localized_title(int(tmdb_id), media_type, profile)
+
     if season_pack is not None:
+        if title_override:
+            season_pack = replace(season_pack, title=title_override)
         group = _preview_season_pack(
             season_pack, profile, on_progress=on_progress, cancel_event=cancel_event,
         )
@@ -413,6 +441,10 @@ def preview_upload(
         hdr_hint = m.get("hdr_format") or ""
         combined = " ".join(part for part in (title_tag, audio_hint, hdr_hint) if part)
         hints.append(combined or None)
+    name_config = tracker_profile.video_name_proposal_config(profile)
+    audio_labels: list[Optional[str]] = [
+        best_audio_label(m.get("audio_tracks") or [], language_codes, name_config) or None for m in metas
+    ]
     validator = get_validator(profile, "video")
 
     proposals: list[GroupProposal] = []
@@ -421,13 +453,14 @@ def preview_upload(
         group_filenames = [filenames[i] for i in index_group]
         group_hints = [hints[i] for i in index_group]
         group_metas = [metas[i] for i in index_group]
+        group_audio = [audio_labels[i] for i in index_group]
         group_extraction_warnings = [
             extraction_warning_by_index[i] for i in index_group if i in extraction_warning_by_index
         ]
 
         pack = propose_release_name(
             category="video", profile=profile, filenames=group_filenames, title_hints=group_hints,
-            title_override=title_override,
+            title_override=title_override, audio_overrides=group_audio,
         )
         warnings = group_extraction_warnings + list(pack.warnings)
 
@@ -436,10 +469,10 @@ def preview_upload(
             continue
 
         files: list[ProposedFile] = []
-        for path, filename, hint in zip(group_paths, group_filenames, group_hints):
+        for path, filename, hint, audio in zip(group_paths, group_filenames, group_hints, group_audio):
             single = propose_release_name(
                 category="video", profile=profile, filenames=[filename], title_hints=[hint],
-                title_override=title_override,
+                title_override=title_override, audio_overrides=[audio],
             )
             base_name = single.name or pack.name
             files.append(ProposedFile(source_path=path, staged_name=base_name + Path(filename).suffix))

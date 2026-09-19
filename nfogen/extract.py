@@ -141,6 +141,7 @@ def extract_video_metadata(source: Path) -> dict[str, Any]:
                 "language": t.language,
                 "channels": t.channel_s,
                 "codec": t.format,
+                "commercial": getattr(t, "format_commercial_if_any", None),
                 "bit_rate_kbps": round(int(t.bit_rate) / 1000) if t.bit_rate else None,
                 "sampling_khz": round(int(t.sampling_rate) / 1000, 1) if t.sampling_rate else None,
             }

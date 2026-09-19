@@ -139,9 +139,10 @@ def _make_name_proposal_rule(
         filenames: list[str],
         title_hints: list[str | None] | None = None,
         title_override: str | None = None,
+        audio_overrides: list[str | None] | None = None,
     ) -> name_proposal_engine.NameProposal:
         return name_proposal_engine.propose_video_release_name(
-            filenames, config, title_hints, title_override
+            filenames, config, title_hints, title_override, audio_overrides
         )
 
     return propose

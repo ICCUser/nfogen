@@ -981,3 +981,72 @@ def test_propose_music_release_name_missing_technical_info_is_a_warning():
     )
     assert proposal.name is None
     assert any("profondeur" in w or "frequence" in w for w in proposal.warnings)
+
+
+# --------------------------------------------------------------------------- #
+# Audio issu de la VRAIE meilleure piste FR (retours reels C411, 2026-09-19)
+# --------------------------------------------------------------------------- #
+AUDIO_CONFIG = {
+    **CONFIG,
+    "mediainfo_audio_formats": {
+        "E-AC-3": "EAC3", "AC-3": "AC3", "MLP FBA": "TRUEHD", "Dolby TrueHD": "TRUEHD",
+        "DTS-HD Master Audio": "DTS.HD.MA", "DTS": "DTS", "AAC": "AAC", "FLAC": "FLAC",
+    },
+    "lossless_audio_codecs": ["TRUEHD", "DTS.HD.MA", "FLAC"],
+    "audio_channel_labels": {"1": "1.0", "2": "2.0", "6": "5.1", "8": "7.1"},
+    "audio_reference_language_codes": ["FR", "FRQ"],
+}
+AUDIO_LANGS = {"fr": "FR", "en": "EN"}
+
+
+def _track(language, codec, channels, commercial=None):
+    return {"language": language, "codec": codec, "channels": channels, "commercial": commercial}
+
+
+def test_best_audio_label_picks_best_french_track_not_the_first_one():
+    """Rejet reel C411 (White Collar) : le titre disait AAC.2.0 alors que la
+    meilleure piste FR du NFO est EAC3 5.1."""
+    from nfogen.name_proposal import best_audio_label
+
+    tracks = [_track("fr", "AAC", 2), _track("fr", "E-AC-3", 6), _track("en", "E-AC-3", 8)]
+    assert best_audio_label(tracks, AUDIO_LANGS, AUDIO_CONFIG) == "EAC3.5.1"
+
+
+def test_best_audio_label_prefers_lossless_and_gives_channels():
+    """Rejet reel C411 (Madagascar 2) : TRUEHD seul interdit, un seul codec."""
+    from nfogen.name_proposal import best_audio_label
+
+    tracks = [_track("fr", "AC-3", 6), _track("fr", "MLP FBA", 6, "Dolby TrueHD")]
+    assert best_audio_label(tracks, AUDIO_LANGS, AUDIO_CONFIG) == "TRUEHD.5.1"
+
+
+def test_best_audio_label_without_french_track_uses_all_tracks():
+    from nfogen.name_proposal import best_audio_label
+
+    tracks = [_track("en", "AC-3", 6)]
+    assert best_audio_label(tracks, AUDIO_LANGS, AUDIO_CONFIG) == "AC3.5.1"
+
+
+def test_best_audio_label_empty_when_nothing_recognised():
+    from nfogen.name_proposal import best_audio_label
+
+    assert best_audio_label([], AUDIO_LANGS, AUDIO_CONFIG) == ""
+    assert best_audio_label([_track("fr", "Weird", 2)], AUDIO_LANGS, AUDIO_CONFIG) == ""
+    assert best_audio_label([_track("fr", "AAC", 2)], AUDIO_LANGS, CONFIG) == ""
+
+
+def test_audio_override_wins_over_filename():
+    result = propose_video_release_name(
+        ["Show.S01E01.FR.1080p.WEBDL.AAC.2.0.x265-TEAM.mkv"], AUDIO_CONFIG,
+        audio_overrides=["EAC3.5.1"],
+    )
+    assert result.name is not None
+    assert ".EAC3.5.1." in result.name
+    assert "AAC" not in result.name
+
+
+def test_best_audio_label_accepts_channels_already_formatted_as_layout():
+    from nfogen.name_proposal import best_audio_label
+
+    tracks = [_track("fr", "AC-3", "5.1"), _track("fr", "AAC", "2.0")]
+    assert best_audio_label(tracks, AUDIO_LANGS, AUDIO_CONFIG) == "AC3.5.1"

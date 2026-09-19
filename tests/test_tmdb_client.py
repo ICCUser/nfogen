@@ -158,3 +158,20 @@ def test_overview_localized_none_when_tmdb_has_no_french_overview():
     extra = client.get_movie_extra(603)
 
     assert extra.overview_localized is None
+
+
+def test_get_localized_title_movie_and_tv():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["language"] == "fr-FR"
+        if request.url.path == "/3/movie/1":
+            return httpx.Response(200, json={"title": "Madagascar 2"})
+        return httpx.Response(200, json={"name": "FBI : Duo tres special"})
+
+    client = _client(handler)
+    assert client.get_localized_title(1, "movie") == "Madagascar 2"
+    assert client.get_localized_title(2, "tv") == "FBI : Duo tres special"
+
+
+def test_get_localized_title_none_when_empty():
+    client = _client(lambda request: httpx.Response(200, json={"title": ""}))
+    assert client.get_localized_title(1, "movie") is None

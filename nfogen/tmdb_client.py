@@ -88,6 +88,12 @@ class TMDBClient:
         value = data.get("vote_average")
         return round(value, 1) if value else None  # 0/None traites comme "jamais note"
 
+    def get_localized_title(self, tmdb_id: int, media_type: str, language: str = "fr-FR") -> Optional[str]:
+        """Titre (film) ou nom (serie) dans `language`, ou None si vide."""
+        path = f"/movie/{tmdb_id}" if media_type == "movie" else f"/tv/{tmdb_id}"
+        data = self._get(path, language=language)
+        return (data.get("title") if media_type == "movie" else data.get("name")) or None
+
     def get_movie_extra(self, tmdb_id: int, language: str = "fr-FR") -> TMDBExtraDetails:
         data = self._get(f"/movie/{tmdb_id}")
         return TMDBExtraDetails(
