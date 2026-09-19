@@ -375,6 +375,7 @@ def preview_upload(
     on_progress: Optional[Callable[[int, int], None]] = None,
     cancel_event: Optional[threading.Event] = None,
     tmdb_id: Optional[int] = None, media_type: Optional[str] = None,
+    fallback_title: Optional[str] = None,
 ) -> list[GroupProposal]:
     """Sans aucune ecriture disque : extrait les metadonnees (best-effort --
     une extraction illisible devient un avertissement, jamais un
@@ -390,11 +391,16 @@ def preview_upload(
     court-circuite tout ce qui precede -- `local_paths` est alors ignore,
     voir `_preview_season_pack`. `on_progress`/`cancel_event` : voir
     `_preview_season_pack` -- meme role ici, pour upload_preview_job_runner.py."""
-    if not (title_override and title_override.strip()) and tmdb_id and media_type:
+    if not (title_override and title_override.strip()):
         # Retour reel de moderation C411 (2026-09-19) : "Le Titre de la
         # release doit etre en Francais" (= titre TMDB dans la langue du
-        # tracker), pas le titre Radarr/Sonarr souvent anglais.
-        title_override = _tmdb_localized_title(int(tmdb_id), media_type, profile)
+        # tracker), pas le titre Radarr/Sonarr souvent anglais. Ordre :
+        # titre saisi > titre TMDB localise > `fallback_title` (titre
+        # Radarr/Sonarr) > titre deduit du nom de fichier.
+        tmdb_title = None
+        if tmdb_id and media_type:
+            tmdb_title = _tmdb_localized_title(int(tmdb_id), media_type, profile)
+        title_override = tmdb_title or fallback_title
 
     if season_pack is not None:
         if title_override:

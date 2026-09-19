@@ -116,7 +116,16 @@ export default function UploadPrepPanel({
     setGroups(null);
     setPreviewJob(null);
     try {
-      const { job_id } = await prepareUploadPreview(localPaths, profileOverride, override || undefined, seasonPack);
+      // Titre saisi par l'utilisateur uniquement s'il differe du titre
+      // Radarr/Sonarr affiche par defaut : sinon le backend prefere le
+      // titre TMDB en francais (retour reel C411, 2026-09-19), et ne
+      // retombe sur `title` que si TMDB n'en fournit pas.
+      const edited = override && override !== title ? override : undefined;
+      const { job_id } = await prepareUploadPreview(localPaths, profileOverride, edited, seasonPack, {
+        tmdb_id: tmdbId ?? undefined,
+        media_type: tmdbId ? (mediaType === "movie" ? "movie" : "tv") : undefined,
+        fallback_title: title,
+      });
       const job = await pollPreviewUntilTerminal(job_id);
       if (job.state === "done") {
         setGroups(job.result ?? []);

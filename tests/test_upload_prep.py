@@ -2339,3 +2339,13 @@ def test_explicit_title_override_beats_tmdb_title(monkeypatch):
             title_override="Mon Titre", tmdb_id=1, media_type="tv",
         )
     assert proposals[0].release_name.startswith("Mon.Titre.")
+
+
+def test_fallback_title_used_when_tmdb_has_no_title(monkeypatch):
+    monkeypatch.setattr("nfogen.upload_prep._tmdb_localized_title", lambda *a, **k: None)
+    with patch("nfogen.upload_prep.extract.extract_video_metadata", return_value=_fake_metadata()):
+        proposals = preview_upload(
+            ["/media/White.Collar.S01E01.1080p.WEBDL.AAC.x264-TEAM.mkv"],
+            tmdb_id=1, media_type="tv", fallback_title="Titre Sonarr",
+        )
+    assert proposals[0].release_name.startswith("Titre.Sonarr.")

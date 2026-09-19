@@ -475,6 +475,7 @@ export function prepareUploadPreview(
   profile = "c411",
   titleOverride?: string,
   seasonPack?: SeasonPackRequest,
+  titleContext?: { tmdb_id?: number; media_type?: "movie" | "tv"; fallback_title?: string },
 ): Promise<{ job_id: string }> {
   return request<{ job_id: string }>("/gapscan/prepare-upload/preview", {
     method: "POST",
@@ -483,6 +484,9 @@ export function prepareUploadPreview(
       profile,
       title_override: titleOverride,
       season_pack: seasonPack,
+      tmdb_id: titleContext?.tmdb_id,
+      media_type: titleContext?.media_type,
+      fallback_title: titleContext?.fallback_title,
     }),
   });
 }

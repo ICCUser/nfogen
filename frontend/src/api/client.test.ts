@@ -263,6 +263,19 @@ describe("prepareUploadPreview / prepareUploadCommit", () => {
     });
   });
 
+  it("preview envoie tmdb_id/media_type/fallback_title pour le titre TMDB francais", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ job_id: "j" }));
+
+    await prepareUploadPreview(["/a.mkv"], "c411", undefined, undefined, {
+      tmdb_id: 1581, media_type: "tv", fallback_title: "White Collar",
+    });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      tmdb_id: 1581, media_type: "tv", fallback_title: "White Collar",
+    });
+  });
+
   it("commit envoie release_name/files/profile, renvoie un job_id", async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ job_id: "abc123" }));
 

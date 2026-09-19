@@ -57,6 +57,8 @@ _cancel_events: dict[str, threading.Event] = {}
 def start(
     local_paths: list[str], profile: str = "c411", title_override: Optional[str] = None,
     season_pack: Optional[upload_prep.SeasonPackRequest] = None,
+    tmdb_id: Optional[int] = None, media_type: Optional[str] = None,
+    fallback_title: Optional[str] = None,
 ) -> str:
     """Cree la tache et la lance immediatement -- la validation des chemins
     (voir upload_prep._validate_known_source_paths) reste faite DANS
@@ -70,7 +72,10 @@ def start(
         _jobs[job_id] = job
         _cancel_events[job_id] = cancel_event
 
-    args = (job_id, local_paths, profile, title_override, season_pack, cancel_event)
+    args = (
+        job_id, local_paths, profile, title_override, season_pack, cancel_event,
+        tmdb_id, media_type, fallback_title,
+    )
     thread = threading.Thread(target=_run, args=args, daemon=True)
     thread.start()
     return job_id
@@ -79,6 +84,8 @@ def start(
 def _run(
     job_id: str, local_paths: list[str], profile: str, title_override: Optional[str],
     season_pack: Optional[upload_prep.SeasonPackRequest], cancel_event: threading.Event,
+    tmdb_id: Optional[int] = None, media_type: Optional[str] = None,
+    fallback_title: Optional[str] = None,
 ) -> None:
     def on_progress(processed: int, total: int) -> None:
         with _lock:
@@ -91,6 +98,7 @@ def _run(
         proposals = upload_prep.preview_upload(
             local_paths, profile=profile, title_override=title_override, season_pack=season_pack,
             on_progress=on_progress, cancel_event=cancel_event,
+            tmdb_id=tmdb_id, media_type=media_type, fallback_title=fallback_title,
         )
         with _lock:
             job = _jobs[job_id]

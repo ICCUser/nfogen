@@ -1208,6 +1208,9 @@ class PrepareUploadPreviewRequest(BaseModel):
     profile: str = "c411"
     title_override: Optional[str] = None
     season_pack: Optional[SeasonPackRequestModel] = None
+    tmdb_id: Optional[int] = None
+    media_type: Optional[str] = None
+    fallback_title: Optional[str] = None
 
 
 @app.post("/gapscan/prepare-upload/preview", dependencies=[Depends(require_token)])
@@ -1232,6 +1235,7 @@ def gapscan_prepare_upload_preview(req: PrepareUploadPreviewRequest) -> dict[str
     job_id = _run_upload_prep(
         upload_preview_job_runner.start, req.local_paths, profile=req.profile,
         title_override=req.title_override, season_pack=season_pack,
+        tmdb_id=req.tmdb_id, media_type=req.media_type, fallback_title=req.fallback_title,
     )
     return {"job_id": job_id}
 

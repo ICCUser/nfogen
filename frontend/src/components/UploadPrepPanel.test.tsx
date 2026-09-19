@@ -156,7 +156,9 @@ it("charge et affiche l'apercu au montage avec le titre deja connu (GapResult) c
   await waitFor(() => {
     expect(screen.getByText(/Movie\.2020\.MULTI\.VFF\.1080p\.BluRay\.AC3\.x264-TEAM$/)).toBeInTheDocument();
   });
-  expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", "Movie", undefined);
+  expect(prepareUploadPreview).toHaveBeenCalledWith(
+    ["/media/movie.mkv"], "c411", undefined, undefined, { tmdb_id: undefined, media_type: undefined, fallback_title: "Movie" },
+  );
   expect(screen.getByLabelText(/Titre/i)).toHaveValue("Movie");
 });
 
@@ -571,6 +573,7 @@ it("Recalculer renvoie le titre corrige a prepareUploadPreview", async () => {
     "c411",
     "Un Gars, Une Fille",
     undefined,
+    { tmdb_id: undefined, media_type: undefined, fallback_title: "Movie" },
   );
 });
 
@@ -579,7 +582,9 @@ it("defaults to the globally active profile", async () => {
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
   await waitFor(() => {
-    expect(prepareUploadPreview).toHaveBeenCalledWith(["/media/movie.mkv"], "c411", "Movie", undefined);
+    expect(prepareUploadPreview).toHaveBeenCalledWith(
+    ["/media/movie.mkv"], "c411", undefined, undefined, { tmdb_id: undefined, media_type: undefined, fallback_title: "Movie" },
+  );
   });
 });
 
@@ -593,7 +598,9 @@ it("lets the user override the profile for this one upload without changing the 
   await user.selectOptions(select, "ygg");
 
   await waitFor(() => {
-    expect(prepareUploadPreview).toHaveBeenLastCalledWith(["/media/movie.mkv"], "ygg", "Movie", undefined);
+    expect(prepareUploadPreview).toHaveBeenLastCalledWith(
+      ["/media/movie.mkv"], "ygg", undefined, undefined, { tmdb_id: undefined, media_type: undefined, fallback_title: "Movie" },
+    );
   });
 });
 
@@ -619,8 +626,9 @@ it("transmet seasonPack a prepareUploadPreview quand fourni (bouton 'Preparer le
     expect(prepareUploadPreview).toHaveBeenCalledWith(
       ["/media/s01.mkv", "/media/s02.mkv"],
       "c411",
-      "Lucifer INTEGRALE",
+      undefined,
       seasonPack,
+      { tmdb_id: undefined, media_type: undefined, fallback_title: "Lucifer INTEGRALE" },
     );
   });
 });
