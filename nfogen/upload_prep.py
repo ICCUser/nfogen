@@ -260,17 +260,21 @@ def _validate_known_source_paths(paths: list[str]) -> None:
 
 
 def _path_within(path: str, root: str) -> bool:
-    """Vrai si `path`, une fois resolu, reste sous `root` (resolu aussi).
-    `Path.resolve()` neutralise a la fois les composants '..' ET le cas
-    ou `path` est absolu -- `Path(root) / path` ignorerait sinon
-    silencieusement `root` quand `path` est deja absolu (comportement de
-    l'operateur `/` de pathlib, voir audit securite 2026-09-09)."""
+    """Vrai si `path`, normalise, reste sous `root`.
+    On resolve d'abord la racine de confiance, puis on ancre `path` sous
+    cette racine avant verification, afin d'eviter toute echappatoire via
+    `..`, symlink ou chemin absolu hors racine."""
     try:
-        resolved = Path(path).resolve()
         resolved_root = Path(root).resolve()
-    except OSError:
+        user_path = Path(path)
+        if user_path.is_absolute():
+            resolved = user_path.resolve(strict=False)
+        else:
+            resolved = (resolved_root / user_path).resolve(strict=False)
+        resolved.relative_to(resolved_root)
+    except (OSError, ValueError):
         return False
-    return resolved == resolved_root or resolved_root in resolved.parents
+    return True
 
 
 def validate_staged_path(path: str) -> None:
