@@ -9,6 +9,7 @@ fois) -- la mise en scene cree de vrais fichiers et la generation de
 """
 from __future__ import annotations
 
+import os
 import re
 import threading
 from dataclasses import dataclass, field, replace
@@ -680,6 +681,46 @@ def commit_upload(
     )
 
 
+def _resolve_staged_path_within_root(staged_path: str) -> Path:
+    """Valide/normalise un chemin de fichier mis en scene provenant de l'API.
+
+    Le chemin doit exister et rester contenu dans `gapscan.root_folder`.
+    """
+    if not staged_path or not staged_path.strip() or "\x00" in staged_path:
+        raise ValueError("Chemin staged_path invalide.")
+
+    raw_staged = Path(staged_path.strip())
+    if not raw_staged.is_absolute():
+        raise ValueError("Chemin staged_path invalide: chemin absolu requis.")
+    if ".." in raw_staged.parts:
+        raise ValueError("Chemin staged_path invalide: segments '..' interdits.")
+
+    cfg = gapscan_config_store.load_config()
+    root_folder = cfg.get("root_folder")
+    if not root_folder:
+        raise ValueError("Configuration GapScan invalide: root_folder manquant.")
+
+    try:
+        root = Path(str(root_folder)).resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ValueError("Configuration GapScan invalide: root_folder introuvable.") from exc
+
+    try:
+        staged = raw_staged.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ValueError("Chemin staged_path introuvable.") from exc
+
+    root_real = str(root)
+    staged_real = str(staged)
+    if os.path.commonpath([root_real, staged_real]) != root_real:
+        raise ValueError("Chemin staged_path hors du dossier racine autorise.")
+
+    if not (staged.is_file() or staged.is_dir()):
+        raise ValueError("Chemin staged_path doit cibler un fichier ou un dossier.")
+
+    return staged
+
+
 def send_to_tracker(
     *,
     release_name: str,
@@ -821,7 +862,7 @@ def send_to_tracker(
     # Pour un pack (dossier), le premier episode reste representatif
     # (codec/langues identiques d'un episode a l'autre dans l'ecrasante
     # majorite des cas).
-    staged = Path(staged_path)
+    staged = _resolve_staged_path_within_root(staged_path)
     if staged.is_dir():
         per_file_metadata = extract.extract_video_dir_metadata(staged)
         first_metadata = per_file_metadata[0] if per_file_metadata else {}
