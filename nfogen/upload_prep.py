@@ -685,20 +685,32 @@ def _resolve_staged_path_within_root(staged_path: str) -> Path:
 
     Le chemin doit exister et rester contenu dans `gapscan.root_folder`.
     """
+    if not staged_path or not staged_path.strip():
+        raise ValueError("Chemin staged_path invalide.")
+
     cfg = gapscan_config_store.load_config()
     root_folder = cfg.get("root_folder")
     if not root_folder:
         raise ValueError("Configuration GapScan invalide: root_folder manquant.")
-    root = Path(str(root_folder)).resolve()
-    staged = Path(staged_path).resolve()
+
+    try:
+        root = Path(str(root_folder)).resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ValueError("Configuration GapScan invalide: root_folder introuvable.") from exc
+
+    try:
+        staged = Path(staged_path).resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ValueError("Chemin staged_path introuvable.") from exc
 
     try:
         staged.relative_to(root)
     except ValueError as exc:
         raise ValueError("Chemin staged_path hors du dossier racine autorise.") from exc
 
-    if not staged.exists():
-        raise ValueError("Chemin staged_path introuvable.")
+    if not (staged.is_file() or staged.is_dir()):
+        raise ValueError("Chemin staged_path doit cibler un fichier ou un dossier.")
+
     return staged
 
 
