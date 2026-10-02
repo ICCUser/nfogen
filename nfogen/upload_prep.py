@@ -268,9 +268,10 @@ def _path_within(path: str, root: str) -> bool:
         resolved_root = Path(root).resolve()
         user_path = Path(path)
         if user_path.is_absolute():
-            resolved = user_path.resolve(strict=False)
-        else:
-            resolved = (resolved_root / user_path).resolve(strict=False)
+            return False
+        if any(part == ".." for part in user_path.parts):
+            return False
+        resolved = (resolved_root / user_path).resolve(strict=False)
         resolved.relative_to(resolved_root)
     except (OSError, ValueError):
         return False
