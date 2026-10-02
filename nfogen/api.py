@@ -44,7 +44,7 @@ from fastapi import Cookie, Depends, FastAPI, File, Form, Header, HTTPException,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, constr, validator
+from pydantic import BaseModel, field_validator
 
 from . import accounts, engine, profile_store
 from .accounts import AccountsError
@@ -1436,7 +1436,19 @@ class PrepareUploadSendRequest(BaseModel):
     draft_id: Optional[Any] = None
     direct: bool = False
 
+    @field_validator("staged_path")
+    @classmethod
+    def validate_staged_path(cls, value: str) -> str:
+        path_str = value.strip() if isinstance(value, str) else ""
+        if not path_str:
+            raise ValueError("staged_path invalide.")
+        if "\x00" in path_str:
+            raise ValueError("staged_path invalide.")
+        if not Path(path_str).is_absolute():
+            raise ValueError("staged_path doit etre un chemin absolu.")
+        return path_str
     @validator("staged_path")
+
     def _validate_staged_path(cls, value: str) -> str:
         if "\x00" in value:
             raise ValueError("staged_path invalide.")
