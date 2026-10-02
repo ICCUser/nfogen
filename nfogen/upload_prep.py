@@ -284,6 +284,9 @@ def validate_staged_path(path: str) -> None:
     securite 2026-09-09). Les valeurs LEGITIMES de `staged_path` sont
     TOUJOURS produites par `commit_upload()` sous ce meme dossier."""
     staging_dir = gapscan_config_store.effective_staging_dir()
+    candidate = Path(path)
+    if candidate.is_absolute():
+        raise ValueError(f"Chemin absolu interdit pour staged_path : {path}")
     if not staging_dir or not _path_within(path, staging_dir):
         raise ValueError(f"Chemin hors du dossier de mise en scène : {path}")
 
