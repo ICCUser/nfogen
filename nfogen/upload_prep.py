@@ -9,6 +9,7 @@ fois) -- la mise en scene cree de vrais fichiers et la generation de
 """
 from __future__ import annotations
 
+import os
 import re
 import threading
 from dataclasses import dataclass, field, replace
@@ -685,7 +686,7 @@ def _resolve_staged_path_within_root(staged_path: str) -> Path:
 
     Le chemin doit exister et rester contenu dans `gapscan.root_folder`.
     """
-    if not staged_path or not staged_path.strip():
+    if not staged_path or not staged_path.strip() or "\x00" in staged_path:
         raise ValueError("Chemin staged_path invalide.")
 
     cfg = gapscan_config_store.load_config()
@@ -703,10 +704,10 @@ def _resolve_staged_path_within_root(staged_path: str) -> Path:
     except FileNotFoundError as exc:
         raise ValueError("Chemin staged_path introuvable.") from exc
 
-    try:
-        staged.relative_to(root)
-    except ValueError as exc:
-        raise ValueError("Chemin staged_path hors du dossier racine autorise.") from exc
+    root_real = str(root)
+    staged_real = str(staged)
+    if os.path.commonpath([root_real, staged_real]) != root_real:
+        raise ValueError("Chemin staged_path hors du dossier racine autorise.")
 
     if not (staged.is_file() or staged.is_dir()):
         raise ValueError("Chemin staged_path doit cibler un fichier ou un dossier.")
