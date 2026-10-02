@@ -689,6 +689,12 @@ def _resolve_staged_path_within_root(staged_path: str) -> Path:
     if not staged_path or not staged_path.strip() or "\x00" in staged_path:
         raise ValueError("Chemin staged_path invalide.")
 
+    raw_staged = Path(staged_path.strip())
+    if not raw_staged.is_absolute():
+        raise ValueError("Chemin staged_path invalide: chemin absolu requis.")
+    if ".." in raw_staged.parts:
+        raise ValueError("Chemin staged_path invalide: segments '..' interdits.")
+
     cfg = gapscan_config_store.load_config()
     root_folder = cfg.get("root_folder")
     if not root_folder:
@@ -700,7 +706,7 @@ def _resolve_staged_path_within_root(staged_path: str) -> Path:
         raise ValueError("Configuration GapScan invalide: root_folder introuvable.") from exc
 
     try:
-        staged = Path(staged_path).resolve(strict=True)
+        staged = raw_staged.resolve(strict=True)
     except FileNotFoundError as exc:
         raise ValueError("Chemin staged_path introuvable.") from exc
 
