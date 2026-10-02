@@ -680,6 +680,28 @@ def commit_upload(
     )
 
 
+def _resolve_staged_path_within_root(staged_path: str) -> Path:
+    """Valide/normalise un chemin de fichier mis en scene provenant de l'API.
+
+    Le chemin doit exister et rester contenu dans `gapscan.root_folder`.
+    """
+    cfg = gapscan_config_store.load_config()
+    root_folder = cfg.get("root_folder")
+    if not root_folder:
+        raise ValueError("Configuration GapScan invalide: root_folder manquant.")
+    root = Path(str(root_folder)).resolve()
+    staged = Path(staged_path).resolve()
+
+    try:
+        staged.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Chemin staged_path hors du dossier racine autorise.") from exc
+
+    if not staged.exists():
+        raise ValueError("Chemin staged_path introuvable.")
+    return staged
+
+
 def send_to_tracker(
     *,
     release_name: str,
@@ -821,7 +843,7 @@ def send_to_tracker(
     # Pour un pack (dossier), le premier episode reste representatif
     # (codec/langues identiques d'un episode a l'autre dans l'ecrasante
     # majorite des cas).
-    staged = Path(staged_path)
+    staged = _resolve_staged_path_within_root(staged_path)
     if staged.is_dir():
         per_file_metadata = extract.extract_video_dir_metadata(staged)
         first_metadata = per_file_metadata[0] if per_file_metadata else {}
