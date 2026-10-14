@@ -9,7 +9,6 @@ fois) -- la mise en scene cree de vrais fichiers et la generation de
 """
 from __future__ import annotations
 
-import os
 import re
 import threading
 from dataclasses import dataclass, field, replace
@@ -261,22 +260,17 @@ def _validate_known_source_paths(paths: list[str]) -> None:
 
 
 def _path_within(path: str, root: str) -> bool:
-    """Vrai si `path`, normalise, reste sous `root`.
-    On resolve d'abord la racine de confiance, puis on ancre `path` sous
-    cette racine avant verification, afin d'eviter toute echappatoire via
-    `..`, symlink ou chemin absolu hors racine."""
+    """Vrai si `path`, une fois resolu, reste sous `root` (resolu aussi).
+    `Path.resolve()` neutralise a la fois les composants '..' ET le cas
+    ou `path` est absolu -- `Path(root) / path` ignorerait sinon
+    silencieusement `root` quand `path` est deja absolu (comportement de
+    l'operateur `/` de pathlib, voir audit securite 2026-09-09)."""
     try:
+        resolved = Path(path).resolve()
         resolved_root = Path(root).resolve()
-        user_path = Path(path)
-        if user_path.is_absolute():
-            return False
-        if any(part == ".." for part in user_path.parts):
-            return False
-        resolved = (resolved_root / user_path).resolve(strict=False)
-        resolved.relative_to(resolved_root)
-    except (OSError, ValueError):
+    except OSError:
         return False
-    return True
+    return resolved == resolved_root or resolved_root in resolved.parents
 
 
 def validate_staged_path(path: str) -> None:
@@ -286,9 +280,6 @@ def validate_staged_path(path: str) -> None:
     securite 2026-09-09). Les valeurs LEGITIMES de `staged_path` sont
     TOUJOURS produites par `commit_upload()` sous ce meme dossier."""
     staging_dir = gapscan_config_store.effective_staging_dir()
-    candidate = Path(path)
-    if candidate.is_absolute():
-        raise ValueError(f"Chemin absolu interdit pour staged_path : {path}")
     if not staging_dir or not _path_within(path, staging_dir):
         raise ValueError(f"Chemin hors du dossier de mise en scène : {path}")
 
@@ -681,46 +672,6 @@ def commit_upload(
     )
 
 
-def _resolve_staged_path_within_root(staged_path: str) -> Path:
-    """Valide/normalise un chemin de fichier mis en scene provenant de l'API.
-
-    Le chemin doit exister et rester contenu dans `gapscan.root_folder`.
-    """
-    if not staged_path or not staged_path.strip() or "\x00" in staged_path:
-        raise ValueError("Chemin staged_path invalide.")
-
-    raw_staged = Path(staged_path.strip())
-    if not raw_staged.is_absolute():
-        raise ValueError("Chemin staged_path invalide: chemin absolu requis.")
-    if ".." in raw_staged.parts:
-        raise ValueError("Chemin staged_path invalide: segments '..' interdits.")
-
-    cfg = gapscan_config_store.load_config()
-    root_folder = cfg.get("root_folder")
-    if not root_folder:
-        raise ValueError("Configuration GapScan invalide: root_folder manquant.")
-
-    try:
-        root = Path(str(root_folder)).resolve(strict=True)
-    except FileNotFoundError as exc:
-        raise ValueError("Configuration GapScan invalide: root_folder introuvable.") from exc
-
-    try:
-        staged = raw_staged.resolve(strict=True)
-    except FileNotFoundError as exc:
-        raise ValueError("Chemin staged_path introuvable.") from exc
-
-    root_real = str(root)
-    staged_real = str(staged)
-    if os.path.commonpath([root_real, staged_real]) != root_real:
-        raise ValueError("Chemin staged_path hors du dossier racine autorise.")
-
-    if not (staged.is_file() or staged.is_dir()):
-        raise ValueError("Chemin staged_path doit cibler un fichier ou un dossier.")
-
-    return staged
-
-
 def send_to_tracker(
     *,
     release_name: str,
@@ -862,7 +813,7 @@ def send_to_tracker(
     # Pour un pack (dossier), le premier episode reste representatif
     # (codec/langues identiques d'un episode a l'autre dans l'ecrasante
     # majorite des cas).
-    staged = _resolve_staged_path_within_root(staged_path)
+    staged = Path(staged_path)
     if staged.is_dir():
         per_file_metadata = extract.extract_video_dir_metadata(staged)
         first_metadata = per_file_metadata[0] if per_file_metadata else {}
