@@ -8,7 +8,7 @@ import {
 import { ApiError } from "../api/types";
 import type { NameProposal } from "../api/types";
 import { extractGeneralTitles, extractVideoData } from "../lib/clientMediaInfo";
-import { useProfile } from "../ProfileContext";
+import { useProfile } from "../useProfile";
 import Button from "../components/Button";
 
 const SAMPLE_PLACEHOLDER = `{

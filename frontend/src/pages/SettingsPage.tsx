@@ -5,7 +5,7 @@ import { getAuthStatus, getBaseUrl, login, logout, setBaseUrl } from "../api/set
 import { ApiError } from "../api/types";
 import type { GapscanConfig, GapscanConfigWrite } from "../api/types";
 import { KeyValueEditor } from "../components/ListEditor";
-import { useProfile } from "../ProfileContext";
+import { useProfile } from "../useProfile";
 import Button from "../components/Button";
 import ConfirmButton from "../components/ConfirmButton";
 

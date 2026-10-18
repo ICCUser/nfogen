@@ -7,7 +7,8 @@ import ProfilesListPage from "./pages/ProfilesListPage";
 import ProfileEditorPage from "./pages/ProfileEditorPage";
 import SeedQueuePage from "./pages/SeedQueuePage";
 import SettingsPage from "./pages/SettingsPage";
-import { ProfileProvider, useProfile } from "./ProfileContext";
+import { ProfileProvider } from "./ProfileContext";
+import { useProfile } from "./useProfile";
 
 /** Selecteur unique du profil actif, dans l'entete -- remplace un
  * selecteur par page (retour utilisateur, 2026-08-29 : "je charge un

@@ -8,7 +8,8 @@ vi.mock("./api/client", () => ({
 }));
 
 import { listAllProfiles, readManagedProfile } from "./api/client";
-import { ProfileProvider, useProfile } from "./ProfileContext";
+import { ProfileProvider } from "./ProfileContext";
+import { useProfile } from "./useProfile";
 
 beforeEach(() => {
   localStorage.clear();

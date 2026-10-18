@@ -38,7 +38,7 @@ import type {
   SeasonPackSuggestion,
   SeedMatchJob,
 } from "../api/types";
-import { useProfile } from "../ProfileContext";
+import { useProfile } from "../useProfile";
 import { formatBytes } from "../format";
 import Button from "../components/Button";
 

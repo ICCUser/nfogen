@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import GeneratePage from "./GeneratePage";
-import { ProfileProvider, useProfile } from "../ProfileContext";
+import { ProfileProvider } from "../ProfileContext";
+import { useProfile } from "../useProfile";
 
 vi.mock("../api/client", () => ({
   listAllProfiles: vi.fn(),

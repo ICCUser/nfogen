@@ -1,18 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { listAllProfiles, readManagedProfile } from "./api/client";
+import { ProfileContext } from "./useProfile";
 
 const STORAGE_KEY = "nfogen.activeProfile";
-
-interface ProfileContextValue {
-  profile: string;
-  setProfile: (profile: string) => void;
-  profiles: Record<string, string[]>;
-  /** Nom lisible du profil actif (rules.json -> tracker.display_name),
-   * repli sur le nom du profil lui-meme si non declare. */
-  displayName: string;
-}
-
-const ProfileContext = createContext<ProfileContextValue | null>(null);
 
 /** Etat du "profil actif" partage par toute l'application (entete de
  * App.tsx, page GapScan, page Generer) : "je charge un profil, il
@@ -58,10 +48,4 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       {children}
     </ProfileContext.Provider>
   );
-}
-
-export function useProfile(): ProfileContextValue {
-  const ctx = useContext(ProfileContext);
-  if (!ctx) throw new Error("useProfile doit être utilisé à l'intérieur de <ProfileProvider>.");
-  return ctx;
 }

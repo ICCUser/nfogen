@@ -25,7 +25,7 @@ import type {
   UploadGroupProposal,
   UploadPreviewJob,
 } from "../api/types";
-import { useProfile } from "../ProfileContext";
+import { useProfile } from "../useProfile";
 import Button from "./Button";
 
 const STEP_LABELS: Record<string, string> = {
@@ -171,8 +171,12 @@ export default function UploadPrepPanel({
   }, [localPaths]);
 
   useEffect(() => {
+    // Copie de l'objet DANS l'effet (react-hooks/exhaustive-deps) : sans
+    // effet de bord ici, `pollRefs.current` n'etant jamais reassigne (seules
+    // ses cles changent) -- c'est le meme objet au demontage.
+    const polls = pollRefs.current;
     return () => {
-      Object.values(pollRefs.current).forEach((id) => window.clearInterval(id));
+      Object.values(polls).forEach((id) => window.clearInterval(id));
     };
   }, []);
 
