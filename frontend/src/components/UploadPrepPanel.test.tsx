@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -56,6 +56,7 @@ function renderPanel(props: {
   localPaths: string[];
   title: string;
   onClose: () => void;
+  onPendingChange?: (pending: boolean) => void;
   mediaType?: "movie" | "series";
   radarrMovieId?: number | null;
   sonarrSeriesId?: number | null;
@@ -282,7 +283,7 @@ it("affiche le bouton Envoyer a C411 seulement apres confirmation, et affiche le
   );
 });
 
-it("Uploader directement demande confirmation, appelle sendToTracker avec direct:true, affiche 'Uploade directement'", async () => {
+it("Uploader directement demande une confirmation sur place, puis appelle sendToTracker avec direct:true", async () => {
   /* Retour d'un membre de l'equipe C411, 2026-09-07 : vrai endpoint
    * d'upload direct (POST /api/torrents), distinct des brouillons. */
   const user = userEvent.setup();
@@ -299,8 +300,6 @@ it("Uploader directement demande confirmation, appelle sendToTracker avec direct
     draft_id: 777, draft_url: "https://c411.org/torrents/abc123",
     duplicate_warning: null, presentation_warning: null, seed_warning: null,
   });
-  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-
   renderPanel({
     localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn(),
     mediaType: "movie", radarrMovieId: 42, sonarrSeriesId: null, tmdbId: 603, tvdbId: null,
@@ -310,8 +309,10 @@ it("Uploader directement demande confirmation, appelle sendToTracker avec direct
   await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(await screen.findByRole("button", { name: /Uploader directement/i }));
+  // Rien ne part avant la confirmation explicite.
+  expect(sendToTracker).not.toHaveBeenCalled();
+  await user.click(await screen.findByRole("button", { name: "Oui, envoyer en modération" }));
 
-  expect(confirmSpy).toHaveBeenCalled();
   expect(sendToTracker).toHaveBeenCalledWith(expect.objectContaining({ direct: true }));
   expect(await screen.findByText(/^Uploadé directement/)).toBeInTheDocument();
 });
@@ -321,7 +322,6 @@ it("Uploader directement n'appelle rien si l'utilisateur annule la confirmation"
   mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
-  vi.spyOn(window, "confirm").mockReturnValue(false);
 
   renderPanel({
     localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn(),
@@ -332,13 +332,17 @@ it("Uploader directement n'appelle rien si l'utilisateur annule la confirmation"
   await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(await screen.findByRole("button", { name: /Uploader directement/i }));
+  const question = screen.getByRole("group", { name: /part réellement en modération/ });
+  // Le focus est sur "Annuler" (option sans risque).
+  expect(within(question).getByRole("button", { name: "Annuler" })).toHaveFocus();
+  await user.click(within(question).getByRole("button", { name: "Annuler" }));
 
   expect(sendToTracker).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: /Uploader directement/i })).toHaveFocus();
 });
 
 it("Uploader directement lance d'abord une verification d'integrite avant sendToTracker", async () => {
   const user = userEvent.setup();
-  vi.spyOn(window, "confirm").mockReturnValue(true);
   mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
@@ -358,6 +362,7 @@ it("Uploader directement lance d'abord une verification d'integrite avant sendTo
   await waitFor(() => screen.getByText(/BluRay\.AC3\.x264-TEAM$/));
 
   await user.click(screen.getByRole("button", { name: "Uploader directement" }));
+  await user.click(await screen.findByRole("button", { name: "Oui, envoyer en modération" }));
 
   await waitFor(() => {
     expect(verifyIntegrity).toHaveBeenCalledWith(DONE_JOB.result.staged_path);
@@ -374,7 +379,6 @@ it("explique la verification approfondie (decodage complet, uniquement upload di
   // n'expliquait ni QUOI (decodage complet) ni POURQUOI (uniquement pour
   // un envoi direct, jamais un brouillon).
   const user = userEvent.setup();
-  vi.spyOn(window, "confirm").mockReturnValue(true);
   mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
@@ -399,6 +403,7 @@ it("explique la verification approfondie (decodage complet, uniquement upload di
   await waitFor(() => screen.getByText(/BluRay\.AC3\.x264-TEAM$/));
 
   await user.click(screen.getByRole("button", { name: "Uploader directement" }));
+  await user.click(await screen.findByRole("button", { name: "Oui, envoyer en modération" }));
 
   expect(
     await screen.findByText(/décodage complet du fichier/i),
@@ -418,7 +423,6 @@ it("explique la verification approfondie (decodage complet, uniquement upload di
 
 it("bloque l'upload direct si la verification d'integrite echoue, n'appelle jamais sendToTracker", async () => {
   const user = userEvent.setup();
-  vi.spyOn(window, "confirm").mockReturnValue(true);
   mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
@@ -434,6 +438,7 @@ it("bloque l'upload direct si la verification d'integrite echoue, n'appelle jama
   await waitFor(() => screen.getByText(/BluRay\.AC3\.x264-TEAM$/));
 
   await user.click(screen.getByRole("button", { name: "Uploader directement" }));
+  await user.click(await screen.findByRole("button", { name: "Oui, envoyer en modération" }));
 
   expect(await screen.findByText(/Fichier probablement tronqué/)).toBeInTheDocument();
   expect(sendToTracker).not.toHaveBeenCalled();
@@ -477,7 +482,6 @@ it("affiche l'avertissement d'ajout qBittorrent quand present (upload direct)", 
     duplicate_warning: null, presentation_warning: null,
     seed_warning: "Torrent envoyé à C411, mais pas ajouté à qBittorrent : non configuré (voir Réglages).",
   });
-  vi.spyOn(window, "confirm").mockReturnValue(true);
 
   renderPanel({
     localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn(),
@@ -488,6 +492,7 @@ it("affiche l'avertissement d'ajout qBittorrent quand present (upload direct)", 
   await waitFor(() => screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(screen.getByRole("button", { name: /Confirmer/i }));
   await user.click(await screen.findByRole("button", { name: /Uploader directement/i }));
+  await user.click(await screen.findByRole("button", { name: "Oui, envoyer en modération" }));
 
   expect(await screen.findByText(/pas ajouté à qBittorrent/i)).toBeInTheDocument();
 });
@@ -649,14 +654,12 @@ it("s'affiche comme une fenetre modale (role dialog)", async () => {
 it("Fermer appelle onClose directement quand rien n'est confirme-mais-pas-envoye", async () => {
   const user = userEvent.setup();
   mockPreview(ONE_GROUP);
-  const confirmSpy = vi.spyOn(window, "confirm");
   const onClose = vi.fn();
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
 
   await user.click(await screen.findByRole("button", { name: "Fermer" }));
 
   expect(onClose).toHaveBeenCalled();
-  expect(confirmSpy).not.toHaveBeenCalled();
 });
 
 it("Echap appelle onClose directement quand rien n'est confirme-mais-pas-envoye", async () => {
@@ -698,26 +701,27 @@ it("un clic A L'INTERIEUR de la boite de dialogue n'appelle jamais onClose", asy
   expect(onClose).not.toHaveBeenCalled();
 });
 
-it("Fermer demande confirmation quand un groupe est confirme mais pas encore envoye, respecte l'annulation", async () => {
+it("Fermer ne demande jamais confirmation, meme avec un groupe pret non envoye -- signale l'envoi en attente", async () => {
+  /* Audit front 2026-10-14, lot 4 : fermer n'est pas destructif. Plus de
+   * window.confirm() : le panneau signale l'envoi en attente
+   * (onPendingChange) et l'appelant le garde reprenable (LibraryPage). */
   const user = userEvent.setup();
   mockPreview(ONE_GROUP);
   vi.mocked(prepareUploadCommit).mockResolvedValue({ job_id: "job-1" });
   vi.mocked(commitJobStatus).mockResolvedValue(DONE_JOB);
-  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  const confirmSpy = vi.spyOn(window, "confirm");
   const onClose = vi.fn();
-  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose });
+  const onPendingChange = vi.fn();
+  renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose, onPendingChange });
 
   await user.click(await screen.findByRole("button", { name: "Confirmer" }));
   await waitFor(() => screen.getByText(/BluRay\.AC3\.x264-TEAM$/));
+  await waitFor(() => expect(onPendingChange).toHaveBeenLastCalledWith(true));
 
   await user.click(screen.getByRole("button", { name: "Fermer" }));
 
-  expect(confirmSpy).toHaveBeenCalled();
-  expect(onClose).not.toHaveBeenCalled(); // annule -> le panneau reste ouvert
-
-  confirmSpy.mockReturnValue(true);
-  await user.click(screen.getByRole("button", { name: "Fermer" }));
-  expect(onClose).toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(confirmSpy).not.toHaveBeenCalled();
 });
 
 it("affiche un message explicatif et la progression pendant l'analyse, jusqu'a resolution", async () => {

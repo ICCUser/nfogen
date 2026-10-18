@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import ConfirmButton from "./ConfirmButton";
 import Drawer from "./Drawer";
 import {
   cancelCommitJob,
@@ -59,6 +60,7 @@ export default function UploadPrepPanel({
   open = true,
   onClose,
   onExited,
+  onPendingChange,
 }: {
   localPaths: string[];
   title: string;
@@ -78,6 +80,10 @@ export default function UploadPrepPanel({
   open?: boolean;
   onClose: () => void;
   onExited?: () => void;
+  /** Signale si un groupe est pret (mis en scene) mais pas encore envoye --
+   * l'appelant garde alors ce panneau en vie apres fermeture, pour pouvoir
+   * le reprendre tel quel (voir LibraryPage). */
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const { profile: globalProfile, profiles } = useProfile();
   const [profile, setProfile] = useState(globalProfile);
@@ -261,35 +267,24 @@ export default function UploadPrepPanel({
   }
 
   // Un groupe deja "Confirmer" (fichier/torrent/nfo ecrits) mais pas
-  // encore envoye (brouillon ou direct) -- fermer sans avertir perdrait
-  // l'acces au bouton d'envoi (rien n'est supprime cote serveur, voir
-  // handleRequestClose, mais il faudrait rouvrir le panneau pour le
-  // retrouver).
+  // encore envoye (brouillon ou direct). Fermer ne demande plus de
+  // confirmation (audit front 2026-10-14, lot 4 : fermer n'est pas
+  // destructif) -- l'appelant est prevenu et garde ce panneau en vie,
+  // reprenable tel quel, au lieu de perdre l'acces au bouton d'envoi.
   const hasUnsentProgress = Boolean(groups?.some((_, index) => commitResults[index] && !sendResults[index]));
 
-  function handleRequestClose() {
-    if (
-      hasUnsentProgress &&
-      !confirm(
-        "Un groupe est prêt (mise en scène + .torrent faits) mais pas encore envoyé — " +
-          "fermer maintenant ? Rien n'est perdu côté serveur, mais il faudra rouvrir ce " +
-          "panneau pour créer le brouillon ou uploader.",
-      )
-    ) {
-      return;
-    }
-    onClose();
-  }
+  useEffect(() => {
+    onPendingChange?.(hasUnsentProgress);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasUnsentProgress]);
 
   async function handleSend(index: number, direct: boolean) {
     const commit = commitResults[index];
     if (!commit) return;
     // Upload direct : part reellement en moderation (POST /api/torrents,
-    // retour d'un membre de l'equipe C411, 2026-09-07) -- une derniere
-    // confirmation, contrairement au brouillon qui reste toujours privé.
-    if (direct && !confirm("Uploader directement sur C411 (hors brouillon) ? Ça part réellement en modération.")) {
-      return;
-    }
+    // retour d'un membre de l'equipe C411, 2026-09-07) -- confirme EN AMONT
+    // par le ConfirmButton "Uploader directement", contrairement au
+    // brouillon qui reste toujours privé.
     setSending({ index, direct });
     setSendErrors((prev) => ({ ...prev, [index]: "" }));
     setIntegrityErrors((prev) => ({ ...prev, [index]: "" }));
@@ -351,10 +346,10 @@ export default function UploadPrepPanel({
     // Tiroir lateral droit (retour utilisateur, 2026-09-12 : l'overlay
     // centre coupait la lecture du contenu en dessous) -- Drawer fournit
     // deja le fond assombri, le clic-dehors, la touche Echap et le bouton
-    // de fermeture (X), tous relies au meme garde-fou handleRequestClose.
+    // de fermeture (X), tous relies a onClose.
     <Drawer
       open={open}
-      onClose={handleRequestClose}
+      onClose={onClose}
       onExited={onExited}
       label={`Préparer l'upload — ${title}`}
     >
@@ -397,7 +392,7 @@ export default function UploadPrepPanel({
         </Button>
       </div>
 
-      {loadError && <p className="text-sm text-crit">{loadError}</p>}
+      {loadError && <p role="alert" className="text-sm text-crit">{loadError}</p>}
       {!groups && !loadError && (
         <div className="space-y-1 text-sm text-ink-faint">
           <p>
@@ -456,7 +451,14 @@ export default function UploadPrepPanel({
           )}
           {commitJobs[index] && (
             <div className="space-y-1">
-              <div className="h-2 w-full overflow-hidden rounded bg-surface-2">
+              <div
+                role="progressbar"
+                aria-label="Mise en scène et génération du torrent"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(commitJobs[index].percent)}
+                className="h-2 w-full overflow-hidden rounded bg-surface-2"
+              >
                 <div
                   className="h-full bg-accent transition-all"
                   style={{ width: `${commitJobs[index].percent}%` }}
@@ -473,9 +475,9 @@ export default function UploadPrepPanel({
               </div>
             </div>
           )}
-          {commitErrors[index] && <p className="text-xs text-crit">{commitErrors[index]}</p>}
+          {commitErrors[index] && <p role="alert" className="text-xs text-crit">{commitErrors[index]}</p>}
           {commitResults[index] && (
-            <p className="text-xs text-good">
+            <p role="status" className="text-xs text-good">
               Mis en scène : <span className="font-mono">{commitResults[index].staged_path}</span>
               <br />
               Torrent : <span className="font-mono">{commitResults[index].torrent_path}</span>
@@ -493,15 +495,16 @@ export default function UploadPrepPanel({
               >
                 {sending?.index === index && !sending.direct ? "Envoi…" : "Créer un brouillon"}
               </Button>
-              <Button
-                variant="secondary"
+              <ConfirmButton
                 size="sm"
-                onClick={() => handleSend(index, true)}
+                question="Hors brouillon : ça part réellement en modération."
+                confirmLabel="Oui, envoyer en modération"
+                onConfirm={() => handleSend(index, true)}
                 disabled={sending !== null}
                 title="Upload direct (POST /api/torrents) -- part réellement en modération, contrairement au brouillon."
               >
                 {sending?.index === index && sending.direct ? "Envoi…" : "Uploader directement"}
-              </Button>
+              </ConfirmButton>
             </div>
           )}
           {integrityJobs[index] && (
@@ -518,7 +521,14 @@ export default function UploadPrepPanel({
                 troncature) — peut prendre plusieurs dizaines de minutes sur un gros pack. Uniquement pour un
                 envoi direct : "Créer un brouillon" saute cette étape.
               </p>
-              <div className="h-2 w-full overflow-hidden rounded bg-surface-2">
+              <div
+                role="progressbar"
+                aria-label="Vérification approfondie du fichier"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(integrityJobs[index].percent)}
+                className="h-2 w-full overflow-hidden rounded bg-surface-2"
+              >
                 <div
                   className="h-full bg-accent transition-all"
                   style={{ width: `${integrityJobs[index].percent}%` }}
@@ -532,10 +542,10 @@ export default function UploadPrepPanel({
               </div>
             </div>
           )}
-          {integrityErrors[index] && <p className="text-xs text-crit">⚠ {integrityErrors[index]}</p>}
-          {sendErrors[index] && <p className="text-xs text-crit">{sendErrors[index]}</p>}
+          {integrityErrors[index] && <p role="alert" className="text-xs text-crit">⚠ {integrityErrors[index]}</p>}
+          {sendErrors[index] && <p role="alert" className="text-xs text-crit">{sendErrors[index]}</p>}
           {sendResults[index] && (
-            <div className="space-y-1 text-xs">
+            <div role="status" className="space-y-1 text-xs">
               <p className="text-good">
                 {sentDirect[index] ? "Uploadé directement" : "Brouillon créé"} :{" "}
                 <a

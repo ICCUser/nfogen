@@ -121,7 +121,7 @@ export default function SeedQueuePage() {
       </div>
 
       {loadError && (
-        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">{loadError}</div>
+        <div role="alert" className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">{loadError}</div>
       )}
 
       {entries === null && !loadError && <p className="text-sm text-ink-faint">Chargement…</p>}
@@ -167,7 +167,7 @@ export default function SeedQueuePage() {
         </p>
 
         {seedStatusError && (
-          <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
+          <div role="alert" className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
             {seedStatusError}
           </div>
         )}

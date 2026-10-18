@@ -27,7 +27,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="mx-auto max-w-lg space-y-3 rounded-md border border-crit bg-crit-bg p-4 text-sm text-crit">
+        <div role="alert" className="mx-auto max-w-lg space-y-3 rounded-md border border-crit bg-crit-bg p-4 text-sm text-crit">
           <p className="font-medium">Une erreur inattendue est survenue.</p>
           <p className="break-words font-mono text-crit">{this.state.error.message}</p>
           <Button

@@ -63,13 +63,13 @@ export default function PreviewPanel({ profile, category }: Props) {
       </Button>
 
       {error && (
-        <div className="rounded-md border border-crit bg-crit-bg px-3 py-2 text-sm text-crit">
+        <div role="alert" className="rounded-md border border-crit bg-crit-bg px-3 py-2 text-sm text-crit">
           {error}
         </div>
       )}
 
       {warnings.length > 0 && (
-        <div className="rounded-md border border-warn bg-warn-bg px-3 py-2 text-sm text-warn">
+        <div role="status" className="rounded-md border border-warn bg-warn-bg px-3 py-2 text-sm text-warn">
           <p className="font-medium">Avertissements :</p>
           <ul className="list-disc pl-5">
             {warnings.map((w, i) => (

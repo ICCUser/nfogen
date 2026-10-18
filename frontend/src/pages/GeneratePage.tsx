@@ -275,19 +275,19 @@ export default function GeneratePage() {
       </div>
 
       {extractionNotice && (
-        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
+        <div role="status" className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           {extractionNotice}
         </div>
       )}
 
       {proposalUnavailable && (
-        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
+        <div role="alert" className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           Proposition de nom indisponible : {proposalUnavailable} (vérifiez le token API dans Réglages).
         </div>
       )}
 
       {proposal && proposal.name === null && (
-        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
+        <div role="status" className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           <p className="font-medium">Proposition de nom impossible :</p>
           <ul className="list-disc pl-5">
             {proposal.warnings.map((w, i) => (
@@ -298,7 +298,7 @@ export default function GeneratePage() {
       )}
 
       {proposal && proposal.name !== null && proposal.warnings.length > 0 && (
-        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
+        <div role="status" className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           <p className="font-medium">
             release_name proposé : <code className="font-mono">{proposal.name}</code> — à vérifier avant de générer :
           </p>
@@ -328,13 +328,13 @@ export default function GeneratePage() {
       </div>
 
       {error && (
-        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
+        <div role="alert" className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           {error}
         </div>
       )}
 
       {warnings.length > 0 && (
-        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
+        <div role="status" className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           <p className="font-medium">Avertissements :</p>
           <ul className="list-disc pl-5">
             {warnings.map((w, i) => (

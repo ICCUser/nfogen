@@ -77,7 +77,14 @@ export default function ActiveTransfersTray() {
               Annuler
             </Button>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded bg-surface-2">
+          <div
+            role="progressbar"
+            aria-label={`Transfert ${job.release_name}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(job.percent)}
+            className="h-1.5 w-full overflow-hidden rounded bg-surface-2"
+          >
             <div className="h-full bg-accent transition-all" style={{ width: `${job.percent}%` }} />
           </div>
           <p className="text-xs text-ink-dim">

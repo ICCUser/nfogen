@@ -97,13 +97,13 @@ export default function ProfilesListPage() {
       </div>
 
       {error && (
-        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
+        <div role="alert" className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           {error} — vérifiez les <Link to="/settings" className="underline">réglages de connexion</Link>.
         </div>
       )}
 
       {managedNotice && !error && (
-        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
+        <div role="status" className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           {managedNotice} — vérifiez le token dans les{" "}
           <Link to="/settings" className="underline">réglages</Link>. Les profils livrés restent visibles.
         </div>

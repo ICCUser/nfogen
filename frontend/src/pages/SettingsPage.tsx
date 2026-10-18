@@ -6,6 +6,7 @@ import type { GapscanConfig, GapscanConfigWrite } from "../api/types";
 import { KeyValueEditor } from "../components/ListEditor";
 import { useProfile } from "../ProfileContext";
 import Button from "../components/Button";
+import ConfirmButton from "../components/ConfirmButton";
 
 export default function SettingsPage() {
   const [baseUrl, setBaseUrlState] = useState(getBaseUrl());
@@ -87,7 +88,6 @@ export default function SettingsPage() {
       setQbittorrentPassword("");
       setTmdbApiKey("");
       setGlobalConfigSaved(true);
-      setTimeout(() => setGlobalConfigSaved(false), 2000);
     } catch (e) {
       setGlobalConfigError(e instanceof ApiError ? e.message : "Enregistrement impossible.");
     } finally {
@@ -145,7 +145,6 @@ export default function SettingsPage() {
   function saveBaseUrl() {
     setBaseUrl(baseUrl.trim());
     setBaseUrlSaved(true);
-    setTimeout(() => setBaseUrlSaved(false), 1500);
     refreshAuthStatus();
   }
 
@@ -206,7 +205,8 @@ export default function SettingsPage() {
   }
 
   async function handleDeleteAccount(name: string) {
-    if (!confirm(`Supprimer le compte '${name}' ? Ses sessions actives seront immediatement revoquees.`)) return;
+    // Confirme en amont par le ConfirmButton "Supprimer" de la ligne (audit
+    // front 2026-10-14, lot 4 : plus de window.confirm()).
     setAccountsError(null);
     try {
       await deleteAccount(name);
@@ -236,7 +236,10 @@ export default function SettingsPage() {
           <input
             className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink font-mono"
             value={baseUrl}
-            onChange={(e) => setBaseUrlState(e.target.value)}
+            onChange={(e) => {
+              setBaseUrlState(e.target.value);
+              setBaseUrlSaved(false);
+            }}
             placeholder="(même origine, vide par défaut)"
           />
         </label>
@@ -246,7 +249,9 @@ export default function SettingsPage() {
         >
           Enregistrer
         </Button>
-        {baseUrlSaved && <span className="ml-3 text-sm text-good">Enregistré.</span>}
+        <span role="status" className="ml-3 text-sm text-good">
+          {baseUrlSaved ? "Enregistré." : ""}
+        </span>
       </div>
 
       <div className="max-w-md space-y-3 border-t border-line pt-4">
@@ -275,7 +280,7 @@ export default function SettingsPage() {
         )}
 
         {!authenticated && accountsBootstrapAvailable && (
-          <div className="space-y-2 rounded-md border border-warn bg-warn-bg p-3">
+          <div role="status" className="space-y-2 rounded-md border border-warn bg-warn-bg p-3">
             <p className="text-sm text-warn">
               Aucun compte administrateur n'existe encore : créez le premier (vous serez
               automatiquement connecté).
@@ -382,13 +387,15 @@ export default function SettingsPage() {
               {accountNames.map((name) => (
                 <li key={name} className="flex items-center justify-between px-3 py-2 text-sm">
                   <span className="font-mono text-ink">{name}</span>
-                  <Button
+                  <ConfirmButton
                     variant="link-danger"
-                    onClick={() => handleDeleteAccount(name)}
-                    className="text-sm"
+                    size="sm"
+                    question={`Supprimer « ${name} » ? Ses sessions actives sont révoquées immédiatement.`}
+                    confirmLabel="Oui, supprimer"
+                    onConfirm={() => handleDeleteAccount(name)}
                   >
                     Supprimer
-                  </Button>
+                  </ConfirmButton>
                 </li>
               ))}
             </ul>
@@ -434,7 +441,9 @@ export default function SettingsPage() {
             <span className="text-ink-faint">{showGlobalConfigForm ? "▲" : "▼"}</span>
           </button>
           {showGlobalConfigForm && (
-            <div className="space-y-3 border-t border-line p-4">
+            // Toute modification d'un champ efface "Enregistré." (l'evenement
+            // change des champs remonte jusqu'ici).
+            <div className="space-y-3 border-t border-line p-4" onChange={() => setGlobalConfigSaved(false)}>
               <p className="text-xs text-ink-faint">
                 Commune à tous les profils — indépendante du profil de tracker actif. Enregistré
                 côté serveur ({" "}
@@ -568,7 +577,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              {globalConfigError && <p className="text-sm text-crit">{globalConfigError}</p>}
+              {globalConfigError && <p role="alert" className="text-sm text-crit">{globalConfigError}</p>}
 
               <div className="flex items-center gap-3">
                 <Button
@@ -578,7 +587,13 @@ export default function SettingsPage() {
                 >
                   {globalConfigSaving ? "Enregistrement…" : "Enregistrer"}
                 </Button>
-                {globalConfigSaved && <span className="text-sm text-good">Enregistré.</span>}
+                {/* Region live toujours presente (annoncee par les lecteurs d'ecran
+                    quand son texte change) ; le message reste jusqu'a la
+                    prochaine modification -- plus de disparition apres 2 s
+                    (audit front 2026-10-14, lot 4). */}
+                <span role="status" className="text-sm text-good">
+                  {globalConfigSaved ? "Enregistré." : ""}
+                </span>
               </div>
             </div>
           )}

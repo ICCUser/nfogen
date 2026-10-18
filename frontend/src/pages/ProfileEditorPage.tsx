@@ -13,6 +13,7 @@ import CategoryRulesForm from "../components/rules/CategoryRulesForm";
 import TemplateEditor from "../components/TemplateEditor";
 import PreviewPanel from "../components/PreviewPanel";
 import Button from "../components/Button";
+import ConfirmButton from "../components/ConfirmButton";
 
 interface Props {
   mode: "create" | "edit";
@@ -70,13 +71,8 @@ export default function ProfileEditorPage({ mode }: Props) {
 
   async function remove() {
     if (!params.name) return;
-    if (
-      !confirm(
-        `Supprimer la version personnalisée du profil '${params.name}' ? ` +
-          `Si ce nom correspond à un profil livré avec nfogen (ex. c411), sa version d'origine sera restaurée.`,
-      )
-    )
-      return;
+    // Confirme en amont par le ConfirmButton "Supprimer" (audit front
+    // 2026-10-14, lot 4 : plus de window.confirm()).
     try {
       await deleteManagedProfile(params.name);
       navigate("/profils");
@@ -143,12 +139,14 @@ export default function ProfileEditorPage({ mode }: Props) {
               >
                 Exporter .zip
               </Button>
-              <Button
+              <ConfirmButton
                 variant="danger-secondary"
-                onClick={remove}
+                question="Supprimer la version personnalisée ? Un profil livré avec nfogen (ex. c411) retrouve sa version d'origine."
+                confirmLabel="Oui, supprimer"
+                onConfirm={remove}
               >
                 Supprimer
-              </Button>
+              </ConfirmButton>
             </>
           )}
           <Button
@@ -179,12 +177,12 @@ export default function ProfileEditorPage({ mode }: Props) {
       </div>
 
       {error && (
-        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
+        <div role="alert" className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           {error}
         </div>
       )}
       {notice && (
-        <div className="rounded-md border border-good bg-good-bg px-4 py-3 text-sm text-good">
+        <div role="status" className="rounded-md border border-good bg-good-bg px-4 py-3 text-sm text-good">
           {notice}
         </div>
       )}

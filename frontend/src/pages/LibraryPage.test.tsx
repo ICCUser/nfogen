@@ -23,6 +23,7 @@ vi.mock("../api/client", () => ({
 vi.mock("../components/UploadPrepPanel", () => ({
   default: (props: {
     title: string; onClose: () => void; mediaType?: string; tmdbId?: number | null;
+    open?: boolean; onExited?: () => void; onPendingChange?: (pending: boolean) => void;
     localPaths?: string[];
     seasonPack?: { title: string; team: string; is_full_series: boolean; seasons: { season_number: number; local_paths: string[] }[] };
   }) => (
@@ -37,7 +38,18 @@ vi.mock("../components/UploadPrepPanel", () => ({
           {props.seasonPack.seasons.map((s) => s.season_number).join("-")}
         </p>
       )}
-      <button onClick={props.onClose}>Fermer le panneau</button>
+      <p>open={String(props.open)}</p>
+      <button onClick={() => props.onPendingChange?.(true)}>Simuler un groupe prêt</button>
+      {/* Le vrai tiroir appelle onExited a la fin de son animation de
+          sortie -- simule ici immediatement apres la fermeture. */}
+      <button
+        onClick={() => {
+          props.onClose();
+          props.onExited?.();
+        }}
+      >
+        Fermer le panneau
+      </button>
     </div>
   ),
 }));
@@ -413,6 +425,69 @@ describe("LibraryPage", () => {
 
     expect(await screen.findByText("media_type=movie")).toBeInTheDocument();
     expect(await screen.findByText("tmdb_id=603")).toBeInTheDocument();
+  });
+
+  it("un upload pret mais non envoye survit a la fermeture : bandeau Reprendre / Abandonner (lot 4)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(libraryResults).mockResolvedValue({
+      items: [{ ...MATRIX_ITEM, local_paths: ["/media/matrix.mkv"], path_resolved: true }],
+      total: 1, season_packs: [],
+    });
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Préparer l'upload/i }));
+    await user.click(await screen.findByRole("button", { name: "Simuler un groupe prêt" }));
+    await user.click(screen.getByRole("button", { name: "Fermer le panneau" }));
+
+    // Panneau toujours monte (etat intact) mais ferme, bandeau visible.
+    expect(screen.getByText("open=false")).toBeInTheDocument();
+    expect(screen.getByText(/« Matrix » est prêt/).closest("[role=status]")).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Reprendre" }));
+    expect(screen.getByText("open=true")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reprendre" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Fermer le panneau" }));
+    await user.click(screen.getByRole("button", { name: "Abandonner" }));
+    expect(screen.queryByText("Panneau upload pour Matrix")).not.toBeInTheDocument();
+  });
+
+  it("sans envoi en attente, fermer demonte le panneau (aucun bandeau)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(libraryResults).mockResolvedValue({
+      items: [{ ...MATRIX_ITEM, local_paths: ["/media/matrix.mkv"], path_resolved: true }],
+      total: 1, season_packs: [],
+    });
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Préparer l'upload/i }));
+    await user.click(await screen.findByRole("button", { name: "Fermer le panneau" }));
+
+    expect(screen.queryByText("Panneau upload pour Matrix")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reprendre" })).not.toBeInTheDocument();
+  });
+
+  it("ouvrir une autre ligne pendant qu'un envoi attend demande d'abord dans le bandeau", async () => {
+    const user = userEvent.setup();
+    vi.mocked(libraryResults).mockResolvedValue({
+      items: [
+        { ...MATRIX_ITEM, local_paths: ["/media/matrix.mkv"], path_resolved: true },
+        { ...SHOW_ITEM, key: "show", local_paths: ["/media/show"], path_resolved: true },
+      ],
+      total: 2, season_packs: [],
+    });
+    renderPage();
+    const [matrixButton, showButton] = await screen.findAllByRole("button", { name: /Préparer l'upload/i });
+    await user.click(matrixButton);
+    await user.click(await screen.findByRole("button", { name: "Simuler un groupe prêt" }));
+    await user.click(screen.getByRole("button", { name: "Fermer le panneau" }));
+
+    await user.click(showButton);
+    // Rien n'est remplace sans accord explicite.
+    expect(screen.getByText("Panneau upload pour Matrix")).toBeInTheDocument();
+    expect(screen.queryByText("Panneau upload pour Show")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Abandonner et préparer « Show »" }));
+    expect(screen.getByText("Panneau upload pour Show")).toBeInTheDocument();
+    expect(screen.queryByText("Panneau upload pour Matrix")).not.toBeInTheDocument();
   });
 
   it("n'affiche pas de bouton Préparer l'upload si le chemin n'est pas résolu", async () => {

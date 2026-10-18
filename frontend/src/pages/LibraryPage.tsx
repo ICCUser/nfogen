@@ -219,9 +219,31 @@ export default function LibraryPage() {
   // pendant son animation de sortie, `activeUpload` n'est vide qu'une fois
   // celle-ci terminee (onExited, voir Drawer -- audit front 2026-10-14).
   const [uploadOpen, setUploadOpen] = useState(false);
+  // Un groupe est mis en scene mais pas encore envoye (signale par
+  // UploadPrepPanel) : fermer le tiroir le garde alors MONTE (etat intact)
+  // et un bandeau permet de le reprendre -- remplace l'ancien confirm() a
+  // la fermeture (audit front 2026-10-14, lot 4 : fermer n'est pas
+  // destructif, rien ne doit l'interrompre).
+  const [uploadPending, setUploadPending] = useState(false);
+  // Autre ligne demandee alors qu'un upload attend : on demande d'abord,
+  // dans le bandeau, s'il faut abandonner celui en attente.
+  const [replaceCandidate, setReplaceCandidate] = useState<NonNullable<typeof activeUpload> | null>(null);
   function openUpload(upload: NonNullable<typeof activeUpload>) {
+    const same = activeUpload !== null && activeUpload.localPaths.join("|") === upload.localPaths.join("|");
+    if (activeUpload !== null && uploadPending && !same) {
+      setReplaceCandidate(upload);
+      return;
+    }
+    setReplaceCandidate(null);
+    if (!same) setUploadPending(false);
     setActiveUpload(upload);
     setUploadOpen(true);
+  }
+  function abandonPendingUpload(next: NonNullable<typeof activeUpload> | null) {
+    setReplaceCandidate(null);
+    setUploadPending(false);
+    setActiveUpload(next);
+    setUploadOpen(next !== null);
   }
 
   // Scan rapide (mode incremental) : coche par defaut des qu'un scan
@@ -486,7 +508,6 @@ export default function LibraryPage() {
       setTrackerApiKey("");
       setTrackerAnnounceUrl("");
       setProfileConfigSaved(true);
-      setTimeout(() => setProfileConfigSaved(false), 2000);
     } catch (e) {
       setProfileConfigError(e instanceof ApiError ? e.message : "Enregistrement impossible.");
     } finally {
@@ -592,13 +613,34 @@ export default function LibraryPage() {
 
       <ActiveTransfersTray />
 
+      {activeUpload && uploadPending && !uploadOpen && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-info bg-info-bg px-4 py-3 text-sm text-info"
+        >
+          <span>
+            {replaceCandidate
+              ? `« ${activeUpload.title} » est prêt mais pas encore envoyé. L'abandonner pour préparer « ${replaceCandidate.title} » ?`
+              : `« ${activeUpload.title} » est prêt (mis en scène, .torrent créé) mais pas encore envoyé.`}
+          </span>
+          <span className="flex flex-wrap gap-2">
+            <Button variant="primary" size="sm" onClick={() => openUpload(activeUpload)}>
+              Reprendre
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => abandonPendingUpload(replaceCandidate)}>
+              {replaceCandidate ? `Abandonner et préparer « ${replaceCandidate.title} »` : "Abandonner"}
+            </Button>
+          </span>
+        </div>
+      )}
+
       {notConfigured && (
-        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
+        <div role="status" className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           Clé API {trackerDisplayName} non configurée — renseigne-la ci-dessous.
         </div>
       )}
       {!notConfigured && noLibrary && (
-        <div className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
+        <div role="status" className="rounded-md border border-warn bg-warn-bg px-4 py-3 text-sm text-warn">
           Aucune instance Sonarr ni Radarr configurée — renseigne au moins l'une des deux dans les{" "}
           <Link to="/settings" className="underline">Réglages</Link>.
         </div>
@@ -614,7 +656,9 @@ export default function LibraryPage() {
           <span className="text-ink-faint">{showProfileConfigForm ? "▲" : "▼"}</span>
         </button>
         {showProfileConfigForm && (
-          <div className="space-y-3 border-t border-line p-4">
+          // Toute modification d'un champ efface "Enregistré." (l'evenement
+          // change des champs remonte jusqu'ici).
+          <div className="space-y-3 border-t border-line p-4" onChange={() => setProfileConfigSaved(false)}>
             <p className="text-xs text-ink-faint">
               Propre à ce profil de tracker — un autre profil peut avoir sa propre clé/URL (voir
               le sélecteur de profil dans l'en-tête). Enregistré côté serveur ({" "}
@@ -654,7 +698,7 @@ export default function LibraryPage() {
               </label>
             </div>
 
-            {profileConfigError && <p className="text-sm text-crit">{profileConfigError}</p>}
+            {profileConfigError && <p role="alert" className="text-sm text-crit">{profileConfigError}</p>}
 
             <div className="flex items-center gap-3">
               <Button
@@ -664,20 +708,24 @@ export default function LibraryPage() {
               >
                 {profileConfigSaving ? "Enregistrement…" : "Enregistrer"}
               </Button>
-              {profileConfigSaved && <span className="text-sm text-good">Enregistré.</span>}
+              {/* Region live toujours presente, message persistant jusqu'a
+                  la prochaine modification (audit front 2026-10-14, lot 4). */}
+              <span role="status" className="text-sm text-good">
+                {profileConfigSaved ? "Enregistré." : ""}
+              </span>
             </div>
           </div>
         )}
       </div>
 
       {error && (
-        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
+        <div role="alert" className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           {error} — vérifiez les <Link to="/settings" className="underline">réglages de connexion</Link>.
         </div>
       )}
 
       {status && status.state === "error" && status.error && (
-        <div className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
+        <div role="alert" className="rounded-md border border-crit bg-crit-bg px-4 py-3 text-sm text-crit">
           Le dernier scan a échoué : {status.error}
         </div>
       )}
@@ -689,7 +737,16 @@ export default function LibraryPage() {
               ? `${status.processed} / ${status.total} titres traités…`
               : "Récupération de la bibliothèque…"}
           </p>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+          <div
+            role="progressbar"
+            aria-label="Progression du scan"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            // Total encore inconnu (recuperation de la bibliotheque) :
+            // progression indeterminee, pas de valeur.
+            aria-valuenow={status && status.total > 0 ? Math.round((100 * status.processed) / status.total) : undefined}
+            className="h-2 w-full overflow-hidden rounded-full bg-surface-2"
+          >
             <div
               className="h-full bg-accent transition-all"
               style={{
@@ -1099,7 +1156,12 @@ export default function LibraryPage() {
           seasonPack={activeUpload.seasonPack}
           open={uploadOpen}
           onClose={() => setUploadOpen(false)}
-          onExited={() => setActiveUpload(null)}
+          onPendingChange={setUploadPending}
+          // Pas de demontage si un envoi attend : le bandeau "Reprendre"
+          // rouvre ce meme panneau, etat intact.
+          onExited={() => {
+            if (!uploadPending) setActiveUpload(null);
+          }}
         />
       )}
     </div>
