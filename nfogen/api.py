@@ -1037,6 +1037,13 @@ def gapscan_library_endpoint(
             )
         synced_at = library_sync_runner.last_attempt().last_attempt_at
 
+    # Statut tracker, chemins, seed_match : toujours depuis les resultats de
+    # scan COURANTS, jamais depuis le cache -- celui-ci les fige a la
+    # derniere synchro Radarr/Sonarr (toutes les 15 min), si bien qu'un scan
+    # termine restait affiche "Non verifie" (bug reel, 2026-10-18). Aucun
+    # appel Radarr/Sonarr ici, seulement une recherche par cle en memoire.
+    items = gapscan_library.apply_scan_results(items, gapscan_runner.results(), profile)
+
     # Calcule sur le resultat COMPLET (avant filtre q/pagination) : sinon un
     # filtre actif masquerait des saisons pourtant concernees par un pack
     # (retour utilisateur, 2026-09-08).

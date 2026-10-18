@@ -21,7 +21,7 @@ tracker DEJA CONNU pour lui, retrouve via la MEME cle que la selection
 (movie_key/series_key) -- jamais une nouvelle interrogation de C411 ici."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional
 
 from . import upload_history_store
@@ -232,6 +232,54 @@ def _compute_seed_match(
     return {"guid": candidate.guid, "release_name": candidate.release_name}
 
 
+def _scan_fields(
+    previous: Optional[GapResult], profile: str, local_quality: ReleaseQuality,
+    team: Optional[str], size_bytes: Optional[int],
+) -> dict[str, Any]:
+    """Champs d'un LibraryItem qui viennent du DERNIER scan connu (`previous`,
+    `None` si jamais scanne) -- un seul calcul, partage par list_library()
+    (construction de l'inventaire) et apply_scan_results() (lecture)."""
+    local_paths = previous.local_paths if previous else []
+    path_resolved = previous.path_resolved if previous else False
+    return {
+        "status": previous.status.value if previous else None,
+        "checked_at": previous.checked_at if previous else None,
+        "has_freeleech_alternative": previous.has_freeleech_alternative if previous else False,
+        "has_double_upload_window": previous.has_double_upload_window if previous else False,
+        "error": previous.error if previous else None,
+        "local_paths": local_paths,
+        "path_resolved": path_resolved,
+        "path_error": previous.path_error if previous else None,
+        "tracker_genre": genre_of(previous, profile) if previous else None,
+        "seed_match": _compute_seed_match(
+            previous, local_quality, team, local_paths, path_resolved, size_bytes,
+        ),
+    }
+
+
+def apply_scan_results(
+    items: list[LibraryItem], results: list[GapResult], profile: str = "c411",
+) -> list[LibraryItem]:
+    """Recalcule les champs issus du scan (statut, chemins, seed_match...)
+    de `items` a partir des resultats de scan COURANTS (`results`, voir
+    gapscan_runner.results()) -- sans aucun appel Radarr/Sonarr.
+
+    Necessaire parce que l'inventaire en cache (library_inventory_store)
+    fige ces champs au moment de la derniere synchro : un scan termine
+    ensuite restait invisible ("Non verifie") jusqu'a la synchro suivante
+    (bug reel, retour utilisateur 2026-10-18). Le cache ne doit servir que
+    pour les donnees Radarr/Sonarr ; le statut tracker vient toujours du
+    scan."""
+    by_key = {_previous_key(r): r for r in results}
+    return [
+        replace(
+            item,
+            **_scan_fields(by_key.get(item.key), profile, item.local_quality, item.team, item.size_bytes),
+        )
+        for item in items
+    ]
+
+
 def list_library(
     radarr: Optional[RadarrClient] = None,
     sonarr: Optional[SonarrClient] = None,
@@ -267,8 +315,6 @@ def list_library(
                 fallback_language_names=movie.language_names,
             )
             movie_team = extract_team_tag(movie.scene_name or movie.title)
-            movie_local_paths = previous.local_paths if previous else []
-            movie_path_resolved = previous.path_resolved if previous else False
             items.append(
                 LibraryItem(
                     media_type="movie", title=movie.title, year=movie.year, season_number=None,
@@ -279,21 +325,9 @@ def list_library(
                     already_processed=proc_key is not None and upload_history_store.is_processed(proc_key),
                     last_processed_at=upload_history_store.last_processed_at(proc_key) if proc_key else None,
                     key=key,
-                    status=previous.status.value if previous else None,
-                    checked_at=previous.checked_at if previous else None,
-                    has_freeleech_alternative=previous.has_freeleech_alternative if previous else False,
-                    has_double_upload_window=previous.has_double_upload_window if previous else False,
-                    error=previous.error if previous else None,
-                    local_paths=movie_local_paths,
-                    path_resolved=movie_path_resolved,
-                    path_error=previous.path_error if previous else None,
-                    tracker_genre=genre_of(previous, profile) if previous else None,
                     team=movie_team,
-                    seed_match=_compute_seed_match(
-                        previous, movie_quality, movie_team, movie_local_paths, movie_path_resolved,
-                        movie.size_bytes,
-                    ),
                     size_bytes=movie.size_bytes,
+                    **_scan_fields(previous, profile, movie_quality, movie_team, movie.size_bytes),
                 )
             )
     if sonarr is not None:
@@ -311,8 +345,6 @@ def list_library(
                 fallback_language_names=season.language_names,
             )
             season_team = extract_team_tag(season.scene_name or season.title)
-            season_local_paths = previous.local_paths if previous else []
-            season_path_resolved = previous.path_resolved if previous else False
             items.append(
                 LibraryItem(
                     media_type="series", title=season.title, year=season.year,
@@ -325,21 +357,9 @@ def list_library(
                     already_processed=proc_key is not None and upload_history_store.is_processed(proc_key),
                     last_processed_at=upload_history_store.last_processed_at(proc_key) if proc_key else None,
                     key=key,
-                    status=previous.status.value if previous else None,
-                    checked_at=previous.checked_at if previous else None,
-                    has_freeleech_alternative=previous.has_freeleech_alternative if previous else False,
-                    has_double_upload_window=previous.has_double_upload_window if previous else False,
-                    error=previous.error if previous else None,
-                    local_paths=season_local_paths,
-                    path_resolved=season_path_resolved,
-                    path_error=previous.path_error if previous else None,
-                    tracker_genre=genre_of(previous, profile) if previous else None,
                     team=season_team,
-                    seed_match=_compute_seed_match(
-                        previous, season_quality, season_team, season_local_paths, season_path_resolved,
-                        season.size_bytes,
-                    ),
                     size_bytes=season.size_bytes,
+                    **_scan_fields(previous, profile, season_quality, season_team, season.size_bytes),
                 )
             )
     return items

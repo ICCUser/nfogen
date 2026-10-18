@@ -2669,6 +2669,52 @@ def test_gapscan_library_uses_persisted_cache_without_calling_radarr(reload_api,
     assert body["synced_at"] == 1700000000.0
 
 
+def test_gapscan_library_reflects_a_scan_finished_after_the_cache_sync(reload_api, monkeypatch, tmp_path):
+    """Bug reel (retour utilisateur, 2026-10-18) : un scan termine ("OK" au
+    journal) laissait le titre en "Non verifie" dans la Bibliotheque. Le
+    cache d'inventaire fige le statut au moment de la DERNIERE synchro
+    Radarr/Sonarr (toutes les 15 min) : le statut doit venir des resultats
+    de scan COURANTS a chaque lecture, jamais du cache."""
+    from nfogen.gapscan import GapResult, GapStatus
+    from nfogen.gapscan_library import _previous_key
+
+    mod = reload_api(
+        NFOGEN_API_TOKEN=None,
+        NFOGEN_RADARR_URL="http://radarr.local", NFOGEN_RADARR_API_KEY="y",
+        NFOGEN_LIBRARY_INVENTORY_FILE=str(tmp_path / "inv.json"),
+    )
+    scanned = GapResult(
+        media_type="movie", title="Matrix", year=1999, season_number=None,
+        imdb_id="tt0133093", tmdb_id="603", tvdb_id=None, status=GapStatus.COVERED,
+        local_quality=ReleaseQuality(raw="x"), checked_at=1700000500.0,
+        local_paths=["/media/matrix.mkv"], path_resolved=True,
+    )
+    # Synchro passee AVANT le scan : statut encore inconnu dans le cache.
+    mod.library_inventory_store.save(
+        [
+            LibraryItem(
+                media_type="movie", title="Matrix", year=1999, season_number=None,
+                imdb_id="tt0133093", tvdb_id=None, tmdb_id="603", genres=[], added_at=None,
+                local_quality=ReleaseQuality(raw="x"), radarr_movie_id=1, sonarr_series_id=None,
+                already_processed=False, last_processed_at=None, key=_previous_key(scanned),
+            )
+        ],
+        synced_at=1700000000.0,
+    )
+    # Le scan se termine ensuite (resultats en memoire), sans nouvelle synchro.
+    monkeypatch.setattr(mod.gapscan_runner, "results", lambda **k: [scanned])
+    client = TestClient(mod.app)
+
+    item = client.get("/gapscan/library").json()["items"][0]
+
+    assert item["status"] == "covered"
+    assert item["checked_at"] == 1700000500.0
+    assert item["local_paths"] == ["/media/matrix.mkv"]
+    assert item["path_resolved"] is True
+    # Et le filtre par statut s'appuie sur ce statut a jour.
+    assert client.get("/gapscan/library", params={"status": "not_verified"}).json()["total"] == 0
+
+
 def test_gapscan_library_syncs_once_when_cache_is_empty(reload_api, monkeypatch, tmp_path):
     mod = reload_api(
         NFOGEN_API_TOKEN=None,
