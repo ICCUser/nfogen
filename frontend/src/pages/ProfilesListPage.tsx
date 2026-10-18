@@ -35,6 +35,7 @@ export default function ProfilesListPage() {
   const [managedNotice, setManagedNotice] = useState<string | null>(null);
   const [sorting, setSorting] = useState<SortingState>([{ id: "name", desc: false }]);
 
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Table n'est pas compatible React Compiler, que nfogen n'utilise pas
   const table = useReactTable({
     data: rows ?? [],
     columns: PROFILE_COLUMNS,

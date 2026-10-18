@@ -45,7 +45,11 @@ export default function Drawer({
   const panelRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const onExitedRef = useRef(onExited);
-  onExitedRef.current = onExited;
+  // Mise a jour hors rendu (oxlint react/refs) : lue seulement a la fin de
+  // l'animation de sortie, donc toujours apres ce commit.
+  useEffect(() => {
+    onExitedRef.current = onExited;
+  });
 
   useEffect(() => {
     const dialog = dialogRef.current;

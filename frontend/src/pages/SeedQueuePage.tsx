@@ -48,6 +48,7 @@ export default function SeedQueuePage() {
   const [seedStatusError, setSeedStatusError] = useState<string | null>(null);
   const [sorting, setSorting] = useState<SortingState>([{ id: "upspeed", desc: true }]);
 
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Table n'est pas compatible React Compiler, que nfogen n'utilise pas
   const seedStatusTable = useReactTable({
     data: torrents ?? [],
     columns: SEED_STATUS_COLUMNS,

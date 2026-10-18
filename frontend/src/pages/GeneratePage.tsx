@@ -53,8 +53,16 @@ export default function GeneratePage() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [proposal, setProposal] = useState<NameProposal | null>(null);
-  const [proposalUnavailable, setProposalUnavailable] = useState<string | null>(null);
+  // Resultat de la proposition de nom, rattache aux entrees qui l'ont
+  // produit (`key`) : il ne s'affiche que si profil/categorie/fichiers sont
+  // toujours les memes -- jamais une ancienne proposition pour d'autres
+  // fichiers, sans avoir a la vider depuis un effet (oxlint
+  // react/set-state-in-effect).
+  const [proposalResult, setProposalResult] = useState<{
+    key: string;
+    proposal: NameProposal | null;
+    unavailable: string | null;
+  } | null>(null);
   const [loadingLabel, setLoadingLabel] = useState("Génération…");
   const [extractionNotice, setExtractionNotice] = useState<string | null>(null);
 
@@ -62,11 +70,22 @@ export default function GeneratePage() {
   // une categorie deja choisie pour l'ANCIEN profil peut ne plus exister
   // pour le nouveau -- reprend le comportement de l'ancien selecteur local
   // ("auto-detectee" par defaut a chaque changement de profil).
-  useEffect(() => {
+  // Ajuste l'etat PENDANT le rendu (motif recommande par React) plutot que
+  // dans un effet, qui provoquait un rendu en cascade (oxlint
+  // react/set-state-in-effect).
+  const [categoryProfile, setCategoryProfile] = useState(profile);
+  if (categoryProfile !== profile) {
+    setCategoryProfile(profile);
     setCategory("");
-  }, [profile]);
+  }
 
   const categories = profiles[profile] ?? [];
+
+  const proposalKey = `${profile}|${category}|${files.map((f) => f.name).join("/")}`;
+  const proposalActive = Boolean(category) && files.length > 0;
+  const current = proposalActive && proposalResult?.key === proposalKey ? proposalResult : null;
+  const proposal = current?.proposal ?? null;
+  const proposalUnavailable = current?.unavailable ?? null;
 
   // Proposition automatique de release_name a partir des NOMS de fichiers
   // (jamais leur contenu : pas d'upload necessaire, instantane meme pour des
@@ -82,11 +101,8 @@ export default function GeneratePage() {
   // erreur (token invalide, serveur indisponible...) est affichee : sinon
   // l'echec est invisible et ressemble a "rien ne se passe".
   useEffect(() => {
-    if (!category || files.length === 0) {
-      setProposal(null);
-      setProposalUnavailable(null);
-      return;
-    }
+    if (!category || files.length === 0) return;
+    const key = proposalKey;
     let cancelled = false;
     (async () => {
       let titleHints: (string | null)[] | undefined;
@@ -101,8 +117,7 @@ export default function GeneratePage() {
       proposeReleaseName({ profile, category, filenames: files.map((f) => f.name), titleHints })
         .then((result) => {
           if (cancelled) return;
-          setProposal(result);
-          setProposalUnavailable(null);
+          setProposalResult({ key, proposal: result, unavailable: null });
           if (result.name) {
             setDataText((current) => {
               let parsed: Record<string, unknown> = {};
@@ -118,13 +133,17 @@ export default function GeneratePage() {
         })
         .catch((e) => {
           if (cancelled) return;
-          setProposal(null);
-          setProposalUnavailable(e instanceof ApiError && e.status !== 400 ? e.message : null);
+          setProposalResult({
+            key,
+            proposal: null,
+            unavailable: e instanceof ApiError && e.status !== 400 ? e.message : null,
+          });
         });
     })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- proposalKey derive de ces trois valeurs
   }, [profile, category, files]);
 
   function parseData(): Record<string, unknown> | null {
