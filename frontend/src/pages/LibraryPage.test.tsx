@@ -678,11 +678,56 @@ describe("LibraryPage", () => {
     expect(await screen.findByRole("button", { name: "Lancer un scan complet" })).toBeInTheDocument();
   });
 
-  it("le bouton Verifier est desactive sans selection", async () => {
+  it("la barre de selection n'existe que s'il y a une selection (lot 6)", async () => {
     vi.mocked(libraryResults).mockResolvedValue({ items: [SHOW_ITEM], total: 1, season_packs: [] });
+    const user = userEvent.setup();
     renderPage();
     await screen.findByText(/Show \(2020\)/);
-    expect(screen.getByRole("button", { name: /Vérifier sur le tracker/i })).toBeDisabled();
+    expect(screen.queryByRole("region", { name: "Sélection" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: /Show/i }));
+    const bar = screen.getByRole("region", { name: "Sélection" });
+    expect(bar).toHaveTextContent("1 sélectionné");
+
+    await user.click(within(bar).getByRole("button", { name: "Désélectionner" }));
+    expect(screen.queryByRole("region", { name: "Sélection" })).not.toBeInTheDocument();
+  });
+
+  it("la case de l'en-tete coche/decoche toute la page, etat intermediaire si partiel (lot 6)", async () => {
+    vi.mocked(libraryResults).mockResolvedValue({
+      items: [SHOW_ITEM, { ...MATRIX_ITEM, key: "matrix" }], total: 2, season_packs: [],
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(/Show \(2020\)/);
+    const all = screen.getByRole("checkbox", { name: "Tout sélectionner (page)" }) as HTMLInputElement;
+
+    await user.click(screen.getByRole("checkbox", { name: /Show/i }));
+    expect(all.indeterminate).toBe(true);
+
+    await user.click(all);
+    expect(all).toBeChecked();
+    expect(screen.getByRole("region", { name: "Sélection" })).toHaveTextContent("2 sélectionnés");
+
+    await user.click(all);
+    expect(screen.queryByRole("region", { name: "Sélection" })).not.toBeInTheDocument();
+  });
+
+  it("les filtres secondaires sont replies, le bouton Filtres compte ceux actifs (lot 6)", async () => {
+    vi.mocked(libraryResults).mockResolvedValue({ items: [], total: 0, season_packs: [] });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(libraryResults).toHaveBeenCalled());
+    expect(screen.queryByLabelText("Genre tracker")).not.toBeInTheDocument();
+
+    const toggle = screen.getByRole("button", { name: /^Filtres/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    await user.selectOptions(screen.getByLabelText("Genre tracker"), "anime");
+    expect(screen.getByRole("button", { name: "Filtres, 1 actif" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Effacer ces filtres" }));
+    expect(screen.getByRole("button", { name: "Filtres" })).toBeInTheDocument();
   });
 
   it("le filtre texte relance libraryResults avec q, revient a la page 1", async () => {
@@ -743,6 +788,7 @@ describe("LibraryPage", () => {
     renderPage();
     await waitFor(() => expect(libraryResults).toHaveBeenCalled());
 
+    await user.click(screen.getByRole("button", { name: /^Filtres/ }));
     await user.selectOptions(screen.getByLabelText("Genre tracker"), "anime");
     await waitFor(() => {
       expect(vi.mocked(libraryResults)).toHaveBeenLastCalledWith(

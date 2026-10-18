@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Materiaux translucides (backdrop-blur) : variante pour l'utilisateur qui
+   demande moins de transparence -- fond plein, pas de flou (audit front
+   2026-10-14). Tailwind ne la fournit pas nativement. */
+@custom-variant reduced-transparency (@media (prefers-reduced-transparency: reduce));
+
 /* Identite visuelle nfogen : structure claire et dense (tableaux/formulaires
    d'abord), typographie technique assumee -- tout ce qui est litteral
    (release_name, regex, JSON, chemins, statuts) reste en monospace, jamais

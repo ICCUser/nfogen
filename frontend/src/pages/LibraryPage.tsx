@@ -1,4 +1,4 @@
-import { Check, ChevronDown, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -196,6 +196,13 @@ export default function LibraryPage() {
   const [statusFilter, setStatusFilter] = useState<GapStatus | "not_verified" | "">("");
   const [addedSinceDays, setAddedSinceDays] = useState("");
   const [processed, setProcessed] = useState<"" | "true" | "false">("");
+  // Filtres secondaires replies par defaut (audit front 2026-10-14, lot 6 :
+  // 7 filtres + 3 boutons de selection au meme niveau repoussaient le
+  // tableau sous la ligne de flottaison, surtout sur mobile). Le bouton
+  // "Filtres" affiche combien sont actifs, pour qu'un filtre cache ne
+  // fasse jamais disparaitre des lignes sans explication.
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const advancedFilterCount = [genre, trackerGenre, addedSinceDays, processed].filter((v) => v !== "").length;
   const [page, setPage] = useState(1);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [error, setError] = useState<string | null>(null);
@@ -446,9 +453,21 @@ export default function LibraryPage() {
     });
   }
 
-  function selectAllFiltered() {
+  /** Case de l'en-tete du tableau : coche/decoche toutes les lignes de la
+   * page affichee (remplace le bouton "Tout sélectionner (filtré)"). Une
+   * selection faite sur d'autres pages est conservee. */
+  function togglePageSelection() {
     if (!items) return;
-    setSelected(new Set(items.map((i) => i.key)));
+    const pageKeys = items.map((i) => i.key);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allSelected = pageKeys.every((k) => next.has(k));
+      for (const k of pageKeys) {
+        if (allSelected) next.delete(k);
+        else next.add(k);
+      }
+      return next;
+    });
   }
 
   function clearSelection() {
@@ -538,6 +557,13 @@ export default function LibraryPage() {
     }
   }
 
+  const pageSelectedCount = items ? items.filter((i) => selected.has(i.key)).length : 0;
+  const pageSelection: "none" | "some" | "all" =
+    !items || items.length === 0 || pageSelectedCount === 0
+      ? "none"
+      : pageSelectedCount === items.length
+        ? "all"
+        : "some";
   const running = status?.state === "running";
   const notConfigured = config !== null && !config.tracker_configured;
   const noLibrary = config !== null && config.tracker_configured && !config.sonarr_configured && !config.radarr_configured;
@@ -556,7 +582,7 @@ export default function LibraryPage() {
   });
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${selected.size > 0 ? "pb-24" : ""}`}>
       <PageToolbar title="Bibliothèque" subtitle={`Dernière synchro : ${formatSyncedAt(syncedAt)}`}>
         <Button
           variant="secondary"
@@ -792,112 +818,132 @@ export default function LibraryPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block text-sm font-medium text-ink-dim">
-          Recherche
-          <input
-            aria-label="Recherche"
-            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={q}
-            onChange={(e) => resetPageAnd(setQ)(e.target.value)}
-            placeholder="Titre…"
-          />
-        </label>
-        <label className="block text-sm font-medium text-ink-dim">
-          Type
-          <select
-            aria-label="Type"
-            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={mediaType}
-            onChange={(e) => resetPageAnd(setMediaType)(e.target.value as "" | "movie" | "series")}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block text-sm font-medium text-ink-dim">
+            Recherche
+            <input
+              aria-label="Recherche"
+              className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+              value={q}
+              onChange={(e) => resetPageAnd(setQ)(e.target.value)}
+              placeholder="Titre…"
+            />
+          </label>
+          <label className="block text-sm font-medium text-ink-dim">
+            Type
+            <select
+              aria-label="Type"
+              className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+              value={mediaType}
+              onChange={(e) => resetPageAnd(setMediaType)(e.target.value as "" | "movie" | "series")}
+            >
+              <option value="">Tous les types</option>
+              <option value="movie">Films</option>
+              <option value="series">Séries</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-ink-dim">
+            Statut
+            <select
+              aria-label="Statut"
+              className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+              value={statusFilter}
+              onChange={(e) => resetPageAnd(setStatusFilter)(e.target.value as GapStatus | "not_verified" | "")}
+            >
+              {STATUS_FILTERS.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            variant="secondary"
+            aria-expanded={showMoreFilters}
+            aria-controls="library-more-filters"
+            aria-label={
+              advancedFilterCount > 0
+                ? `Filtres, ${advancedFilterCount} actif${advancedFilterCount > 1 ? "s" : ""}`
+                : "Filtres"
+            }
+            onClick={() => setShowMoreFilters((v) => !v)}
+            className="inline-flex items-center gap-1.5"
           >
-            <option value="">Tous les types</option>
-            <option value="movie">Films</option>
-            <option value="series">Séries</option>
-          </select>
-        </label>
-        <label className="block text-sm font-medium text-ink-dim">
-          Genre
-          <input
-            aria-label="Genre"
-            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={genre}
-            onChange={(e) => resetPageAnd(setGenre)(e.target.value)}
-            placeholder="Action, Drama…"
-          />
-        </label>
-        <label className="block text-sm font-medium text-ink-dim">
-          Genre tracker
-          <select
-            aria-label="Genre tracker"
-            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={trackerGenre}
-            onChange={(e) => resetPageAnd(setTrackerGenre)(e.target.value as "" | "anime" | "documentaire")}
-          >
-            <option value="">Tous</option>
-            <option value="anime">Anime</option>
-            <option value="documentaire">Documentaire</option>
-          </select>
-        </label>
-        <label className="block text-sm font-medium text-ink-dim">
-          Statut
-          <select
-            aria-label="Statut"
-            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={statusFilter}
-            onChange={(e) => resetPageAnd(setStatusFilter)(e.target.value as GapStatus | "not_verified" | "")}
-          >
-            {STATUS_FILTERS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-sm font-medium text-ink-dim">
-          Ajouté depuis (jours)
-          <input
-            aria-label="Ajouté depuis (jours)"
-            type="number"
-            className="mt-1 w-full max-w-[8rem] rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={addedSinceDays}
-            onChange={(e) => resetPageAnd(setAddedSinceDays)(e.target.value)}
-          />
-        </label>
-        <label className="block text-sm font-medium text-ink-dim">
-          Déjà traité
-          <select
-            aria-label="Déjà traité"
-            className="mt-1 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
-            value={processed}
-            onChange={(e) => resetPageAnd(setProcessed)(e.target.value as "" | "true" | "false")}
-          >
-            <option value="">Peu importe</option>
-            <option value="true">Déjà traité</option>
-            <option value="false">Jamais traité</option>
-          </select>
-        </label>
-        <Button
-          variant="secondary"
-          onClick={selectAllFiltered}
-          disabled={!items || items.length === 0}
-        >
-          Tout sélectionner (filtré)
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={clearSelection}
-          disabled={selected.size === 0}
-        >
-          Désélectionner
-        </Button>
-        <Button
-          variant="primary"
-          onClick={handleVerifySelection}
-          disabled={selected.size === 0 || starting || running}
-        >
-          Vérifier sur le tracker ({selected.size} sélectionnés)
-        </Button>
+            <SlidersHorizontal size={14} aria-hidden="true" />
+            Filtres
+            {advancedFilterCount > 0 && (
+              <span aria-hidden="true" className="rounded-full bg-accent px-1.5 text-xs font-medium text-surface">
+                {advancedFilterCount}
+              </span>
+            )}
+          </Button>
+        </div>
+        {showMoreFilters && (
+          <div id="library-more-filters" className="flex flex-wrap items-end gap-3 rounded-md border border-line bg-surface-2 p-3">
+            <label className="block text-sm font-medium text-ink-dim">
+              Genre
+              <input
+                aria-label="Genre"
+                className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+                value={genre}
+                onChange={(e) => resetPageAnd(setGenre)(e.target.value)}
+                placeholder="Action, Drama…"
+              />
+            </label>
+            <label className="block text-sm font-medium text-ink-dim">
+              Genre tracker
+              <select
+                aria-label="Genre tracker"
+                className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+                value={trackerGenre}
+                onChange={(e) => resetPageAnd(setTrackerGenre)(e.target.value as "" | "anime" | "documentaire")}
+              >
+                <option value="">Tous</option>
+                <option value="anime">Anime</option>
+                <option value="documentaire">Documentaire</option>
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-ink-dim">
+              Ajouté depuis (jours)
+              <input
+                aria-label="Ajouté depuis (jours)"
+                type="number"
+                className="mt-1 w-full max-w-[8rem] rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
+                value={addedSinceDays}
+                onChange={(e) => resetPageAnd(setAddedSinceDays)(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm font-medium text-ink-dim">
+              Déjà traité
+              <select
+                aria-label="Déjà traité"
+                className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+                value={processed}
+                onChange={(e) => resetPageAnd(setProcessed)(e.target.value as "" | "true" | "false")}
+              >
+                <option value="">Peu importe</option>
+                <option value="true">Déjà traité</option>
+                <option value="false">Jamais traité</option>
+              </select>
+            </label>
+            {advancedFilterCount > 0 && (
+              <Button
+                variant="link-muted"
+                className="pb-2 text-sm"
+                onClick={() => {
+                  setGenre("");
+                  setTrackerGenre("");
+                  setAddedSinceDays("");
+                  setProcessed("");
+                  setPage(1);
+                }}
+              >
+                Effacer ces filtres
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {seasonPacks.length > 0 && (
@@ -997,7 +1043,22 @@ export default function LibraryPage() {
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <SortableHeader key={header.id} header={header} className="px-4 py-2" />
+                    header.column.id === "select" ? (
+                      <th key={header.id} className="w-10 px-4 py-2">
+                        <input
+                          type="checkbox"
+                          aria-label="Tout sélectionner (page)"
+                          checked={pageSelection === "all"}
+                          ref={(el) => {
+                            if (el) el.indeterminate = pageSelection === "some";
+                          }}
+                          onChange={togglePageSelection}
+                          className="h-4 w-4 rounded border-line-strong"
+                        />
+                      </th>
+                    ) : (
+                      <SortableHeader key={header.id} header={header} className="px-4 py-2" />
+                    )
                   ))}
                 </tr>
               ))}
@@ -1057,75 +1118,80 @@ export default function LibraryPage() {
                     {formatAddedAt(item.added_at)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-2 text-right">
-                    <Link to="/" className="text-sm text-accent-ink underline">
-                      Générer
-                    </Link>
-                    {item.path_resolved && item.local_paths.length > 0 && (
-                      <Button
-                        variant="link"
-                        onClick={() =>
-                          openUpload({
-                            title: item.title,
-                            localPaths: item.local_paths,
-                            mediaType: item.media_type,
-                            radarrMovieId: item.radarr_movie_id,
-                            sonarrSeriesId: item.sonarr_series_id,
-                            tmdbId: item.tmdb_id ? Number(item.tmdb_id) : null,
-                            tvdbId: item.tvdb_id,
-                            genre: item.tracker_genre,
-                            seasonNumber: item.season_number,
-                          })
-                        }
-                        className="ml-3 text-sm"
-                      >
-                        Préparer l'upload
-                      </Button>
-                    )}
-                    {item.seed_match && !seedMatchJobs[item.key] && (
-                      <Button
-                        variant="link"
-                        onClick={() => handleStartSeedMatch(item)}
-                        className="ml-3 text-sm"
-                      >
-                        Seed possible
-                      </Button>
-                    )}
-                    {seedMatchJobs[item.key]
-                      && seedMatchJobs[item.key].state !== "done"
-                      && seedMatchJobs[item.key].state !== "mismatch"
-                      && seedMatchJobs[item.key].state !== "error" && (
-                      <span className="ml-3 text-xs text-ink-dim">
-                        Vérification…
+                    {/* Actions groupees et hierarchisees (audit front
+                        2026-10-14, lot 6) : l'action principale en bouton,
+                        les secondaires en liens, toutes alignees a droite. */}
+                    <div className="flex items-center justify-end gap-3">
+                      {item.path_resolved && item.local_paths.length > 0 && (
                         <Button
-                          variant="link-danger"
-                          onClick={() => handleCancelSeedMatch(item.key)}
-                          className="ml-1"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() =>
+                            openUpload({
+                              title: item.title,
+                              localPaths: item.local_paths,
+                              mediaType: item.media_type,
+                              radarrMovieId: item.radarr_movie_id,
+                              sonarrSeriesId: item.sonarr_series_id,
+                              tmdbId: item.tmdb_id ? Number(item.tmdb_id) : null,
+                              tvdbId: item.tvdb_id,
+                              genre: item.tracker_genre,
+                              seasonNumber: item.season_number,
+                            })
+                          }
                         >
-                          Annuler
+                          Préparer l'upload
                         </Button>
-                      </span>
-                    )}
-                    {seedMatchJobs[item.key]?.state === "done" && (
-                      <span className="ml-3 text-xs text-good">
-                        <Check size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
-                        En seed
-                      </span>
-                    )}
-                    {seedMatchJobs[item.key]?.state === "mismatch" && (
-                      <span
-                        className="ml-3 text-xs text-warn"
-                        title={seedMatchJobs[item.key].result?.warning ?? undefined}
-                      >
-                        <TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
-                        {seedMatchJobs[item.key].result?.warning}
-                      </span>
-                    )}
-                    {seedMatchJobs[item.key]?.state === "error" && (
-                      <span className="ml-3 text-xs text-crit">
-                        <TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
-                        {seedMatchJobs[item.key].error}
-                      </span>
-                    )}
+                      )}
+                      {item.seed_match && !seedMatchJobs[item.key] && (
+                        <Button
+                          variant="link"
+                          onClick={() => handleStartSeedMatch(item)}
+                          className="text-sm"
+                        >
+                          Seed possible
+                        </Button>
+                      )}
+                      {seedMatchJobs[item.key]
+                        && seedMatchJobs[item.key].state !== "done"
+                        && seedMatchJobs[item.key].state !== "mismatch"
+                        && seedMatchJobs[item.key].state !== "error" && (
+                        <span className="text-xs text-ink-dim">
+                          Vérification…
+                          <Button
+                            variant="link-danger"
+                            onClick={() => handleCancelSeedMatch(item.key)}
+                            className="ml-1"
+                          >
+                            Annuler
+                          </Button>
+                        </span>
+                      )}
+                      {seedMatchJobs[item.key]?.state === "done" && (
+                        <span className="text-xs text-good">
+                          <Check size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
+                          En seed
+                        </span>
+                      )}
+                      {seedMatchJobs[item.key]?.state === "mismatch" && (
+                        <span
+                          className="ml-3 text-xs text-warn"
+                          title={seedMatchJobs[item.key].result?.warning ?? undefined}
+                        >
+                          <TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
+                          {seedMatchJobs[item.key].result?.warning}
+                        </span>
+                      )}
+                      {seedMatchJobs[item.key]?.state === "error" && (
+                        <span className="text-xs text-crit">
+                          <TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
+                          {seedMatchJobs[item.key].error}
+                        </span>
+                      )}
+                      <Link to="/" className="text-sm text-ink-faint underline underline-offset-2 hover:text-ink">
+                        Générer
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1141,6 +1207,32 @@ export default function LibraryPage() {
           onPrev={() => setPage((p) => Math.max(1, p - 1))}
           onNext={() => setPage((p) => (p * PAGE_SIZE < total ? p + 1 : p))}
         />
+      )}
+
+      {selected.size > 0 && (
+        // Barre de selection contextuelle (audit front 2026-10-14, lot 6) :
+        // n'existe que s'il y a une selection -- plus de bouton primaire
+        // "Verifier (0 sélectionnés)" desactive en permanence. Materiau
+        // translucide flottant (le tableau reste lisible dessous), plein
+        // si le systeme demande moins de transparence.
+        <div
+          role="region"
+          aria-label="Sélection"
+          className="fixed inset-x-4 bottom-24 z-30 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface/85 px-4 py-3 shadow-lg backdrop-blur-xl backdrop-saturate-150 transition-[translate,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] starting:translate-y-4 starting:opacity-0 motion-reduce:transition-opacity motion-reduce:starting:translate-y-0 reduced-transparency:bg-surface reduced-transparency:backdrop-blur-none md:inset-x-auto md:right-6 md:bottom-6 md:justify-start"
+        >
+          <span className="text-sm font-medium text-ink" aria-live="polite">
+            {selected.size} sélectionné{selected.size > 1 ? "s" : ""}
+          </span>
+          <span className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" size="sm" onClick={handleVerifySelection} disabled={starting || running}>
+              Vérifier sur le tracker
+            </Button>
+            <Button variant="secondary" size="sm" onClick={clearSelection} className="inline-flex items-center gap-1">
+              <X size={14} aria-hidden="true" />
+              Désélectionner
+            </Button>
+          </span>
+        </div>
       )}
 
       {activeUpload && (

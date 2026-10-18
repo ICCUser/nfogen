@@ -35,12 +35,16 @@ function ProfileSelect() {
  * au-dessus du contenu par defaut, passe en ligne (rail a gauche) a
  * partir de `md:` (768px, convention Tailwind -- s'applique a partir de
  * ce seuil, pas en dessous). `pb-16` reserve la place de la barre du bas
- * fixe sous 768px, retiree des `md:` puisque le rail redevient statique. */
+ * fixe sous 768px, retiree des `md:` puisque le rail redevient statique.
+ * `min-w-0` sur la colonne de contenu : sans lui, un element flex garde
+ * `min-width: auto` et s'elargit a la largeur d'un tableau large au lieu
+ * de laisser son conteneur `overflow-x-auto` defiler (debordement de
+ * toute la page en desktop, audit front 2026-10-14). */
 function AppShell() {
   return (
     <div className="flex min-h-screen flex-col bg-bg pb-16 font-sans text-ink md:flex-row md:pb-0">
       <Sidebar />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-end border-b border-line bg-surface px-4 py-3">
           <ProfileSelect />
         </header>
