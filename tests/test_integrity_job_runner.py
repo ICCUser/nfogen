@@ -27,7 +27,7 @@ def _allow_all_staged_paths_by_default(monkeypatch):
     upload_prep.validate_staged_path) -- ce fichier teste le
     COMPORTEMENT du job, pas ce controle specifiquement, deja couvert par
     test_start_rejects_a_staged_path_outside_staging_dir ci-dessous."""
-    monkeypatch.setattr("nfogen.integrity_job_runner.upload_prep.validate_staged_path", lambda path: None)
+    monkeypatch.setattr("nfogen.integrity_job_runner.upload_prep.validate_staged_path", lambda path: path)
 
 
 def _wait_until_terminal(job_id: str, timeout: float = 5.0) -> dict:

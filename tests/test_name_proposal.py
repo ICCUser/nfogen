@@ -1095,3 +1095,23 @@ def test_season_pack_uses_real_audio_and_reencode():
     assert ".WEBRip." in result.name
     assert ".EAC3.5.1." in result.name
     assert ".x264-CiELOS" in result.name
+
+
+def test_extract_team_tag_is_linear_on_unclosed_brackets():
+    """CodeQL py/polynomial-redos (alerte #25) : `\[([^\]]+)\]` relancait une
+    recherche jusqu'a la fin de la chaine a CHAQUE '[' non ferme -- cout
+    quadratique (~27 s pour 100 000 caracteres, mesure 2026-10-18) sur un nom
+    de fichier fourni par l'appelant. Doit rester lineaire."""
+    import time
+
+    from nfogen.name_proposal import extract_team_tag
+
+    start = time.perf_counter()
+    assert extract_team_tag("[" * 50_000 + "Film-TEAM") == "TEAM"
+    assert time.perf_counter() - start < 1.0
+
+
+def test_extract_team_tag_still_strips_bracketed_tags():
+    from nfogen.name_proposal import extract_team_tag
+
+    assert extract_team_tag("[Group] Film.2020.1080p-TEAM [rarbg]") == "TEAM"

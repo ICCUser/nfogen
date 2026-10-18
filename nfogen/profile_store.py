@@ -51,15 +51,29 @@ def _root() -> Path:
 
 
 def _check_name(name: str) -> None:
-    if not _NAME_RE.match(name or ""):
+    # fullmatch : avec match(), '$' acceptait un saut de ligne final
+    # ("abc" suivi d'un retour a la ligne passait le filtre).
+    if not _NAME_RE.fullmatch(name or ""):
         raise ProfileStoreError(
             f"Nom de profil invalide : '{name}' (lettres/chiffres/'-'/'_' uniquement)."
         )
 
 
+def _child_dir(root: str | Path, name: str) -> Path:
+    """`root/name`, verifie sous `root` apres normalisation. `_check_name`
+    l'interdit deja (ni '/', ni '.'), mais le controle explicite ci-dessous
+    est celui que l'analyse statique reconnait (CodeQL py/path-injection,
+    alertes #8-#12) -- defense en profondeur si le motif du nom evolue."""
+    real_root = os.path.realpath(root)
+    candidate = os.path.realpath(os.path.join(real_root, name))
+    if not candidate.startswith(real_root + os.sep):
+        raise ProfileStoreError(f"Nom de profil invalide : '{name}'.")
+    return Path(candidate)
+
+
 def _profile_dir(name: str, *, must_exist: bool) -> Path:
     _check_name(name)
-    path = _root() / name
+    path = _child_dir(_root(), name)
     if must_exist and not path.is_dir():
         raise ProfileStoreError(f"Profil utilisateur inconnu : '{name}'.")
     return path
@@ -75,7 +89,7 @@ def _resolve_readable_dir(name: str) -> Path:
     _check_name(name)
     root = os.environ.get("NFOGEN_PROFILES_DIR")
     if root:
-        managed = Path(root) / name
+        managed = _child_dir(root, name)
         if managed.is_dir():
             return managed
     from .profiles import BUILTIN_PROFILE_DIRS

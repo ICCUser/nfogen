@@ -309,3 +309,12 @@ def test_concurrent_writes_to_same_profile_never_corrupt_it():
     assert errors == [], f"ecriture(s) concurrente(s) en echec : {errors}"
     template = ps.read_profile("concurrent")["templates"]["game"]
     assert template in ("MARKER-A", "MARKER-B")
+
+
+def test_rejects_profile_name_with_trailing_newline():
+    """`re.match` + `$` acceptait un '\n' final ("abc\n") : le nom doit
+    correspondre ENTIEREMENT au motif (fullmatch)."""
+    with pytest.raises(ps.ProfileStoreError):
+        ps.write_profile("abc\n", rules={}, templates={})
+    with pytest.raises(ps.ProfileStoreError):
+        ps.read_profile("abc\n")

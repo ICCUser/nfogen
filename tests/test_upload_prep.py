@@ -44,7 +44,7 @@ def _allow_all_paths_by_default(monkeypatch):
     (voir test_commit_upload_rejects_unknown_source_path et consorts, qui
     reactivent la VRAIE fonction en la re-importants avant patch)."""
     monkeypatch.setattr("nfogen.upload_prep._validate_known_source_paths", lambda paths: None)
-    monkeypatch.setattr("nfogen.upload_prep.validate_staged_path", lambda path: None)
+    monkeypatch.setattr("nfogen.upload_prep.validate_staged_path", lambda path: path)
 
 
 def test_files_with_same_team_form_one_group():
@@ -2359,3 +2359,50 @@ def test_reencoded_web_file_is_named_webrip_x264():
     name = proposals[0].release_name
     assert ".WEBRip." in name
     assert ".x264-TEAM" in name
+
+
+def test_validate_staged_path_returns_the_checked_real_path(tmp_path, monkeypatch):
+    """CodeQL py/path-injection (alertes #20-#24, #26) : la valeur verifiee
+    doit etre CELLE qu'on utilise ensuite -- validate_staged_path renvoie le
+    chemin reel controle, que send_to_tracker lit a la place de l'entree brute."""
+    import os
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    checked = _real_validate_staged_path(str(staging_dir / "sub" / ".." / "Movie.2020.mkv"))
+    assert checked == os.path.realpath(staging_dir / "Movie.2020.mkv")
+
+
+def test_validate_staged_path_rejects_a_sibling_sharing_the_prefix(tmp_path, monkeypatch):
+    """'/x/staging-evil/f' commence par '/x/staging' : la comparaison doit
+    porter sur 'staging' + separateur, pas sur un simple prefixe de texte."""
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    (tmp_path / "staging-evil").mkdir()
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    with pytest.raises(ValueError, match="dossier de mise en scène"):
+        _real_validate_staged_path(str(tmp_path / "staging-evil" / "f.mkv"))
+
+
+def test_validate_staged_path_rejects_a_symlink_escaping_staging_dir(tmp_path, monkeypatch):
+    import os
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("x")
+    link = staging_dir / "innocent.mkv"
+    try:
+        os.symlink(secret, link)
+    except (OSError, NotImplementedError):
+        pytest.skip("creation de lien symbolique non autorisee sur cette machine")
+    monkeypatch.setattr(
+        "nfogen.upload_prep.gapscan_config_store.effective_staging_dir", lambda: str(staging_dir)
+    )
+    with pytest.raises(ValueError, match="dossier de mise en scène"):
+        _real_validate_staged_path(str(link))

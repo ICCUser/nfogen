@@ -16,7 +16,11 @@ from typing import Any
 _YEAR_RE = re.compile(r"[(.](?P<year>(?:19|20)\d{2})[).]")
 _SEASON_EP_RE = re.compile(r"[Ss](\d{2})[Ee](\d{2})")
 _SEASON_ONLY_RE = re.compile(r"[Ss](\d{2})(?![Ee\d])")
-_BRACKETS_RE = re.compile(r"\[([^\]]+)\]")
+# '[' exclu du contenu : sinon chaque '[' non ferme relance une recherche
+# jusqu'a la fin de la chaine (cout quadratique sur un nom fourni par
+# l'appelant -- CodeQL py/polynomial-redos, alerte #25). Les crochets
+# imbriques n'etaient de toute facon pas geres.
+_BRACKETS_RE = re.compile(r"\[([^\[\]]+)\]")
 _RESOLUTION_RE = re.compile(r"\b(\d{3,4})p\b", re.IGNORECASE)
 _CHANNELS_RE = re.compile(r"\b(\d(?:\.\d))\b")
 _TEAM_RE = re.compile(r"-\s*([A-Za-z0-9]+)\s*$")

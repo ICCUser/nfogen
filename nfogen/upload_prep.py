@@ -9,6 +9,7 @@ fois) -- la mise en scene cree de vrais fichiers et la generation de
 """
 from __future__ import annotations
 
+import os
 import re
 import threading
 from dataclasses import dataclass, field, replace
@@ -259,29 +260,45 @@ def _validate_known_source_paths(paths: list[str]) -> None:
         )
 
 
+def _real_path_within(path: str, root: str) -> str | None:
+    """Chemin reel de `path` (symlinks et '..' resolus) s'il reste STRICTEMENT
+    sous `root` (reel aussi), sinon None. `realpath` neutralise '..', les
+    liens symboliques ET le cas ou `path` est absolu (`Path(root) / path`
+    ignorerait silencieusement `root`, voir audit securite 2026-09-09) ; la
+    comparaison porte sur `root` + separateur, jamais sur un simple
+    prefixe de texte ('/x/staging-evil' n'est pas sous '/x/staging')."""
+    real_root = os.path.realpath(root)
+    real_path = os.path.realpath(path)
+    if not real_path.startswith(real_root + os.sep):
+        return None
+    return real_path
+
+
 def _path_within(path: str, root: str) -> bool:
-    """Vrai si `path`, une fois resolu, reste sous `root` (resolu aussi).
-    `Path.resolve()` neutralise a la fois les composants '..' ET le cas
-    ou `path` est absolu -- `Path(root) / path` ignorerait sinon
-    silencieusement `root` quand `path` est deja absolu (comportement de
-    l'operateur `/` de pathlib, voir audit securite 2026-09-09)."""
-    try:
-        resolved = Path(path).resolve()
-        resolved_root = Path(root).resolve()
-    except OSError:
-        return False
-    return resolved == resolved_root or resolved_root in resolved.parents
+    """Vrai si `path` reste sous `root` -- voir `_real_path_within`."""
+    return _real_path_within(path, root) is not None
 
 
-def validate_staged_path(path: str) -> None:
-    """Leve ValueError si `path` ne reste pas sous le dossier de mise en
-    scene configure -- protege `send_to_tracker()`/`verify-integrity`
-    contre un `staged_path` arbitraire fourni par le client (voir audit
-    securite 2026-09-09). Les valeurs LEGITIMES de `staged_path` sont
-    TOUJOURS produites par `commit_upload()` sous ce meme dossier."""
+def validate_staged_path(path: str) -> str:
+    """Renvoie le chemin REEL verifie de `path`, ou leve ValueError s'il ne
+    reste pas sous le dossier de mise en scene configure -- protege
+    `send_to_tracker()`/`verify-integrity` contre un `staged_path`
+    arbitraire fourni par le client (voir audit securite 2026-09-09). Les
+    valeurs LEGITIMES de `staged_path` sont TOUJOURS produites par
+    `commit_upload()` sous ce meme dossier.
+
+    Les acces disque doivent utiliser la valeur RENVOYEE, pas l'entree :
+    c'est elle qui a ete controlee (CodeQL py/path-injection, alertes
+    #20-#24 et #26 -- la verification portait sur une variable, la
+    lecture sur une autre)."""
     staging_dir = gapscan_config_store.effective_staging_dir()
-    if not staging_dir or not _path_within(path, staging_dir):
+    if not staging_dir:
         raise ValueError(f"Chemin hors du dossier de mise en scène : {path}")
+    real_root = os.path.realpath(staging_dir)
+    real_path = os.path.realpath(path)
+    if not real_path.startswith(real_root + os.sep):
+        raise ValueError(f"Chemin hors du dossier de mise en scène : {path}")
+    return real_path
 
 
 def _preview_season_pack(
@@ -701,8 +718,12 @@ def send_to_tracker(
     rend la description BBCode, calcule categorie/sous-categorie/options
     depuis le release_name deja confirme, verifie les doublons (best
     effort, jamais bloquant), puis appelle l'API."""
-    for path in (staged_path, torrent_path, nfo_path):
-        validate_staged_path(path)
+    # Chemins VERIFIES, seuls utilises pour lire le disque ci-dessous ;
+    # `staged_path` brut reste celui transmis a qBittorrent (meme chaine
+    # que celle produite par commit_upload, voir plus bas).
+    checked_staged = validate_staged_path(staged_path)
+    checked_torrent = validate_staged_path(torrent_path)
+    checked_nfo = validate_staged_path(nfo_path)
     tracker_config = gapscan_config_store.effective_tracker(profile)
     if tracker_config is None:
         raise ValueError(
@@ -813,7 +834,7 @@ def send_to_tracker(
     # Pour un pack (dossier), le premier episode reste representatif
     # (codec/langues identiques d'un episode a l'autre dans l'ecrasante
     # majorite des cas).
-    staged = Path(staged_path)
+    staged = Path(checked_staged)
     if staged.is_dir():
         per_file_metadata = extract.extract_video_dir_metadata(staged)
         first_metadata = per_file_metadata[0] if per_file_metadata else {}
@@ -918,8 +939,8 @@ def send_to_tracker(
         )
     options = c411_upload_options.build_options(profile, capture_values, release_name, season_number)
 
-    torrent_bytes = Path(torrent_path).read_bytes()
-    nfo_bytes = Path(nfo_path).read_bytes()
+    torrent_bytes = Path(checked_torrent).read_bytes()
+    nfo_bytes = Path(checked_nfo).read_bytes()
 
     upload_client = C411UploadClient(api_key, base_url=base_url.rstrip("/") + "/api")
     try:

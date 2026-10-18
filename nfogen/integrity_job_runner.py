@@ -51,7 +51,8 @@ def start(staged_path: str) -> str:
     upload_prep.validate_staged_path, audit securite 2026-09-09) --
     empeche un `staged_path` arbitraire de faire decoder n'importe quel
     fichier du serveur par ffmpeg."""
-    upload_prep.validate_staged_path(staged_path)
+    # Le chemin VERIFIE (renvoye) est celui decode par ffmpeg, jamais l'entree.
+    staged_path = upload_prep.validate_staged_path(staged_path)
     if not video_integrity.has_ffmpeg():
         raise RuntimeError("ffmpeg/ffprobe requis pour la vérification — non trouvés sur le serveur nfogen.")
 
