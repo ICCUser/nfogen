@@ -815,7 +815,7 @@ export default function LibraryPage() {
             Recherche
             <input
               aria-label="Recherche"
-              className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+              className="mt-1 block w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
               value={q}
               onChange={(e) => resetPageAnd(setQ)(e.target.value)}
               placeholder="Titre…"
@@ -825,7 +825,7 @@ export default function LibraryPage() {
             Type
             <select
               aria-label="Type"
-              className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+              className="mt-1 block w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
               value={mediaType}
               onChange={(e) => resetPageAnd(setMediaType)(e.target.value as "" | "movie" | "series")}
             >
@@ -838,7 +838,7 @@ export default function LibraryPage() {
             Statut
             <select
               aria-label="Statut"
-              className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+              className="mt-1 block w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
               value={statusFilter}
               onChange={(e) => resetPageAnd(setStatusFilter)(e.target.value as GapStatus | "not_verified" | "")}
             >
@@ -876,7 +876,7 @@ export default function LibraryPage() {
               Genre
               <input
                 aria-label="Genre"
-                className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+                className="mt-1 block w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
                 value={genre}
                 onChange={(e) => resetPageAnd(setGenre)(e.target.value)}
                 placeholder="Action, Drama…"
@@ -886,7 +886,7 @@ export default function LibraryPage() {
               Genre tracker
               <select
                 aria-label="Genre tracker"
-                className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+                className="mt-1 block w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
                 value={trackerGenre}
                 onChange={(e) => resetPageAnd(setTrackerGenre)(e.target.value as "" | "anime" | "documentaire")}
               >
@@ -900,7 +900,7 @@ export default function LibraryPage() {
               <input
                 aria-label="Ajouté depuis (jours)"
                 type="number"
-                className="mt-1 w-full max-w-[8rem] rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
+                className="mt-1 block w-full max-w-[8rem] rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
                 value={addedSinceDays}
                 onChange={(e) => resetPageAnd(setAddedSinceDays)(e.target.value)}
               />
@@ -909,7 +909,7 @@ export default function LibraryPage() {
               Déjà traité
               <select
                 aria-label="Déjà traité"
-                className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
+                className="mt-1 block w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:w-48"
                 value={processed}
                 onChange={(e) => resetPageAnd(setProcessed)(e.target.value as "" | "true" | "false")}
               >
