@@ -10,6 +10,7 @@ import {
 import ActiveTransfersTray from "../components/ActiveTransfersTray";
 import InlineBanner from "../components/InlineBanner";
 import PageToolbar from "../components/PageToolbar";
+import ProgressBar from "../components/ProgressBar";
 import SortableHeader from "../components/SortableHeader";
 import UploadPrepPanel from "../components/UploadPrepPanel";
 import {
@@ -768,23 +769,13 @@ export default function LibraryPage() {
               ? `${status.processed} / ${status.total} titres traités…`
               : "Récupération de la bibliothèque…"}
           </p>
-          <div
-            role="progressbar"
-            aria-label="Progression du scan"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            // Total encore inconnu (recuperation de la bibliotheque) :
-            // progression indeterminee, pas de valeur.
-            aria-valuenow={status && status.total > 0 ? Math.round((100 * status.processed) / status.total) : undefined}
-            className="h-2 w-full overflow-hidden rounded-full bg-surface-2"
-          >
-            <div
-              className="h-full bg-accent transition-all"
-              style={{
-                width: status && status.total > 0 ? `${(100 * status.processed) / status.total}%` : "10%",
-              }}
-            />
-          </div>
+          {/* Total encore inconnu (recuperation de la bibliotheque) : barre
+              indeterminee plutot qu'un "10 %" fige (audit front 2026-10-14,
+              lot 7). */}
+          <ProgressBar
+            value={status && status.total > 0 ? (100 * status.processed) / status.total : null}
+            label="Progression du scan"
+          />
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cancelCommitJob, listCommitJobs } from "../api/client";
 import type { CommitJob } from "../api/types";
+import ProgressBar from "./ProgressBar";
 import Button from "./Button";
 
 const STEP_LABELS: Record<string, string> = {
@@ -77,16 +78,7 @@ export default function ActiveTransfersTray() {
               Annuler
             </Button>
           </div>
-          <div
-            role="progressbar"
-            aria-label={`Transfert ${job.release_name}`}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(job.percent)}
-            className="h-1.5 w-full overflow-hidden rounded bg-surface-2"
-          >
-            <div className="h-full bg-accent transition-all" style={{ width: `${job.percent}%` }} />
-          </div>
+          <ProgressBar value={job.percent} label={`Transfert ${job.release_name}`} size="sm" />
           <p className="text-xs text-ink-dim">
             {STEP_LABELS[job.state] ?? job.state} — {Math.round(job.percent)}%
           </p>

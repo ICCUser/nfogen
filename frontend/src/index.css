@@ -35,6 +35,19 @@
   --color-crit-bg: #f4e0dd;
   --color-info: #2f6f8f;
   --color-info-bg: #e1edf1;
+
+  /* Progression indeterminee (ProgressBar, total encore inconnu) : un
+     segment balaie la piste, ~0,7 cycle/s -- loin des oscillations lentes
+     (~0,2 Hz) a eviter. Desactive en mouvement reduit (motion-reduce:). */
+  --animate-progress-indeterminate: progress-indeterminate 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  @keyframes progress-indeterminate {
+    from {
+      translate: -100% 0;
+    }
+    to {
+      translate: 250% 0;
+    }
+  }
 }
 
 @media (prefers-color-scheme: dark) {

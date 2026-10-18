@@ -2,6 +2,7 @@ import { TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import ConfirmButton from "./ConfirmButton";
 import Drawer from "./Drawer";
+import ProgressBar from "./ProgressBar";
 import {
   cancelCommitJob,
   cancelIntegrityJob,
@@ -401,6 +402,15 @@ export default function UploadPrepPanel({
               ? `Analyse en cours… (${previewJob.processed}/${previewJob.total} fichiers)`
               : "Analyse en cours…"}
           </p>
+          {/* Etat en cours visible, pas seulement du texte (audit front
+              2026-10-14, lot 7) : progression reelle pour un pack (n/total
+              fichiers, polling 1 s), indeterminee pour un fichier seul. */}
+          <ProgressBar
+            value={previewJob && previewJob.total > 1 ? (100 * previewJob.processed) / previewJob.total : null}
+            label="Analyse des fichiers"
+            pollMs={1000}
+            size="sm"
+          />
           <p className="text-xs">
             Un fichier dont le débit/la fréquence d'image ne sont pas déjà indiqués dans ses métadonnées
             peut nécessiter une analyse plus longue (surtout sur un stockage distant).
@@ -455,19 +465,7 @@ export default function UploadPrepPanel({
           )}
           {commitJobs[index] && (
             <div className="space-y-1">
-              <div
-                role="progressbar"
-                aria-label="Mise en scène et génération du torrent"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(commitJobs[index].percent)}
-                className="h-2 w-full overflow-hidden rounded bg-surface-2"
-              >
-                <div
-                  className="h-full bg-accent transition-all"
-                  style={{ width: `${commitJobs[index].percent}%` }}
-                />
-              </div>
+              <ProgressBar value={commitJobs[index].percent} label="Mise en scène et génération du torrent" />
               <div className="flex items-center justify-between text-xs text-ink-dim">
                 <span>
                   {STEP_LABELS[commitJobs[index].state] ?? commitJobs[index].state} —{" "}
@@ -525,19 +523,7 @@ export default function UploadPrepPanel({
                 troncature) — peut prendre plusieurs dizaines de minutes sur un gros pack. Uniquement pour un
                 envoi direct : "Créer un brouillon" saute cette étape.
               </p>
-              <div
-                role="progressbar"
-                aria-label="Vérification approfondie du fichier"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(integrityJobs[index].percent)}
-                className="h-2 w-full overflow-hidden rounded bg-surface-2"
-              >
-                <div
-                  className="h-full bg-accent transition-all"
-                  style={{ width: `${integrityJobs[index].percent}%` }}
-                />
-              </div>
+              <ProgressBar value={integrityJobs[index].percent} label="Vérification approfondie du fichier" />
               <div className="flex items-center justify-between text-xs text-ink-dim">
                 <span>Vérification du fichier… — {Math.round(integrityJobs[index].percent)}%</span>
                 <Button variant="link-danger" onClick={() => handleCancelIntegrity(index)}>
