@@ -97,6 +97,16 @@ body {
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Titres en police d'affichage (Archivo) : approche legerement resserree
+     -- a ces tailles, l'approche par defaut ecarte visiblement les lettres
+     (audit front 2026-10-14, lot 8). Corps de texte laisse a 0. */
+  :where(h1) {
+    letter-spacing: -0.015em;
+  }
+  :where(h2) {
+    letter-spacing: -0.01em;
+  }
+
   /* Tiroir ouvert (Drawer, <dialog> modal) : la page derriere ne doit pas
      defiler sous le doigt ou la molette -- seul le tiroir defile. */
   :root:has(dialog[open]) {

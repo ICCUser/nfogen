@@ -795,7 +795,7 @@ export default function LibraryPage() {
             {[...status.log].reverse().map((entry, i) => (
               <div key={i} className="flex items-center gap-2">
                 <span
-                  className={`whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] ${STATUS_BADGE_CLASS[entry.status]}`}
+                  className={`whitespace-nowrap rounded-full px-1.5 py-0.5 text-[11px] ${STATUS_BADGE_CLASS[entry.status]}`}
                 >
                   {statusLabel(entry.status, trackerDisplayName)}
                 </span>
@@ -1209,7 +1209,7 @@ export default function LibraryPage() {
         <div
           role="region"
           aria-label="Sélection"
-          className="fixed inset-x-4 bottom-24 z-30 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface/85 px-4 py-3 shadow-lg backdrop-blur-xl backdrop-saturate-150 transition-[translate,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] starting:translate-y-4 starting:opacity-0 motion-reduce:transition-opacity motion-reduce:starting:translate-y-0 reduced-transparency:bg-surface reduced-transparency:backdrop-blur-none md:inset-x-auto md:right-6 md:bottom-6 md:justify-start"
+          className="fixed inset-x-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface/85 px-4 py-3 shadow-lg backdrop-blur-xl backdrop-saturate-150 transition-[translate,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] starting:translate-y-4 starting:opacity-0 motion-reduce:transition-opacity motion-reduce:starting:translate-y-0 reduced-transparency:bg-surface reduced-transparency:backdrop-blur-none md:inset-x-auto md:right-6 md:bottom-6 md:justify-start"
         >
           <span className="text-sm font-medium text-ink" aria-live="polite">
             {selected.size} sélectionné{selected.size > 1 ? "s" : ""}

@@ -1,4 +1,4 @@
-import { FileText, Home, Library, Send, Settings } from "lucide-react";
+import { FilePlus, FileText, Library, Send, Settings } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 /** Rail lateral fixe (icone + libelle) sur desktop, inspire de la suite
@@ -8,12 +8,17 @@ import { NavLink } from "react-router-dom";
  * rail lateral. Voir docs/superpowers/specs/
  * 2026-09-12-frontend-shell-redesign-design.md. */
 
+// `short` : libelle de la barre du bas (< 768px), ou "À mettre en seed"
+// passait sur deux lignes et decalait toute la rangee d'icones (audit
+// front 2026-10-14, lot 8). Le nom accessible reste toujours `label`.
+// Icone de "Générer" : FilePlus (creer un .nfo) plutot qu'une maison, qui
+// contredisait le libelle precis.
 const LINKS = [
-  { to: "/", label: "Générer", icon: Home, end: true },
-  { to: "/library", label: "Bibliothèque", icon: Library, end: false },
-  { to: "/seed-queue", label: "À mettre en seed", icon: Send, end: false },
-  { to: "/profils", label: "Profils", icon: FileText, end: false },
-  { to: "/settings", label: "Réglages", icon: Settings, end: false },
+  { to: "/", label: "Générer", short: "Générer", icon: FilePlus, end: true },
+  { to: "/library", label: "Bibliothèque", short: "Bibliothèque", icon: Library, end: false },
+  { to: "/seed-queue", label: "À mettre en seed", short: "Seed", icon: Send, end: false },
+  { to: "/profils", label: "Profils", short: "Profils", icon: FileText, end: false },
+  { to: "/settings", label: "Réglages", short: "Réglages", icon: Settings, end: false },
 ] as const;
 
 function linkClass({ isActive }: { isActive: boolean }) {
@@ -28,15 +33,16 @@ export default function Sidebar() {
   return (
     <nav
       aria-label="Navigation principale"
-      className="fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-line bg-surface md:static md:inset-auto md:h-auto md:w-auto md:shrink-0 md:flex-col md:justify-start md:border-r md:border-t-0"
+      className="fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:static md:pb-0 md:inset-auto md:h-auto md:w-auto md:shrink-0 md:flex-col md:justify-start md:border-r md:border-t-0"
     >
       <div className="hidden px-4 py-4 font-display text-lg font-bold text-ink md:block">
         nfogen<span className="font-mono text-sm text-accent">.nfo</span>
       </div>
-      {LINKS.map(({ to, label, icon: Icon, end }) => (
-        <NavLink key={to} to={to} end={end} className={linkClass}>
+      {LINKS.map(({ to, label, short, icon: Icon, end }) => (
+        <NavLink key={to} to={to} end={end} aria-label={label} className={linkClass}>
           <Icon size={18} aria-hidden="true" />
-          <span>{label}</span>
+          <span className="whitespace-nowrap md:hidden">{short}</span>
+          <span className="hidden md:inline">{label}</span>
         </NavLink>
       ))}
     </nav>
