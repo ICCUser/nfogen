@@ -11,6 +11,7 @@ import { addToSeedQueue, seedQueue, seedStatus } from "../api/client";
 import { ApiError } from "../api/types";
 import type { SeedingTorrent, SeedQueueEntry } from "../api/types";
 import { formatBytes } from "../format";
+import Button from "../components/Button";
 
 function formatSpeed(bytesPerSecond: number): string {
   if (bytesPerSecond <= 0) return "—";
@@ -144,14 +145,13 @@ export default function SeedQueuePage() {
                     className="mt-1 block text-sm text-ink"
                   />
                 </label>
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
                   onClick={() => handleAdd(entry)}
                   disabled={!files[entry.key] || adding === entry.key}
-                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
                 >
                   {adding === entry.key ? "Ajout…" : "Ajouter au client de seed"}
-                </button>
+                </Button>
               </div>
               {errors[entry.key] && <p className="text-xs text-crit">{errors[entry.key]}</p>}
             </li>

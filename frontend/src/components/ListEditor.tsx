@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Button from "./Button";
 
 interface ListEditorProps<T> {
   items: T[];
@@ -29,18 +30,18 @@ export function ListEditor<T>({ items, onChange, newItem, renderRow, addLabel }:
       {items.map((item, i) => (
         <div key={i} className="flex items-start gap-2 rounded-md border border-line p-2">
           <div className="flex-1 space-y-1">{renderRow(item, (patch) => updateAt(i, patch))}</div>
-          <button
-            type="button"
+          <Button
+            variant="link-danger"
             onClick={() => removeAt(i)}
-            className="shrink-0 text-xs text-crit hover:underline"
+            className="shrink-0 text-xs"
           >
             Supprimer
-          </button>
+          </Button>
         </div>
       ))}
-      <button type="button" onClick={add} className="text-sm text-accent-ink underline">
+      <Button variant="link" onClick={add} className="text-sm">
         + {addLabel}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -84,22 +85,22 @@ export function KeyValueEditor({ value, onChange, keyPlaceholder, valuePlacehold
               setEntries(next);
             }}
           />
-          <button
-            type="button"
-            className="text-xs text-crit hover:underline"
+          <Button
+            variant="link-danger"
+            className="text-xs"
             onClick={() => setEntries(entries.filter((_, idx) => idx !== i))}
           >
             Supprimer
-          </button>
+          </Button>
         </div>
       ))}
-      <button
-        type="button"
-        className="text-sm text-accent-ink underline"
+      <Button
+        variant="link"
+        className="text-sm"
         onClick={() => setEntries([...entries, ["", ""]])}
       >
         + Ajouter
-      </button>
+      </Button>
     </div>
   );
 }

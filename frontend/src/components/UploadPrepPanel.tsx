@@ -23,6 +23,7 @@ import type {
   UploadPreviewJob,
 } from "../api/types";
 import { useProfile } from "../ProfileContext";
+import Button from "./Button";
 
 const STEP_LABELS: Record<string, string> = {
   staging: "Mise en scène",
@@ -55,7 +56,9 @@ export default function UploadPrepPanel({
   genre,
   seasonNumber,
   seasonPack,
+  open = true,
   onClose,
+  onExited,
 }: {
   localPaths: string[];
   title: string;
@@ -70,7 +73,11 @@ export default function UploadPrepPanel({
    * quand fourni, ignore localPaths cote backend et construit un seul
    * groupe multi-saisons (voir nfogen/upload_prep.py:_preview_season_pack). */
   seasonPack?: SeasonPackRequest;
+  /** Passe a false pour lancer l'animation de sortie du tiroir ;
+   * `onExited` signale qu'elle est terminee (voir Drawer). */
+  open?: boolean;
   onClose: () => void;
+  onExited?: () => void;
 }) {
   const { profile: globalProfile, profiles } = useProfile();
   const [profile, setProfile] = useState(globalProfile);
@@ -274,15 +281,6 @@ export default function UploadPrepPanel({
     onClose();
   }
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") handleRequestClose();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasUnsentProgress]);
-
   async function handleSend(index: number, direct: boolean) {
     const commit = commitResults[index];
     if (!commit) return;
@@ -352,11 +350,15 @@ export default function UploadPrepPanel({
   return (
     // Tiroir lateral droit (retour utilisateur, 2026-09-12 : l'overlay
     // centre coupait la lecture du contenu en dessous) -- Drawer fournit
-    // deja le fond assombri, le clic-dehors et le bouton de fermeture
-    // (X), tous relies au meme garde-fou handleRequestClose que
-    // l'echappement clavier ci-dessus.
-    <Drawer onClose={handleRequestClose}>
-      <div role="dialog" aria-modal="true" aria-label={`Préparer l'upload — ${title}`} className="space-y-3">
+    // deja le fond assombri, le clic-dehors, la touche Echap et le bouton
+    // de fermeture (X), tous relies au meme garde-fou handleRequestClose.
+    <Drawer
+      open={open}
+      onClose={handleRequestClose}
+      onExited={onExited}
+      label={`Préparer l'upload — ${title}`}
+    >
+      <div className="space-y-3">
         <h2 className="font-display text-sm font-semibold text-ink">Préparer l'upload — {title}</h2>
 
       <div className="flex items-end gap-2">
@@ -385,14 +387,14 @@ export default function UploadPrepPanel({
             onChange={(e) => setTitleOverride(e.target.value)}
           />
         </label>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => loadPreview(titleOverride)}
           disabled={recalculating}
-          className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
         >
           {recalculating ? "Calcul…" : "Recalculer"}
-        </button>
+        </Button>
       </div>
 
       {loadError && <p className="text-sm text-crit">{loadError}</p>}
@@ -408,13 +410,13 @@ export default function UploadPrepPanel({
             peut nécessiter une analyse plus longue (surtout sur un stockage distant).
           </p>
           {previewJob && !TERMINAL_STATES.includes(previewJob.state) && (
-            <button
-              type="button"
+            <Button
+              variant="link-danger"
               onClick={handleCancelPreview}
-              className="text-xs text-crit underline hover:opacity-80"
+              className="text-xs"
             >
               Annuler
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -444,13 +446,13 @@ export default function UploadPrepPanel({
           )}
 
           {!group.blocked && group.release_name && !commitResults[index] && !commitJobs[index] && (
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => handleConfirm(index, group)}
-              className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-surface hover:opacity-90 disabled:opacity-50"
             >
               Confirmer
-            </button>
+            </Button>
           )}
           {commitJobs[index] && (
             <div className="space-y-1">
@@ -465,9 +467,9 @@ export default function UploadPrepPanel({
                   {STEP_LABELS[commitJobs[index].state] ?? commitJobs[index].state} —{" "}
                   {Math.round(commitJobs[index].percent)}%
                 </span>
-                <button type="button" onClick={() => handleCancel(index)} className="text-crit underline">
+                <Button variant="link-danger" onClick={() => handleCancel(index)}>
                   Annuler
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -483,23 +485,23 @@ export default function UploadPrepPanel({
           )}
           {commitResults[index] && !sendResults[index] && (
             <div className="flex items-center gap-2">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => handleSend(index, false)}
                 disabled={sending !== null}
-                className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
               >
                 {sending?.index === index && !sending.direct ? "Envoi…" : "Créer un brouillon"}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => handleSend(index, true)}
                 disabled={sending !== null}
                 title="Upload direct (POST /api/torrents) -- part réellement en modération, contrairement au brouillon."
-                className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
               >
                 {sending?.index === index && sending.direct ? "Envoi…" : "Uploader directement"}
-              </button>
+              </Button>
             </div>
           )}
           {integrityJobs[index] && (
@@ -524,9 +526,9 @@ export default function UploadPrepPanel({
               </div>
               <div className="flex items-center justify-between text-xs text-ink-dim">
                 <span>Vérification du fichier… — {Math.round(integrityJobs[index].percent)}%</span>
-                <button type="button" onClick={() => handleCancelIntegrity(index)} className="text-crit underline">
+                <Button variant="link-danger" onClick={() => handleCancelIntegrity(index)}>
                   Annuler
-                </button>
+                </Button>
               </div>
             </div>
           )}

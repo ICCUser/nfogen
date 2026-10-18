@@ -136,11 +136,12 @@ it("la boite de dialogue reste bornee en hauteur, defilable en interne (incident
   mockPreview(ONE_GROUP);
   renderPanel({ localPaths: ["/media/movie.mkv"], title: "Movie", onClose: vi.fn() });
 
-  // Le plafonnement en hauteur/defilement interne vit desormais sur le
-  // tiroir (Drawer) qui englobe la boite de dialogue, pas sur la boite
-  // elle-meme (retour utilisateur, 2026-09-12 : conversion overlay -> tiroir).
-  const dialog = await screen.findByRole("dialog");
-  const drawerContent = dialog.parentElement as HTMLElement;
+  // Le plafonnement en hauteur/defilement interne vit sur le panneau du
+  // tiroir (Drawer), pas sur le <dialog> plein ecran qui l'englobe (retour
+  // utilisateur, 2026-09-12 : conversion overlay -> tiroir ; audit front
+  // 2026-10-14 : passage au <dialog> natif).
+  await screen.findByRole("dialog");
+  const drawerContent = screen.getByTestId("drawer-panel");
   expect(drawerContent.className).toContain("h-full");
   expect(drawerContent.className).toContain("overflow-y-auto");
 });

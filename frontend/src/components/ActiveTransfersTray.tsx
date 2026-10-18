@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cancelCommitJob, listCommitJobs } from "../api/client";
 import type { CommitJob } from "../api/types";
+import Button from "./Button";
 
 const STEP_LABELS: Record<string, string> = {
   staging: "Mise en scène",
@@ -72,9 +73,9 @@ export default function ActiveTransfersTray() {
         <div key={job.job_id} className="space-y-1">
           <div className="flex items-center justify-between text-xs text-ink">
             <span className="font-mono">{job.release_name}</span>
-            <button type="button" onClick={() => handleCancel(job.job_id)} className="text-crit underline">
+            <Button variant="link-danger" onClick={() => handleCancel(job.job_id)}>
               Annuler
-            </button>
+            </Button>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded bg-surface-2">
             <div className="h-full bg-accent transition-all" style={{ width: `${job.percent}%` }} />

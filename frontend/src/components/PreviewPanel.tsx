@@ -2,6 +2,7 @@ import { useState } from "react";
 import { previewGenerate } from "../api/client";
 import { ApiError } from "../api/types";
 import type { Category } from "../api/types";
+import Button from "./Button";
 
 interface Props {
   profile: string;
@@ -53,14 +54,13 @@ export default function PreviewPanel({ profile, category }: Props) {
         value={sampleData}
         onChange={(e) => setSampleData(e.target.value)}
       />
-      <button
-        type="button"
+      <Button
+        variant="primary"
         onClick={run}
         disabled={loading}
-        className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
       >
         {loading ? "Génération…" : "Tester"}
-      </button>
+      </Button>
 
       {error && (
         <div className="rounded-md border border-crit bg-crit-bg px-3 py-2 text-sm text-crit">

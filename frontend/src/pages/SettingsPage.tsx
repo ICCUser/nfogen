@@ -5,6 +5,7 @@ import { ApiError } from "../api/types";
 import type { GapscanConfig, GapscanConfigWrite } from "../api/types";
 import { KeyValueEditor } from "../components/ListEditor";
 import { useProfile } from "../ProfileContext";
+import Button from "../components/Button";
 
 export default function SettingsPage() {
   const [baseUrl, setBaseUrlState] = useState(getBaseUrl());
@@ -239,13 +240,12 @@ export default function SettingsPage() {
             placeholder="(même origine, vide par défaut)"
           />
         </label>
-        <button
-          type="button"
+        <Button
+          variant="primary"
           onClick={saveBaseUrl}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90"
         >
           Enregistrer
-        </button>
+        </Button>
         {baseUrlSaved && <span className="ml-3 text-sm text-good">Enregistré.</span>}
       </div>
 
@@ -264,14 +264,13 @@ export default function SettingsPage() {
         {authRequired && authenticated && (
           <div className="space-y-2">
             <p className="text-sm text-good">Connecté.</p>
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               disabled={busy}
               onClick={handleLogout}
-              className="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-surface-2 disabled:opacity-50"
             >
               Se déconnecter
-            </button>
+            </Button>
           </div>
         )}
 
@@ -298,14 +297,13 @@ export default function SettingsPage() {
                 onChange={(e) => setNewAccountPassword(e.target.value)}
               />
             </label>
-            <button
-              type="button"
+            <Button
+              variant="primary"
               disabled={busy || !newAccountUsername.trim() || !newAccountPassword}
               onClick={handleBootstrap}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
             >
               Créer ce compte et se connecter
-            </button>
+            </Button>
           </div>
         )}
 
@@ -329,14 +327,13 @@ export default function SettingsPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleAccountLogin()}
               />
             </label>
-            <button
-              type="button"
+            <Button
+              variant="primary"
               disabled={busy || !username.trim() || !password}
               onClick={handleAccountLogin}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
             >
               Se connecter
-            </button>
+            </Button>
           </div>
         )}
 
@@ -355,14 +352,13 @@ export default function SettingsPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleTokenLogin()}
               />
             </label>
-            <button
-              type="button"
+            <Button
+              variant="primary"
               disabled={busy || !token.trim()}
               onClick={handleTokenLogin}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
             >
               Se connecter
-            </button>
+            </Button>
           </div>
         )}
 
@@ -386,13 +382,13 @@ export default function SettingsPage() {
               {accountNames.map((name) => (
                 <li key={name} className="flex items-center justify-between px-3 py-2 text-sm">
                   <span className="font-mono text-ink">{name}</span>
-                  <button
-                    type="button"
+                  <Button
+                    variant="link-danger"
                     onClick={() => handleDeleteAccount(name)}
-                    className="text-sm text-crit underline hover:opacity-80"
+                    className="text-sm"
                   >
                     Supprimer
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -416,14 +412,13 @@ export default function SettingsPage() {
                 onChange={(e) => setNewAccountPassword(e.target.value)}
               />
             </label>
-            <button
-              type="button"
+            <Button
+              variant="primary"
               disabled={!newAccountUsername.trim() || !newAccountPassword}
               onClick={handleAddAccount}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
             >
               Ajouter
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -433,7 +428,7 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => setShowGlobalConfigForm((v) => !v)}
-            className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink"
+            className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink transition-colors duration-100 hover:bg-surface-2 active:bg-line"
           >
             Configuration globale (Sonarr, Radarr, qBittorrent, TMDB)
             <span className="text-ink-faint">{showGlobalConfigForm ? "▲" : "▼"}</span>
@@ -448,7 +443,7 @@ export default function SettingsPage() {
                 déjà enregistrée.
               </p>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-ink-dim">
                   URL Sonarr
                   <input
@@ -576,14 +571,13 @@ export default function SettingsPage() {
               {globalConfigError && <p className="text-sm text-crit">{globalConfigError}</p>}
 
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
                   onClick={handleSaveGlobalConfig}
                   disabled={globalConfigSaving}
-                  className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
                 >
                   {globalConfigSaving ? "Enregistrement…" : "Enregistrer"}
-                </button>
+                </Button>
                 {globalConfigSaved && <span className="text-sm text-good">Enregistré.</span>}
               </div>
             </div>

@@ -37,7 +37,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Champ obligatoire (requires_field)">
           <input
             className={inputCls}
@@ -97,7 +97,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
           newItem={() => ({ name: "", pattern: "" })}
           addLabel="Ajouter un token"
           renderRow={(token, update) => (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <input
                 className={rowInputCls}
                 placeholder="nom"
@@ -129,13 +129,13 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
                 onChange={(e) => update({ group: e.target.value || undefined })}
               />
               <input
-                className={`col-span-2 ${rowInputCls}`}
+                className={`sm:col-span-2 ${rowInputCls}`}
                 placeholder="message si 'required' et absent"
                 value={token.error ?? ""}
                 onChange={(e) => update({ error: e.target.value || undefined })}
               />
               <input
-                className={`col-span-2 ${rowInputCls}`}
+                className={`sm:col-span-2 ${rowInputCls}`}
                 placeholder="message si 'recommended' et absent"
                 value={token.warning ?? ""}
                 onChange={(e) => update({ warning: e.target.value || undefined })}
@@ -172,7 +172,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
           addLabel="Ajouter un croisement"
           renderRow={(check, update) => (
             <div className="space-y-1">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <input
                   className={rowInputCls}
                   placeholder="capture (groupe nommé d'un token)"
@@ -221,7 +221,7 @@ export default function CategoryRulesForm({ rules, onChange }: Props) {
           newItem={() => ({ metadata_field: "", label: "" })}
           addLabel="Ajouter une vérification"
           renderRow={(check, update) => (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <input
                 className={rowInputCls}
                 placeholder="metadata_field (ex. audio_languages)"

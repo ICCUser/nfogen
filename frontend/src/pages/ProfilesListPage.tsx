@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-table";
 import { listAllProfiles, listManagedProfiles } from "../api/client";
 import { ApiError } from "../api/types";
+import { buttonClass } from "../components/buttonClass";
 
 interface Row {
   name: string;
@@ -89,7 +90,7 @@ export default function ProfilesListPage() {
         <h1 className="font-display text-xl font-semibold text-ink">Profils</h1>
         <Link
           to="/profiles/new"
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90"
+          className={buttonClass("primary", "md", "inline-block")}
         >
           Nouveau profil
         </Link>
@@ -111,53 +112,55 @@ export default function ProfilesListPage() {
       {rows === null && !error && <p className="text-sm text-ink-faint">Chargement…</p>}
 
       {rows !== null && (
-        <table className="w-full overflow-hidden rounded-md border border-line bg-surface text-sm">
-          <thead className="bg-surface-2 text-left text-ink-dim">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    data-testid={`col-header-${header.column.id}`}
-                    className={`px-4 py-2 ${header.column.getCanSort() ? "cursor-pointer select-none" : ""}`}
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                    {header.column.getIsSorted() === "asc" && " ▲"}
-                    {header.column.getIsSorted() === "desc" && " ▼"}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.map((tableRow) => {
-              const row = tableRow.original;
-              return (
-                <tr key={tableRow.id} className="border-t border-line">
-                  <td className="px-4 py-2 font-mono font-medium text-ink">{row.name}</td>
-                  <td className="px-4 py-2 text-ink-dim">{row.categories.join(", ")}</td>
-                  <td className="px-4 py-2">
-                    {row.editable ? (
-                      <span className="rounded-full bg-good-bg px-2 py-0.5 text-xs text-good">
-                        éditable
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-faint">
-                        lecture seule (livré)
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <Link to={`/profiles/${encodeURIComponent(row.name)}`} className="text-sm text-accent-ink underline">
-                      Gérer
-                    </Link>
-                  </td>
+        <div className="overflow-x-auto rounded-md border border-line bg-surface">
+          <table className="w-full text-sm">
+            <thead className="bg-surface-2 text-left text-ink-dim">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <th
+                      key={header.id}
+                      data-testid={`col-header-${header.column.id}`}
+                      className={`px-4 py-2 ${header.column.getCanSort() ? "cursor-pointer select-none" : ""}`}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.column.getIsSorted() === "asc" && " ▲"}
+                      {header.column.getIsSorted() === "desc" && " ▼"}
+                    </th>
+                  ))}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              ))}
+            </thead>
+            <tbody>
+              {table.getRowModel().rows.map((tableRow) => {
+                const row = tableRow.original;
+                return (
+                  <tr key={tableRow.id} className="border-t border-line">
+                    <td className="px-4 py-2 font-mono font-medium text-ink">{row.name}</td>
+                    <td className="px-4 py-2 text-ink-dim">{row.categories.join(", ")}</td>
+                    <td className="px-4 py-2">
+                      {row.editable ? (
+                        <span className="rounded-full bg-good-bg px-2 py-0.5 text-xs text-good">
+                          éditable
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-faint">
+                          lecture seule (livré)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <Link to={`/profiles/${encodeURIComponent(row.name)}`} className="text-sm text-accent-ink underline">
+                        Gérer
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

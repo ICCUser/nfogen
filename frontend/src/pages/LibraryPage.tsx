@@ -39,6 +39,7 @@ import type {
 } from "../api/types";
 import { useProfile } from "../ProfileContext";
 import { formatBytes } from "../format";
+import Button from "../components/Button";
 
 /** Libelles de statut : parametres par le nom du tracker actif
  * (`trackerName`, voir ProfileContext.displayName) au lieu d'un "C411"
@@ -116,34 +117,31 @@ function PaginationBar({
   return (
     <div className="flex items-center justify-between text-sm text-ink-dim">
       <div className="flex gap-2">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={onFirst}
           disabled={page <= 1}
-          className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
         >
           Première page
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="secondary"
           onClick={onPrev}
           disabled={page <= 1}
-          className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
         >
           Précédent
-        </button>
+        </Button>
       </div>
       <span>
         Page {page} / {Math.max(1, Math.ceil(total / pageSize))} — {total} résultats
       </span>
-      <button
-        type="button"
+      <Button
+        variant="secondary"
         onClick={onNext}
         disabled={page * pageSize >= total}
-        className="rounded-md border border-line-strong px-3 py-1.5 disabled:opacity-50"
       >
         Suivant
-      </button>
+      </Button>
     </div>
   );
 }
@@ -217,6 +215,14 @@ export default function LibraryPage() {
     seasonNumber: number | null;
     seasonPack?: SeasonPackRequest;
   } | null>(null);
+  // Distinct de `activeUpload` : le tiroir reste monte (contenu intact)
+  // pendant son animation de sortie, `activeUpload` n'est vide qu'une fois
+  // celle-ci terminee (onExited, voir Drawer -- audit front 2026-10-14).
+  const [uploadOpen, setUploadOpen] = useState(false);
+  function openUpload(upload: NonNullable<typeof activeUpload>) {
+    setActiveUpload(upload);
+    setUploadOpen(true);
+  }
 
   // Scan rapide (mode incremental) : coche par defaut des qu'un scan
   // precedent existe -- l'utilisateur peut decocher pour forcer un scan
@@ -531,14 +537,13 @@ export default function LibraryPage() {
   return (
     <div className="space-y-4">
       <PageToolbar title="Bibliothèque" subtitle={`Dernière synchro : ${formatSyncedAt(syncedAt)}`}>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={handleRefresh}
           disabled={refreshing}
-          className="rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink hover:bg-surface-hover disabled:opacity-50"
         >
           {refreshing ? "Rafraîchissement…" : "Rafraîchir"}
-        </button>
+        </Button>
         <select
           value={only}
           onChange={(e) => setOnly(e.target.value as "" | "movies" | "series")}
@@ -565,22 +570,20 @@ export default function LibraryPage() {
             Scan rapide
           </label>
         )}
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={handleExportCsv}
           disabled={!items || items.length === 0}
-          className="rounded-md border border-line-strong px-4 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
         >
           Export CSV
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="primary"
           onClick={handleRun}
           disabled={starting || running || notConfigured || noLibrary}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
         >
           {running ? "Scan en cours…" : "Lancer un scan complet"}
-        </button>
+        </Button>
       </PageToolbar>
       <p className="text-sm text-ink-dim">
         Ta bibliothèque Sonarr/Radarr, annotée du statut {trackerDisplayName} dès qu'il est connu — sélectionne
@@ -605,7 +608,7 @@ export default function LibraryPage() {
         <button
           type="button"
           onClick={() => setShowProfileConfigForm((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink"
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink transition-colors duration-100 hover:bg-surface-2 active:bg-line"
         >
           Configuration du profil {trackerDisplayName} ({profile})
           <span className="text-ink-faint">{showProfileConfigForm ? "▲" : "▼"}</span>
@@ -619,7 +622,7 @@ export default function LibraryPage() {
               requis). Un champ « clé » laissé vide ne modifie pas la clé déjà enregistrée.
             </p>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block text-sm font-medium text-ink-dim">
                 URL de base {trackerDisplayName}
                 <input
@@ -654,14 +657,13 @@ export default function LibraryPage() {
             {profileConfigError && <p className="text-sm text-crit">{profileConfigError}</p>}
 
             <div className="flex items-center gap-3">
-              <button
-                type="button"
+              <Button
+                variant="primary"
                 onClick={handleSaveProfileConfig}
                 disabled={profileConfigSaving}
-                className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
               >
                 {profileConfigSaving ? "Enregistrement…" : "Enregistrer"}
-              </button>
+              </Button>
               {profileConfigSaved && <span className="text-sm text-good">Enregistré.</span>}
             </div>
           </div>
@@ -702,13 +704,13 @@ export default function LibraryPage() {
         <div className="space-y-2 rounded-md border border-line bg-surface p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-ink-dim">Journal du scan</p>
-            <button
-              type="button"
+            <Button
+              variant="link-muted"
               onClick={handleClearLog}
-              className="text-xs text-ink-faint underline hover:text-ink"
+              className="text-xs"
             >
               Vider les logs
-            </button>
+            </Button>
           </div>
           <div className="max-h-40 space-y-0.5 overflow-y-auto font-mono text-xs text-ink-faint">
             {[...status.log].reverse().map((entry, i) => (
@@ -813,30 +815,27 @@ export default function LibraryPage() {
             <option value="false">Jamais traité</option>
           </select>
         </label>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={selectAllFiltered}
           disabled={!items || items.length === 0}
-          className="rounded-md border border-line-strong px-3 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
         >
           Tout sélectionner (filtré)
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="secondary"
           onClick={clearSelection}
           disabled={selected.size === 0}
-          className="rounded-md border border-line-strong px-3 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
         >
           Désélectionner
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="primary"
           onClick={handleVerifySelection}
           disabled={selected.size === 0 || starting || running}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
         >
           Vérifier sur le tracker ({selected.size} sélectionnés)
-        </button>
+        </Button>
       </div>
 
       {seasonPacks.length > 0 && (
@@ -845,7 +844,7 @@ export default function LibraryPage() {
             type="button"
             onClick={() => setPacksExpanded((v) => !v)}
             aria-expanded={packsExpanded}
-            className="flex w-full items-center justify-between px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-ink-dim hover:text-ink"
+            className="flex w-full items-center justify-between px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-ink-dim hover:text-ink transition-colors duration-100 active:bg-line"
           >
             <span>
               {seasonPacks.length} pack{seasonPacks.length > 1 ? "s" : ""} disponible
@@ -870,8 +869,9 @@ export default function LibraryPage() {
                     <span>
                       {pack.title} — {label} ({pack.team})
                     </span>
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       disabled={seasons === null}
                       title={
                         seasons === null
@@ -880,7 +880,7 @@ export default function LibraryPage() {
                       }
                       onClick={() => {
                         if (seasons === null) return;
-                        setActiveUpload({
+                        openUpload({
                           title: `${pack.title} ${label}`,
                           localPaths: seasons.flatMap((s) => s.local_paths),
                           mediaType: "series",
@@ -898,10 +898,9 @@ export default function LibraryPage() {
                           },
                         });
                       }}
-                      className="rounded-md border border-line-strong px-3 py-1.5 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
                     >
                       Préparer le pack
-                    </button>
+                    </Button>
                   </div>
                 );
               })}
@@ -923,146 +922,151 @@ export default function LibraryPage() {
       )}
 
       {items !== null && items.length > 0 && (
-        <table className="w-full overflow-hidden rounded-md border border-line bg-surface text-sm">
-          <thead className="bg-surface-2 text-left text-ink-dim">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    data-testid={`col-header-${header.column.id}`}
-                    className={`px-4 py-2 ${header.column.getCanSort() ? "cursor-pointer select-none" : ""}`}
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                    {header.column.getIsSorted() === "asc" && " ▲"}
-                    {header.column.getIsSorted() === "desc" && " ▼"}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.key} className="border-t border-line">
-                <td className="px-4 py-2">
-                  <input
-                    type="checkbox"
-                    aria-label={item.title}
-                    checked={selected.has(item.key)}
-                    onChange={() => toggleOne(item.key)}
-                    className="h-4 w-4 rounded border-line-strong"
-                  />
-                </td>
-                <td className="px-4 py-2 font-mono font-medium text-ink">
-                  {item.title} {item.year ? `(${item.year})` : ""}
-                  {item.status !== null && !item.path_resolved && (
-                    <span
-                      className="ml-1 rounded-full bg-warn-bg px-2 py-0.5 text-xs text-warn"
-                      title={item.path_error ?? "Chemin local non résolu"}
+        // Conteneur defilant : 10 colonnes (dont plusieurs nowrap) ne tiennent
+        // pas sous 768px -- sans lui, c'est toute la page qui s'elargit
+        // (audit front 2026-10-14, meme patron que SeedQueuePage).
+        <div className="overflow-x-auto rounded-md border border-line bg-surface">
+          <table className="w-full text-sm">
+            <thead className="bg-surface-2 text-left text-ink-dim">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <th
+                      key={header.id}
+                      data-testid={`col-header-${header.column.id}`}
+                      className={`px-4 py-2 ${header.column.getCanSort() ? "cursor-pointer select-none" : ""}`}
+                      onClick={header.column.getToggleSortingHandler()}
                     >
-                      ⚠ chemin
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-ink-dim">
-                  {item.media_type === "movie" ? "Film" : `Série S${String(item.season_number).padStart(2, "0")}`}
-                </td>
-                <td className="px-4 py-2 text-ink-dim">{item.genres.join(", ") || "—"}</td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  <span
-                    className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${
-                      item.status === null ? NOT_VERIFIED_BADGE_CLASS : STATUS_BADGE_CLASS[item.status]
-                    }`}
-                    title={item.status === "error" ? item.error ?? undefined : undefined}
-                  >
-                    {statusLabel(item.status, trackerDisplayName)}
-                  </span>
-                  {item.has_freeleech_alternative && (
-                    <span className="ml-1 rounded-full bg-good-bg px-2 py-0.5 text-xs text-good">FL</span>
-                  )}
-                  {item.has_double_upload_window && (
-                    <span className="ml-1 rounded-full bg-info-bg px-2 py-0.5 text-xs text-info">2x</span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">{item.team ?? "—"}</td>
-                <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">
-                  {qualitySummary(item.local_quality)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-ink-dim">
-                  {item.size_bytes !== null ? formatBytes(item.size_bytes) : "—"}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-ink-dim">
-                  {formatAddedAt(item.added_at)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-right">
-                  <Link to="/" className="text-sm text-accent-ink underline">
-                    Générer
-                  </Link>
-                  {item.path_resolved && item.local_paths.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setActiveUpload({
-                          title: item.title,
-                          localPaths: item.local_paths,
-                          mediaType: item.media_type,
-                          radarrMovieId: item.radarr_movie_id,
-                          sonarrSeriesId: item.sonarr_series_id,
-                          tmdbId: item.tmdb_id ? Number(item.tmdb_id) : null,
-                          tvdbId: item.tvdb_id,
-                          genre: item.tracker_genre,
-                          seasonNumber: item.season_number,
-                        })
-                      }
-                      className="ml-3 text-sm text-accent-ink underline"
-                    >
-                      Préparer l'upload
-                    </button>
-                  )}
-                  {item.seed_match && !seedMatchJobs[item.key] && (
-                    <button
-                      type="button"
-                      onClick={() => handleStartSeedMatch(item)}
-                      className="ml-3 text-sm text-accent-ink underline"
-                    >
-                      Seed possible
-                    </button>
-                  )}
-                  {seedMatchJobs[item.key]
-                    && seedMatchJobs[item.key].state !== "done"
-                    && seedMatchJobs[item.key].state !== "mismatch"
-                    && seedMatchJobs[item.key].state !== "error" && (
-                    <span className="ml-3 text-xs text-ink-dim">
-                      Vérification…
-                      <button
-                        type="button"
-                        onClick={() => handleCancelSeedMatch(item.key)}
-                        className="ml-1 text-crit underline"
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.column.getIsSorted() === "asc" && " ▲"}
+                      {header.column.getIsSorted() === "desc" && " ▼"}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.key} className="border-t border-line">
+                  <td className="px-4 py-2">
+                    <input
+                      type="checkbox"
+                      aria-label={item.title}
+                      checked={selected.has(item.key)}
+                      onChange={() => toggleOne(item.key)}
+                      className="h-4 w-4 rounded border-line-strong"
+                    />
+                  </td>
+                  <td className="px-4 py-2 font-mono font-medium text-ink">
+                    {item.title} {item.year ? `(${item.year})` : ""}
+                    {item.status !== null && !item.path_resolved && (
+                      <span
+                        className="ml-1 rounded-full bg-warn-bg px-2 py-0.5 text-xs text-warn"
+                        title={item.path_error ?? "Chemin local non résolu"}
                       >
-                        Annuler
-                      </button>
-                    </span>
-                  )}
-                  {seedMatchJobs[item.key]?.state === "done" && (
-                    <span className="ml-3 text-xs text-good">✅ En seed</span>
-                  )}
-                  {seedMatchJobs[item.key]?.state === "mismatch" && (
+                        ⚠ chemin
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-ink-dim">
+                    {item.media_type === "movie" ? "Film" : `Série S${String(item.season_number).padStart(2, "0")}`}
+                  </td>
+                  <td className="px-4 py-2 text-ink-dim">{item.genres.join(", ") || "—"}</td>
+                  <td className="whitespace-nowrap px-4 py-2">
                     <span
-                      className="ml-3 text-xs text-warn"
-                      title={seedMatchJobs[item.key].result?.warning ?? undefined}
+                      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${
+                        item.status === null ? NOT_VERIFIED_BADGE_CLASS : STATUS_BADGE_CLASS[item.status]
+                      }`}
+                      title={item.status === "error" ? item.error ?? undefined : undefined}
                     >
-                      ⚠ {seedMatchJobs[item.key].result?.warning}
+                      {statusLabel(item.status, trackerDisplayName)}
                     </span>
-                  )}
-                  {seedMatchJobs[item.key]?.state === "error" && (
-                    <span className="ml-3 text-xs text-crit">⚠ {seedMatchJobs[item.key].error}</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    {item.has_freeleech_alternative && (
+                      <span className="ml-1 rounded-full bg-good-bg px-2 py-0.5 text-xs text-good">FL</span>
+                    )}
+                    {item.has_double_upload_window && (
+                      <span className="ml-1 rounded-full bg-info-bg px-2 py-0.5 text-xs text-info">2x</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">{item.team ?? "—"}</td>
+                  <td className="whitespace-nowrap px-4 py-2 font-mono text-ink-dim">
+                    {qualitySummary(item.local_quality)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-ink-dim">
+                    {item.size_bytes !== null ? formatBytes(item.size_bytes) : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-ink-dim">
+                    {formatAddedAt(item.added_at)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right">
+                    <Link to="/" className="text-sm text-accent-ink underline">
+                      Générer
+                    </Link>
+                    {item.path_resolved && item.local_paths.length > 0 && (
+                      <Button
+                        variant="link"
+                        onClick={() =>
+                          openUpload({
+                            title: item.title,
+                            localPaths: item.local_paths,
+                            mediaType: item.media_type,
+                            radarrMovieId: item.radarr_movie_id,
+                            sonarrSeriesId: item.sonarr_series_id,
+                            tmdbId: item.tmdb_id ? Number(item.tmdb_id) : null,
+                            tvdbId: item.tvdb_id,
+                            genre: item.tracker_genre,
+                            seasonNumber: item.season_number,
+                          })
+                        }
+                        className="ml-3 text-sm"
+                      >
+                        Préparer l'upload
+                      </Button>
+                    )}
+                    {item.seed_match && !seedMatchJobs[item.key] && (
+                      <Button
+                        variant="link"
+                        onClick={() => handleStartSeedMatch(item)}
+                        className="ml-3 text-sm"
+                      >
+                        Seed possible
+                      </Button>
+                    )}
+                    {seedMatchJobs[item.key]
+                      && seedMatchJobs[item.key].state !== "done"
+                      && seedMatchJobs[item.key].state !== "mismatch"
+                      && seedMatchJobs[item.key].state !== "error" && (
+                      <span className="ml-3 text-xs text-ink-dim">
+                        Vérification…
+                        <Button
+                          variant="link-danger"
+                          onClick={() => handleCancelSeedMatch(item.key)}
+                          className="ml-1"
+                        >
+                          Annuler
+                        </Button>
+                      </span>
+                    )}
+                    {seedMatchJobs[item.key]?.state === "done" && (
+                      <span className="ml-3 text-xs text-good">✅ En seed</span>
+                    )}
+                    {seedMatchJobs[item.key]?.state === "mismatch" && (
+                      <span
+                        className="ml-3 text-xs text-warn"
+                        title={seedMatchJobs[item.key].result?.warning ?? undefined}
+                      >
+                        ⚠ {seedMatchJobs[item.key].result?.warning}
+                      </span>
+                    )}
+                    {seedMatchJobs[item.key]?.state === "error" && (
+                      <span className="ml-3 text-xs text-crit">⚠ {seedMatchJobs[item.key].error}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {items !== null && items.length > 0 && (
@@ -1093,7 +1097,9 @@ export default function LibraryPage() {
           genre={activeUpload.genre}
           seasonNumber={activeUpload.seasonNumber}
           seasonPack={activeUpload.seasonPack}
-          onClose={() => setActiveUpload(null)}
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          onExited={() => setActiveUpload(null)}
         />
       )}
     </div>

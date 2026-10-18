@@ -12,6 +12,7 @@ import type { Category, RulesDocument, TemplatesDocument } from "../api/types";
 import CategoryRulesForm from "../components/rules/CategoryRulesForm";
 import TemplateEditor from "../components/TemplateEditor";
 import PreviewPanel from "../components/PreviewPanel";
+import Button from "../components/Button";
 
 interface Props {
   mode: "create" | "edit";
@@ -136,29 +137,26 @@ export default function ProfileEditorPage({ mode }: Props) {
         <div className="flex gap-2">
           {mode === "edit" && (
             <>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={exportZip}
-                className="rounded-md border border-line-strong px-3 py-2 text-sm text-ink hover:bg-surface-2"
               >
                 Exporter .zip
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="danger-secondary"
                 onClick={remove}
-                className="rounded-md border border-crit px-3 py-2 text-sm text-crit hover:bg-crit-bg"
               >
                 Supprimer
-              </button>
+              </Button>
             </>
           )}
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => importInputRef.current?.click()}
-            className="rounded-md border border-line-strong px-3 py-2 text-sm text-ink hover:bg-surface-2"
           >
             Importer .zip
-          </button>
+          </Button>
           <input
             ref={importInputRef}
             type="file"
@@ -170,14 +168,13 @@ export default function ProfileEditorPage({ mode }: Props) {
               e.target.value = "";
             }}
           />
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={save}
             disabled={saving}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Enregistrement…" : "Enregistrer"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -198,7 +195,7 @@ export default function ProfileEditorPage({ mode }: Props) {
             key={c}
             type="button"
             onClick={() => setCategory(c)}
-            className={`px-3 py-2 font-mono text-sm font-medium ${
+            className={`px-3 py-2 font-mono text-sm font-medium transition-colors duration-100 active:opacity-60 ${
               category === c
                 ? "border-b-2 border-accent text-ink"
                 : "text-ink-faint hover:text-ink-dim"
@@ -215,7 +212,7 @@ export default function ProfileEditorPage({ mode }: Props) {
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`rounded-md px-3 py-1.5 text-sm ${
+            className={`rounded-md px-3 py-1.5 text-sm transition-colors duration-100 active:opacity-70 ${
               tab === t ? "bg-accent text-surface" : "bg-surface-2 text-ink-dim hover:bg-line"
             }`}
           >

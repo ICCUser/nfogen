@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import Button from "./Button";
 
 interface Props {
   children: ReactNode;
@@ -29,13 +30,12 @@ export default class ErrorBoundary extends Component<Props, State> {
         <div className="mx-auto max-w-lg space-y-3 rounded-md border border-crit bg-crit-bg p-4 text-sm text-crit">
           <p className="font-medium">Une erreur inattendue est survenue.</p>
           <p className="break-words font-mono text-crit">{this.state.error.message}</p>
-          <button
-            type="button"
+          <Button
+            variant="danger"
             onClick={() => this.setState({ error: null })}
-            className="rounded-md bg-crit px-3 py-1.5 text-surface hover:opacity-90"
           >
             Reessayer
-          </button>
+          </Button>
         </div>
       );
     }

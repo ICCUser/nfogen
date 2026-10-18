@@ -38,6 +38,20 @@ class MemoryStorage implements Storage {
   }
 }
 
+// jsdom n'implemente pas <dialog>.showModal()/close() (Drawer.tsx s'appuie
+// dessus) : equivalent minimal -- l'attribut `open` rend le dialog visible
+// (et donc trouvable par role), close() emet l'evenement natif `close`.
+if (typeof HTMLDialogElement.prototype.showModal !== "function") {
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    if (!this.hasAttribute("open")) return;
+    this.removeAttribute("open");
+    this.dispatchEvent(new Event("close"));
+  };
+}
+
 const storage = new MemoryStorage();
 for (const target of [globalThis, window]) {
   Object.defineProperty(target, "localStorage", { value: storage, configurable: true });

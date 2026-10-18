@@ -9,6 +9,7 @@ import { ApiError } from "../api/types";
 import type { NameProposal } from "../api/types";
 import { extractGeneralTitles, extractVideoData } from "../lib/clientMediaInfo";
 import { useProfile } from "../ProfileContext";
+import Button from "../components/Button";
 
 const SAMPLE_PLACEHOLDER = `{
   "release_name": "Mon.Titre-TEAM"
@@ -219,7 +220,7 @@ export default function GeneratePage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 rounded-md border border-line bg-surface p-4">
+      <div className="grid grid-cols-1 gap-4 rounded-md border border-line bg-surface p-4 sm:grid-cols-2">
         <label className="block text-sm font-medium text-ink-dim">
           Catégorie
           <select
@@ -236,7 +237,7 @@ export default function GeneratePage() {
           </select>
         </label>
 
-        <label className="col-span-2 block text-sm font-medium text-ink-dim">
+        <label className="block text-sm font-medium text-ink-dim sm:col-span-2">
           Fichier(s) source — vidéo seule, ou plusieurs fichiers audio pour un album
           <input
             type="file"
@@ -262,7 +263,7 @@ export default function GeneratePage() {
           )}
         </label>
 
-        <label className="col-span-2 block text-sm font-medium text-ink-dim">
+        <label className="block text-sm font-medium text-ink-dim sm:col-span-2">
           Métadonnées complémentaires (JSON — ex. release_name, title, requirements…)
           <textarea
             className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-xs text-ink"
@@ -310,22 +311,20 @@ export default function GeneratePage() {
       )}
 
       <div className="flex gap-2">
-        <button
-          type="button"
+        <Button
+          variant="primary"
           onClick={run}
           disabled={loading}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:opacity-50"
         >
           {loading ? loadingLabel : "Générer"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="secondary"
           onClick={download}
           disabled={loading || nfo === null}
-          className="rounded-md border border-line-strong px-4 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
         >
           Télécharger le .nfo
-        </button>
+        </Button>
       </div>
 
       {error && (
