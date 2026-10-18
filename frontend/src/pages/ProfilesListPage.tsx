@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 import {
   type ColumnDef,
   type SortingState,
-  flexRender,
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import SortableHeader from "../components/SortableHeader";
 import { listAllProfiles, listManagedProfiles } from "../api/client";
 import { ApiError } from "../api/types";
 import { buttonClass } from "../components/buttonClass";
@@ -118,16 +118,7 @@ export default function ProfilesListPage() {
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      data-testid={`col-header-${header.column.id}`}
-                      className={`px-4 py-2 ${header.column.getCanSort() ? "cursor-pointer select-none" : ""}`}
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      {header.column.getIsSorted() === "asc" && " ▲"}
-                      {header.column.getIsSorted() === "desc" && " ▼"}
-                    </th>
+                    <SortableHeader key={header.id} header={header} className="px-4 py-2" />
                   ))}
                 </tr>
               ))}

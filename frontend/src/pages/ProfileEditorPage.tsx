@@ -14,12 +14,19 @@ import TemplateEditor from "../components/TemplateEditor";
 import PreviewPanel from "../components/PreviewPanel";
 import Button from "../components/Button";
 import ConfirmButton from "../components/ConfirmButton";
+import Tabs from "../components/Tabs";
 
 interface Props {
   mode: "create" | "edit";
 }
 
 type Tab = "rules" | "templates" | "preview";
+
+const TABS: readonly { value: Tab; label: string }[] = [
+  { value: "rules", label: "Règles" },
+  { value: "templates", label: "Template" },
+  { value: "preview", label: "Aperçu" },
+];
 
 export default function ProfileEditorPage({ mode }: Props) {
   const params = useParams<{ name: string }>();
@@ -187,39 +194,32 @@ export default function ProfileEditorPage({ mode }: Props) {
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-line">
-        {CATEGORIES.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => setCategory(c)}
-            className={`px-3 py-2 font-mono text-sm font-medium transition-colors duration-100 active:opacity-60 ${
-              category === c
-                ? "border-b-2 border-accent text-ink"
-                : "text-ink-faint hover:text-ink-dim"
-            }`}
-          >
-            {c}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        label="Catégorie"
+        idPrefix="category-tab"
+        controls="profile-editor-panel"
+        items={CATEGORIES.map((c) => ({ value: c, label: c }))}
+        value={category}
+        onChange={setCategory}
+        mono
+      />
 
-      <div className="flex gap-1">
-        {(["rules", "templates", "preview"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`rounded-md px-3 py-1.5 text-sm transition-colors duration-100 active:opacity-70 ${
-              tab === t ? "bg-accent text-surface" : "bg-surface-2 text-ink-dim hover:bg-line"
-            }`}
-          >
-            {t === "rules" ? "Règles" : t === "templates" ? "Template" : "Aperçu"}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        label="Section"
+        idPrefix="section-tab"
+        controls="profile-editor-panel"
+        variant="segmented"
+        items={TABS}
+        value={tab}
+        onChange={setTab}
+      />
 
-      <div className="rounded-md border border-line bg-surface p-4">
+      <div
+        id="profile-editor-panel"
+        role="tabpanel"
+        aria-labelledby={`category-tab-${category} section-tab-${tab}`}
+        className="rounded-md border border-line bg-surface p-4"
+      >
         {tab === "rules" && (
           <CategoryRulesForm
             rules={rules[category] ?? {}}

@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createAccount, deleteAccount, gapscanConfig, gapscanConfigWrite, listAccounts } from "../api/client";
 import { getAuthStatus, getBaseUrl, login, logout, setBaseUrl } from "../api/settings";
@@ -435,10 +436,15 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => setShowGlobalConfigForm((v) => !v)}
+            aria-expanded={showGlobalConfigForm}
             className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink transition-colors duration-100 hover:bg-surface-2 active:bg-line"
           >
             Configuration globale (Sonarr, Radarr, qBittorrent, TMDB)
-            <span className="text-ink-faint">{showGlobalConfigForm ? "▲" : "▼"}</span>
+            <ChevronDown
+              size={16}
+              aria-hidden="true"
+              className={`text-ink-faint transition-transform duration-200 motion-reduce:transition-none ${showGlobalConfigForm ? "rotate-180" : ""}`}
+            />
           </button>
           {showGlobalConfigForm && (
             // Toute modification d'un champ efface "Enregistré." (l'evenement

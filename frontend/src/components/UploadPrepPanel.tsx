@@ -1,3 +1,4 @@
+import { TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import ConfirmButton from "./ConfirmButton";
 import Drawer from "./Drawer";
@@ -435,7 +436,10 @@ export default function UploadPrepPanel({
           {group.warnings.length > 0 && (
             <ul className="space-y-0.5 text-xs text-warn">
               {group.warnings.map((w, i) => (
-                <li key={i}>⚠ {w}</li>
+                <li key={i}>
+                  <TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
+                  {w}
+                </li>
               ))}
             </ul>
           )}
@@ -542,7 +546,7 @@ export default function UploadPrepPanel({
               </div>
             </div>
           )}
-          {integrityErrors[index] && <p role="alert" className="text-xs text-crit">⚠ {integrityErrors[index]}</p>}
+          {integrityErrors[index] && <p role="alert" className="text-xs text-crit"><TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />{integrityErrors[index]}</p>}
           {sendErrors[index] && <p role="alert" className="text-xs text-crit">{sendErrors[index]}</p>}
           {sendResults[index] && (
             <div role="status" className="space-y-1 text-xs">
@@ -562,13 +566,13 @@ export default function UploadPrepPanel({
                   : "Finalise-le sur le site pour l'envoyer réellement en modération."}
               </p>
               {sendResults[index].duplicate_warning && (
-                <p className="text-warn">⚠ {sendResults[index].duplicate_warning}</p>
+                <p className="text-warn"><TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />{sendResults[index].duplicate_warning}</p>
               )}
               {sendResults[index].presentation_warning && (
-                <p className="text-warn">⚠ {sendResults[index].presentation_warning}</p>
+                <p className="text-warn"><TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />{sendResults[index].presentation_warning}</p>
               )}
               {sendResults[index].seed_warning && (
-                <p className="text-warn">⚠ {sendResults[index].seed_warning}</p>
+                <p className="text-warn"><TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />{sendResults[index].seed_warning}</p>
               )}
             </div>
           )}

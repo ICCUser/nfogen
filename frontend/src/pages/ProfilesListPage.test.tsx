@@ -50,4 +50,22 @@ describe("ProfilesListPage -- tableau triable (retour utilisateur, 2026-09-09)",
       expect(names[1]).toContain("alpha");
     });
   });
+
+  it("en-tete triable : vrai bouton au clavier, aria-sort a jour (lot 5)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listAllProfiles).mockResolvedValue({ alpha: ["video"], zeta: ["video"] });
+    renderPage();
+    await screen.findByText("alpha");
+
+    const sortButton = screen.getByTestId("col-header-name");
+    expect(sortButton.tagName).toBe("BUTTON");
+    const th = sortButton.closest("th")!;
+    const before = th.getAttribute("aria-sort");
+
+    sortButton.focus();
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(th.getAttribute("aria-sort")).not.toBe(before));
+    expect(["ascending", "descending"]).toContain(th.getAttribute("aria-sort"));
+  });
 });

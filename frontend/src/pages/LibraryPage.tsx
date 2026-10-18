@@ -1,16 +1,16 @@
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   type ColumnDef,
   type SortingState,
-  flexRender,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
 import ActiveTransfersTray from "../components/ActiveTransfersTray";
 import InlineBanner from "../components/InlineBanner";
 import PageToolbar from "../components/PageToolbar";
+import SortableHeader from "../components/SortableHeader";
 import UploadPrepPanel from "../components/UploadPrepPanel";
 import {
   cancelSeedMatchJob,
@@ -650,10 +650,15 @@ export default function LibraryPage() {
         <button
           type="button"
           onClick={() => setShowProfileConfigForm((v) => !v)}
+          aria-expanded={showProfileConfigForm}
           className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-ink transition-colors duration-100 hover:bg-surface-2 active:bg-line"
         >
           Configuration du profil {trackerDisplayName} ({profile})
-          <span className="text-ink-faint">{showProfileConfigForm ? "▲" : "▼"}</span>
+          <ChevronDown
+            size={16}
+            aria-hidden="true"
+            className={`text-ink-faint transition-transform duration-200 motion-reduce:transition-none ${showProfileConfigForm ? "rotate-180" : ""}`}
+          />
         </button>
         {showProfileConfigForm && (
           // Toute modification d'un champ efface "Enregistré." (l'evenement
@@ -907,7 +912,11 @@ export default function LibraryPage() {
               {seasonPacks.length} pack{seasonPacks.length > 1 ? "s" : ""} disponible
               {seasonPacks.length > 1 ? "s" : ""}
             </span>
-            <ChevronDown size={14} className={packsExpanded ? "rotate-180" : undefined} />
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className={`transition-transform duration-200 motion-reduce:transition-none ${packsExpanded ? "rotate-180" : ""}`}
+            />
           </button>
           {packsExpanded && (
             <div className="max-h-64 overflow-y-auto">
@@ -988,16 +997,7 @@ export default function LibraryPage() {
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      data-testid={`col-header-${header.column.id}`}
-                      className={`px-4 py-2 ${header.column.getCanSort() ? "cursor-pointer select-none" : ""}`}
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      {header.column.getIsSorted() === "asc" && " ▲"}
-                      {header.column.getIsSorted() === "desc" && " ▼"}
-                    </th>
+                    <SortableHeader key={header.id} header={header} className="px-4 py-2" />
                   ))}
                 </tr>
               ))}
@@ -1021,7 +1021,8 @@ export default function LibraryPage() {
                         className="ml-1 rounded-full bg-warn-bg px-2 py-0.5 text-xs text-warn"
                         title={item.path_error ?? "Chemin local non résolu"}
                       >
-                        ⚠ chemin
+                        <TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
+                        chemin
                       </span>
                     )}
                   </td>
@@ -1105,18 +1106,25 @@ export default function LibraryPage() {
                       </span>
                     )}
                     {seedMatchJobs[item.key]?.state === "done" && (
-                      <span className="ml-3 text-xs text-good">✅ En seed</span>
+                      <span className="ml-3 text-xs text-good">
+                        <Check size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
+                        En seed
+                      </span>
                     )}
                     {seedMatchJobs[item.key]?.state === "mismatch" && (
                       <span
                         className="ml-3 text-xs text-warn"
                         title={seedMatchJobs[item.key].result?.warning ?? undefined}
                       >
-                        ⚠ {seedMatchJobs[item.key].result?.warning}
+                        <TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
+                        {seedMatchJobs[item.key].result?.warning}
                       </span>
                     )}
                     {seedMatchJobs[item.key]?.state === "error" && (
-                      <span className="ml-3 text-xs text-crit">⚠ {seedMatchJobs[item.key].error}</span>
+                      <span className="ml-3 text-xs text-crit">
+                        <TriangleAlert size={12} aria-hidden="true" className="mr-1 inline-block align-[-2px]" />
+                        {seedMatchJobs[item.key].error}
+                      </span>
                     )}
                   </td>
                 </tr>

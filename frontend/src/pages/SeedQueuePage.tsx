@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import {
   type ColumnDef,
   type SortingState,
-  flexRender,
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import SortableHeader from "../components/SortableHeader";
 import { addToSeedQueue, seedQueue, seedStatus } from "../api/client";
 import { ApiError } from "../api/types";
 import type { SeedingTorrent, SeedQueueEntry } from "../api/types";
@@ -182,16 +182,7 @@ export default function SeedQueuePage() {
                 {seedStatusTable.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
-                      <th
-                        key={header.id}
-                        data-testid={`col-header-${header.column.id}`}
-                        className="cursor-pointer select-none px-3 py-2"
-                        onClick={header.column.getToggleSortingHandler()}
-                      >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getIsSorted() === "asc" && " ▲"}
-                        {header.column.getIsSorted() === "desc" && " ▼"}
-                      </th>
+                      <SortableHeader key={header.id} header={header} className="px-3 py-2" />
                     ))}
                   </tr>
                 ))}
