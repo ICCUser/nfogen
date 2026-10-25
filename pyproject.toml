@@ -34,7 +34,7 @@ Issues = "https://github.com/ICCUser/nfogen/issues"
 [project.optional-dependencies]
 api = [
     "fastapi>=0.110",
-    "uvicorn[standard]>=0.29",
+    "uvicorn[standard]>=0.54.0",
     "python-multipart>=0.0.32",  # upload de fichiers via HTTP
 ]
 gapscan = [
