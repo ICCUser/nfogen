@@ -14,7 +14,7 @@
     "@fontsource/archivo": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/public-sans": "^5.3.0",
-    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-table": "^9.3.1",
     "lucide-react": "^1.45.0",
     "mediainfo.js": "^0.3.7",
     "react": "^19.2.7",
