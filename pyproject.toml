@@ -44,7 +44,7 @@ automation = [
     "torf>=4.3.1",  # torrent_builder.py (voir AUTOMATION.md, sous-projet 2) -- extra separe de gapscan, pas necessaire pour la seule detection de gap
 ]
 
-dev = ["pytest>=8.0", "ruff>=0.16.6", "httpx>=0.28.1", "Pillow>=10.0"]
+dev = ["pytest>=8.0", "ruff>=0.17.1", "httpx>=0.28.1", "Pillow>=10.0"]
 
 [project.scripts]
 nfogen = "nfogen.cli:main"
