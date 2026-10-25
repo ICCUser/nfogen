@@ -18,7 +18,7 @@
     "lucide-react": "^1.45.0",
     "mediainfo.js": "^0.3.7",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
@@ -28,7 +28,7 @@
     "@testing-library/user-event": "^14.6.8",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "jsdom": "^30.0.1",
     "oxlint": "^1.88.0",
