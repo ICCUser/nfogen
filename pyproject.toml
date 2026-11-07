@@ -23,7 +23,7 @@ dependencies = [
     "mutagen>=1.48.1",      # extraction des metadonnees audio
     "jinja2>=3.1.6",      # >=3.1.6 : corrige des contournements du SandboxedEnvironment (render.py)
     "jsonschema>=4.0",    # validation des rules.json (profils livres et utilisateur)
-    "google-re2>=1.1",    # execution des regex admin (rules.json) sans risque ReDoS (rules.py)
+    "google-re2>=1.1.20251105",    # execution des regex admin (rules.json) sans risque ReDoS (rules.py)
 ]
 
 [project.urls]
@@ -33,8 +33,8 @@ Issues = "https://github.com/ICCUser/nfogen/issues"
 
 [project.optional-dependencies]
 api = [
-    "fastapi>=0.110",
-    "uvicorn[standard]>=0.29",
+    "fastapi>=0.159.1",
+    "uvicorn[standard]>=0.54.0",
     "python-multipart>=0.0.32",  # upload de fichiers via HTTP
 ]
 gapscan = [
@@ -44,7 +44,7 @@ automation = [
     "torf>=4.3.1",  # torrent_builder.py (voir AUTOMATION.md, sous-projet 2) -- extra separe de gapscan, pas necessaire pour la seule detection de gap
 ]
 
-dev = ["pytest>=8.0", "ruff>=0.16.6", "httpx>=0.28.1", "Pillow>=10.0"]
+dev = ["pytest>=8.0", "ruff>=0.17.1", "httpx>=0.28.1", "Pillow>=12.3.0"]
 
 [project.scripts]
 nfogen = "nfogen.cli:main"

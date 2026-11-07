@@ -3,10 +3,9 @@ import { Link } from "react-router-dom";
 import {
   type ColumnDef,
   type SortingState,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
 } from "@tanstack/react-table";
+import { type SortingTableFeatures, sortingTableFeatures } from "../lib/tableFeatures";
 import SortableHeader from "../components/SortableHeader";
 import { listAllProfiles, listManagedProfiles } from "../api/client";
 import { ApiError } from "../api/types";
@@ -22,7 +21,7 @@ interface Row {
  * (voir l'ancien .sort() de load()) -- tri 100% client, liste de profils
  * toujours petite et deja complete en un appel (retour utilisateur,
  * 2026-09-09). */
-const PROFILE_COLUMNS: ColumnDef<Row>[] = [
+const PROFILE_COLUMNS: ColumnDef<SortingTableFeatures, Row>[] = [
   { id: "name", header: "Profil", accessorKey: "name" },
   { id: "categories", header: "Catégories", accessorFn: (row) => row.categories.join(", ") },
   { id: "editable", header: "Statut", accessorKey: "editable" },
@@ -35,28 +34,23 @@ export default function ProfilesListPage() {
   const [managedNotice, setManagedNotice] = useState<string | null>(null);
   const [sorting, setSorting] = useState<SortingState>([{ id: "name", desc: false }]);
 
-  // oxlint-disable-next-line react/incompatible-library -- TanStack Table n'est pas compatible React Compiler, que nfogen n'utilise pas
-  const table = useReactTable({
+  const table = useTable({
+    features: sortingTableFeatures,
     data: rows ?? [],
     columns: PROFILE_COLUMNS,
     state: { sorting },
     onSortingChange: setSorting,
     enableMultiSort: false,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   });
 
-  useEffect(() => {
-    load();
-  }, []);
-
   async function load() {
-    setError(null);
-    setManagedNotice(null);
-
     let all: Record<string, string[]>;
     try {
       all = await listAllProfiles();
+      // Remises a zero APRES la reponse : jamais de setState synchrone dans
+      // l'effet de chargement, et pas de clignotement du message d'erreur.
+      setError(null);
+      setManagedNotice(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Impossible de contacter l'API.");
       setRows(null);
@@ -84,6 +78,11 @@ export default function ProfilesListPage() {
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
   }
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- chargement asynchrone : tout setState a lieu apres un await (faux positif de la regle)
+    load();
+  }, []);
 
   return (
     <div className="space-y-4">

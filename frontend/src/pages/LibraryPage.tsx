@@ -4,9 +4,9 @@ import { Link } from "react-router-dom";
 import {
   type ColumnDef,
   type SortingState,
-  getCoreRowModel,
-  useReactTable,
+  useTable,
 } from "@tanstack/react-table";
+import { type SortingTableFeatures, sortingTableFeatures } from "../lib/tableFeatures";
 import ActiveTransfersTray from "../components/ActiveTransfersTray";
 import InlineBanner from "../components/InlineBanner";
 import PageToolbar from "../components/PageToolbar";
@@ -90,7 +90,7 @@ function formatAddedAt(addedAt: number | null): string {
   return `il y a ${years} an${years > 1 ? "s" : ""}`;
 }
 
-const LIBRARY_COLUMNS: ColumnDef<LibraryItem>[] = [
+const LIBRARY_COLUMNS: ColumnDef<SortingTableFeatures, LibraryItem>[] = [
   { id: "select", header: "", enableSorting: false },
   { id: "title", header: "Titre", accessorKey: "title" },
   { id: "media_type", header: "Type", accessorKey: "media_type" },
@@ -572,14 +572,14 @@ export default function LibraryPage() {
   // voir gapscan_results_store.py) des qu'un "done" a deja ete rapporte.
   const hasPreviousScan = status?.state === "done" && status.finished_at !== null;
 
-  const table = useReactTable({
+  const table = useTable({
+    features: sortingTableFeatures,
     data: items ?? [],
     columns: LIBRARY_COLUMNS,
     state: { sorting },
     onSortingChange: handleSortingChange,
     manualSorting: true,
     enableMultiSort: false,
-    getCoreRowModel: getCoreRowModel(),
   });
 
   return (

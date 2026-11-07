@@ -2,10 +2,9 @@ import { useEffect, useState } from "react";
 import {
   type ColumnDef,
   type SortingState,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
 } from "@tanstack/react-table";
+import { type SortingTableFeatures, sortingTableFeatures } from "../lib/tableFeatures";
 import SortableHeader from "../components/SortableHeader";
 import { addToSeedQueue, seedQueue, seedStatus } from "../api/client";
 import { ApiError } from "../api/types";
@@ -22,7 +21,7 @@ function formatSpeed(bytesPerSecond: number): string {
  * ressortir naturellement qui envoie actuellement en haut du tableau
  * (retour utilisateur, 2026-09-09). Tri 100% client (pas de pagination,
  * la liste qBittorrent est deja complete en un appel). */
-const SEED_STATUS_COLUMNS: ColumnDef<SeedingTorrent>[] = [
+const SEED_STATUS_COLUMNS: ColumnDef<SortingTableFeatures, SeedingTorrent>[] = [
   { id: "name", header: "Nom", accessorKey: "name" },
   { id: "size", header: "Taille", accessorKey: "size" },
   { id: "progress", header: "Progression", accessorKey: "progress" },
@@ -48,27 +47,14 @@ export default function SeedQueuePage() {
   const [seedStatusError, setSeedStatusError] = useState<string | null>(null);
   const [sorting, setSorting] = useState<SortingState>([{ id: "upspeed", desc: true }]);
 
-  // oxlint-disable-next-line react/incompatible-library -- TanStack Table n'est pas compatible React Compiler, que nfogen n'utilise pas
-  const seedStatusTable = useReactTable({
+  const seedStatusTable = useTable({
+    features: sortingTableFeatures,
     data: torrents ?? [],
     columns: SEED_STATUS_COLUMNS,
     state: { sorting },
     onSortingChange: setSorting,
     enableMultiSort: false,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   });
-
-  useEffect(() => {
-    load();
-    loadSeedStatus();
-    // Suivi live (retour utilisateur 2026-09-09 : "il faut rafraichir la
-    // page pour avoir un apercus [...] avoir en live la colonne envoi") --
-    // rafraichit uniquement le statut du client de seed, pas la file
-    // d'attente (load()), qui ne change que sur action utilisateur.
-    const interval = window.setInterval(loadSeedStatus, 4000);
-    return () => window.clearInterval(interval);
-  }, []);
 
   async function load() {
     try {
@@ -92,6 +78,19 @@ export default function SeedQueuePage() {
       );
     }
   }
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- chargement asynchrone : tout setState a lieu apres un await (faux positif de la regle)
+    load();
+    // oxlint-disable-next-line react/set-state-in-effect -- chargement asynchrone : tout setState a lieu apres un await (faux positif de la regle)
+    loadSeedStatus();
+    // Suivi live (retour utilisateur 2026-09-09 : "il faut rafraichir la
+    // page pour avoir un apercus [...] avoir en live la colonne envoi") --
+    // rafraichit uniquement le statut du client de seed, pas la file
+    // d'attente (load()), qui ne change que sur action utilisateur.
+    const interval = window.setInterval(loadSeedStatus, 4000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   async function handleAdd(entry: SeedQueueEntry) {
     const file = files[entry.key];

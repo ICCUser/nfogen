@@ -1,4 +1,5 @@
-import { type Header, flexRender } from "@tanstack/react-table";
+import { type Header, type RowData, flexRender } from "@tanstack/react-table";
+import type { SortingTableFeatures } from "../lib/tableFeatures";
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 
 /** En-tete de colonne commun aux tableaux TanStack (audit front
@@ -9,7 +10,13 @@ import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
  * chevron estompe sur les colonnes triables non triees, pour signaler
  * qu'elles le sont. `data-testid` reste `col-header-<id>`, sur l'element
  * cliquable. */
-export default function SortableHeader<T>({ header, className }: { header: Header<T, unknown>; className?: string }) {
+export default function SortableHeader<TData extends RowData>({
+  header,
+  className,
+}: {
+  header: Header<SortingTableFeatures, TData, unknown>;
+  className?: string;
+}) {
   const id = header.column.id;
   const label = header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext());
 
